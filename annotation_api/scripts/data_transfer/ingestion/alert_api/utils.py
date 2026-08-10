@@ -109,6 +109,11 @@ def to_record(
         "sequence_temporal_model_score": sequence.get("temporal_model_score"),
         "sequence_temporal_model_version": sequence.get("temporal_model_version"),
         "sequence_temporal_api_version": sequence.get("temporal_api_version"),
+        # "we have no information" is NOT the same as "the platform scored it
+        # null". An alert API predating temporal validation omits the key
+        # entirely; a refresh must skip such records rather than write NULL
+        # over a score captured by an earlier, better-informed run.
+        "sequence_temporal_score_unknown": "temporal_model_score" not in sequence,
         "sequence_started_at": sequence["started_at"],
         "sequence_last_seen_at": sequence["last_seen_at"],
         # Camera/pose pointing direction. The alert API also exposes

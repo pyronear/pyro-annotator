@@ -585,16 +585,36 @@ def _process_single_detection(
     return result
 
 
-def _refresh_temporal_score(
-    annotation_api_url: str, auth_token: str, sequence_data: dict
-) -> bool:
-    """Update an existing sequence's temporal columns. Returns success.
+# Outcomes of a refresh attempt on an already-imported sequence.
+REFRESH_REFRESHED = "refreshed"
+REFRESH_FAILED = "failed"
+REFRESH_SKIPPED_UNKNOWN = "skipped_unknown"
 
-    Always sends all three values, including None: a sibling lane's correct
-    value is NULL, and omitting the field would let a stale score survive a
-    re-import. Never raises — a failed refresh degrades the run's usefulness
-    but must not abort an import.
+
+def _refresh_temporal_score(
+    annotation_api_url: str, auth_token: str, sequence_data: dict, record: dict
+) -> str:
+    """Update an existing sequence's temporal columns. Returns the outcome.
+
+    Sends all three values including None, because a sibling lane's correct
+    value IS NULL and omitting the field would let a stale score survive.
+
+    But NULL is only written when this run actually knows the value is NULL.
+    When it does not — the alert API sent no score field, or the primary
+    object could not be identified — the refresh is skipped: writing NULL
+    would destroy a score captured by an earlier, better-informed run, and
+    unlike a bad insert that loss is unrecoverable without re-fetching.
+
+    Never raises: a failed refresh degrades a run but must not abort an import.
     """
+    if record.get("sequence_temporal_score_unknown"):
+        logging.info(
+            f"Skipping temporal refresh for alert_api_id="
+            f"{sequence_data['alert_api_id']}: this run could not determine the "
+            "score, so writing NULL would erase any previously captured value"
+        )
+        return REFRESH_SKIPPED_UNKNOWN
+
     payload = {
         "source_api": sequence_data["source_api"],
         "alert_api_id": sequence_data["alert_api_id"],
@@ -604,13 +624,13 @@ def _refresh_temporal_score(
     }
     try:
         update_sequence_temporal_score(annotation_api_url, auth_token, payload)
-        return True
+        return REFRESH_REFRESHED
     except AnnotationAPIError as exc:
         logging.warning(
             f"Temporal score refresh failed for alert_api_id="
             f"{payload['alert_api_id']}: {exc}"
         )
-        return False
+        return REFRESH_FAILED
 
 
 def post_sequence_to_annotation_api(
@@ -655,14 +675,14 @@ def post_sequence_to_annotation_api(
             # The row already exists, so this is a re-import: refresh the
             # temporal columns rather than walking away. This is what makes
             # `make import-alert-api` over a past range a backfill.
-            refreshed = _refresh_temporal_score(
-                annotation_api_url, auth_token, sequence_data
+            refresh_status = _refresh_temporal_score(
+                annotation_api_url, auth_token, sequence_data, first_record
             )
             return {
                 "success": False,
                 "skipped": True,
                 "skip_reason": "already exists",
-                "refreshed": refreshed,
+                "refresh_status": refresh_status,
                 "sequence_id": None,
                 "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
@@ -768,6 +788,7 @@ def post_records_to_annotation_api(
             "skipped_sequences": 0,
             "refreshed_sequences": 0,
             "refresh_failures": 0,
+            "refresh_skipped": 0,
             "total_sequences": 0,
             "successful_detections": 0,
             "failed_detections": 0,
@@ -795,6 +816,7 @@ def post_records_to_annotation_api(
     skipped_sequences = 0
     refreshed_sequences = 0
     refresh_failures = 0
+    refresh_skipped = 0
     total_successful_detections = 0
     total_failed_detections = 0
     total_skipped_detections = 0
@@ -838,13 +860,14 @@ def post_records_to_annotation_api(
                         if result.get("skipped"):
                             skipped_sequences += 1
                             total_skipped_detections += result["skipped_detections"]
-                            # Only the 409 branch sets this key, so its
-                            # presence marks a refresh attempt.
-                            if "refreshed" in result:
-                                if result["refreshed"]:
-                                    refreshed_sequences += 1
-                                else:
-                                    refresh_failures += 1
+                            # Only the 409 branch sets this key.
+                            status = result.get("refresh_status")
+                            if status == REFRESH_REFRESHED:
+                                refreshed_sequences += 1
+                            elif status == REFRESH_FAILED:
+                                refresh_failures += 1
+                            elif status == REFRESH_SKIPPED_UNKNOWN:
+                                refresh_skipped += 1
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
                                 f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
@@ -899,6 +922,7 @@ def post_records_to_annotation_api(
         "skipped_sequences": skipped_sequences,
         "refreshed_sequences": refreshed_sequences,
         "refresh_failures": refresh_failures,
+        "refresh_skipped": refresh_skipped,
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,

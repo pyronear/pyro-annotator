@@ -389,6 +389,7 @@ def main() -> None:
         "sequences_skipped": 0,
         "sequences_refreshed": 0,
         "refresh_failures": 0,
+        "refresh_skipped": 0,
         "detections_skipped": 0,
         "detections_attempted_import": 0,
         "detections_import_successful": 0,
@@ -608,6 +609,13 @@ def main() -> None:
                 stats["sequences_skipped"] = result.get("skipped_sequences", 0)
                 stats["sequences_refreshed"] = result.get("refreshed_sequences", 0)
                 stats["refresh_failures"] = result.get("refresh_failures", 0)
+                stats["refresh_skipped"] = result.get("refresh_skipped", 0)
+                if stats["refresh_failures"]:
+                    # Feed the exit code and the ❌ summary: a backfill whose
+                    # refreshes all failed must not report success.
+                    error_collector.add_error(
+                        f"{stats['refresh_failures']} temporal score refresh(es) failed"
+                    )
                 stats["detections_skipped"] = result.get("skipped_detections", 0)
                 successfully_imported_sequence_ids = result["successful_sequence_ids"]
 
@@ -687,19 +695,37 @@ def main() -> None:
             # they are invisible in exactly the run that produced them.
             refresh_note = ""
             title = f"⚠️ Processing Complete - {organization} - No Annotations Generated"
-            if stats["sequences_refreshed"] or stats["refresh_failures"]:
+            if (
+                stats["sequences_refreshed"]
+                or stats["refresh_failures"]
+                or stats["refresh_skipped"]
+            ):
                 refresh_note = (
                     f"\n\n[green]Temporal scores refreshed: "
                     f"{stats['sequences_refreshed']}[/]"
                 )
+                if stats["refresh_skipped"]:
+                    refresh_note += (
+                        f"\n[yellow]Skipped (score not determinable this run, "
+                        f"existing values left intact): "
+                        f"{stats['refresh_skipped']}[/]"
+                    )
                 if stats["refresh_failures"]:
                     refresh_note += (
-                        f"\n[yellow]Refresh failures: {stats['refresh_failures']}[/]"
+                        f"\n[red]Refresh failures: {stats['refresh_failures']}[/]"
                     )
-                title = (
-                    f"✅ Processing Complete - {organization} - "
-                    f"{stats['sequences_refreshed']} Temporal Score(s) Refreshed"
-                )
+                # Only a run that actually refreshed something may claim success;
+                # 0 refreshed with N failures is a failed backfill, not a green one.
+                if stats["refresh_failures"]:
+                    title = (
+                        f"❌ Processing Complete - {organization} - "
+                        f"{stats['refresh_failures']} Refresh Failure(s)"
+                    )
+                elif stats["sequences_refreshed"]:
+                    title = (
+                        f"✅ Processing Complete - {organization} - "
+                        f"{stats['sequences_refreshed']} Temporal Score(s) Refreshed"
+                    )
             console.print()
             panel = Panel(
                 f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
@@ -710,7 +736,7 @@ def main() -> None:
                 padding=(1, 2),
             )
             console.print(panel)
-            sys.exit(0)
+            sys.exit(1 if stats["refresh_failures"] else 0)
 
         stats["total_sequences_for_annotation"] = len(sequence_ids)
         step_stats = {"Successfully imported sequences": len(sequence_ids)}
