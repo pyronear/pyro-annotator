@@ -4,6 +4,13 @@ from typing import Optional
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import Integer, String, column, select, table
+
+from app.api.api_v1.endpoints.sequences import (
+    OrderDirection,
+    _queue_order_clauses,
+)
+from app.schemas.sequence import QueueOrderByField
 
 pytestmark = pytest.mark.asyncio
 
@@ -14,9 +21,11 @@ async def _create_lane(
     platform_alert_id: str,
     score: Optional[str] = None,
     camera_name: str = "cam_score",
+    recorded_at: str = "2026-08-01T10:00:00",
+    source_api: str = "pyronear_french",
 ):
     payload = {
-        "source_api": "pyronear_french",
+        "source_api": source_api,
         "alert_api_id": alert_api_id,
         "platform_alert_id": platform_alert_id,
         "camera_name": camera_name,
@@ -26,7 +35,7 @@ async def _create_lane(
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
-        "recorded_at": "2026-08-01T10:00:00",
+        "recorded_at": recorded_at,
         "last_seen_at": "2026-08-01T10:05:00",
     }
     if score is not None:
@@ -153,20 +162,94 @@ async def test_score_ordering_is_stable_when_every_score_is_null(
         "order_by": "temporal_model_score",
         "order_direction": "desc",
     }
-    first = await authenticated_client.get("/sequences/classify-queue", params=params)
-    second = await authenticated_client.get("/sequences/classify-queue", params=params)
-    assert first.status_code == 200 and second.status_code == 200
 
+    # Walk the result as PAGES. Re-requesting the same page proves nothing —
+    # Postgres answers an identical query identically even with no tie-break
+    # at all. Only a page boundary can expose a non-deterministic order, as a
+    # repeated or dropped alert between page 1 and page 2.
     def ids(response):
         return [item["platform_alert_id"] for item in response.json()["items"]]
 
-    assert ids(first) == ids(second)
-    assert ids(first) == sorted(ids(first), reverse=True)
+    page1 = await authenticated_client.get(
+        "/sequences/classify-queue", params={**params, "page": 1, "size": 2}
+    )
+    page2 = await authenticated_client.get(
+        "/sequences/classify-queue", params={**params, "page": 2, "size": 2}
+    )
+    assert page1.status_code == 200 and page2.status_code == 200
+
+    paged = ids(page1) + ids(page2)
+    assert len(paged) == 3, f"expected the 3 seeded alerts across 2 pages, got {paged}"
+    assert len(set(paged)) == 3, f"an alert was repeated across pages: {paged}"
+    assert paged == sorted(paged, reverse=True)
+
+
+async def test_order_clauses_end_in_the_full_alert_key():
+    """The tie-break must be the whole group key, `(platform_alert_id,
+    source_api)` — each source API numbers its sequences independently, so
+    platform_alert_id alone can collide and leaves the ties it exists to break.
+
+    Asserted on the clause list rather than on query results on purpose: a
+    missing tie-break makes row order UNDEFINED, not reliably wrong, so a
+    behavioural test passes by luck on small fixtures. This one fails the
+    moment the clause is dropped.
+    """
+    alerts = (
+        select(
+            column("source_api", String),
+            column("platform_alert_id", Integer),
+            column("recorded_at", String),
+            column("temporal_model_score", Integer),
+        )
+        .select_from(table("sequences"))
+        .subquery()
+    )
+
+    rendered = [
+        str(c.compile(compile_kwargs={"literal_binds": True}))
+        for c in _queue_order_clauses(
+            alerts, QueueOrderByField.temporal_model_score, OrderDirection.desc
+        )
+    ]
+    assert any("platform_alert_id" in c for c in rendered), rendered
+    assert any("source_api" in c for c in rendered), rendered
+    assert "source_api" in rendered[-1], f"alert key must come last: {rendered}"
 
 
 async def test_default_ordering_is_unchanged(authenticated_client: AsyncClient):
-    """No order_by means recorded_at DESC, exactly as before this feature."""
-    response = await authenticated_client.get("/sequences/classify-queue")
+    """No order_by means recorded_at DESC, exactly as before this feature.
+
+    Seeds alerts whose score order is the REVERSE of their recorded_at order,
+    so a default that silently switched to score would be caught. Asserting
+    over whatever happens to be in the table is not enough: the fixtures wipe
+    it between tests, so an unseeded version of this test compares two empty
+    lists and can never fail.
+    """
+    # oldest gets the highest score, newest the lowest
+    for alert_api_id, recorded_at, score in (
+        ("7400", "2026-08-01T10:00:00", "0.90"),
+        ("7401", "2026-08-02T10:00:00", "0.50"),
+        ("7402", "2026-08-03T10:00:00", "0.10"),
+    ):
+        lane = await _create_lane(
+            authenticated_client,
+            alert_api_id,
+            alert_api_id,
+            score=score,
+            camera_name="cam_default_order",
+            recorded_at=recorded_at,
+        )
+        await _ready_to_annotate(authenticated_client, lane["id"])
+
+    response = await authenticated_client.get(
+        "/sequences/classify-queue", params={"camera_name": "cam_default_order"}
+    )
     assert response.status_code == 200
-    recorded = [item["recorded_at"] for item in response.json()["items"]]
+    items = response.json()["items"]
+    assert len(items) == 3
+
+    recorded = [item["recorded_at"] for item in items]
     assert recorded == sorted(recorded, reverse=True)
+    # And explicitly NOT score order, which is the reverse here.
+    scores = [item["temporal_model_score"] for item in items]
+    assert scores == [0.10, 0.50, 0.90]

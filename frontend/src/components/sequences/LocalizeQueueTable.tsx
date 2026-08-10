@@ -82,7 +82,17 @@ export function LocalizeQueueTable({
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader
+              label="Recorded"
+              tip="When the alert was recorded"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'recorded_at',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('recorded_at'),
+                }
+              }
+            />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader

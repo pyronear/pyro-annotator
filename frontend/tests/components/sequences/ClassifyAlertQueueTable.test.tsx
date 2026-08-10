@@ -268,5 +268,20 @@ describe('ClassifyAlertQueueTable', () => {
       render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
       expect(screen.queryByRole('button', { name: /score/i })).not.toBeInTheDocument();
     });
+
+    it('keeps Recorded sortable so the chronological default stays reachable', () => {
+      // The work queues default to score; if Recorded were inert there would
+      // be no way back to recorded_at ordering from the UI at all.
+      const onSort = vi.fn();
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'temporal_model_score', orderDirection: 'desc', onSort }}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /recorded/i }));
+      expect(onSort).toHaveBeenCalledWith('recorded_at');
+    });
   });
 });

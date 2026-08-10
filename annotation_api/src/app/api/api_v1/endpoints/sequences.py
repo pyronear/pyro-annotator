@@ -1181,17 +1181,22 @@ def _queue_order_clauses(
     alerts the platform never scored. An unscored alert is unmeasured, not
     low-confidence, so it belongs at the bottom either way.
 
-    Every ordering ends in `platform_alert_id` so page boundaries are stable.
-    Scores tie constantly — and are entirely NULL until a historical backfill
-    runs — so without a deterministic final key, paginating a score-ordered
-    queue could repeat or skip alerts between pages.
+    Every ordering ends in the full alert key `(platform_alert_id, source_api)`
+    so page boundaries are stable. Scores tie constantly — and are entirely
+    NULL until a historical backfill runs — so without a deterministic final
+    key, paginating a score-ordered queue could repeat or skip alerts between
+    pages.
     """
     column = alerts.c[order_by.value]
     primary = desc(column) if direction == OrderDirection.desc else asc(column)
     clauses = [primary.nullslast()]
     if order_by is not QueueOrderByField.recorded_at:
         clauses.append(desc(alerts.c.recorded_at))
+    # The group key is the PAIR — each source API numbers its sequences
+    # independently, so platform_alert_id alone can collide across sources and
+    # would leave the very ties this exists to break unresolved.
     clauses.append(desc(alerts.c.platform_alert_id))
+    clauses.append(desc(alerts.c.source_api))
     return clauses
 
 

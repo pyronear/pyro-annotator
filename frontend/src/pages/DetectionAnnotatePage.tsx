@@ -32,6 +32,9 @@ export default function DetectionAnnotatePage() {
       setOrderBy(field);
       setOrderDirection('desc');
     }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setPage(1);
   };
 
   const { data, isLoading, error } = useQuery({

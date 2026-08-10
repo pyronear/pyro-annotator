@@ -81,6 +81,9 @@ export default function SequencesPage({
       setQueueOrderBy(field);
       setQueueOrderDirection('desc');
     }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setFilters({ ...filters, page: 1 });
   };
 
   // Storage key separates done vs queue filters; done filters are shared across stages.

@@ -103,6 +103,9 @@ export default function DetectionReviewPage() {
       setOrderBy(field);
       setOrderDirection('desc');
     }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setFilters({ ...filters, page: 1 });
   };
 
   // Alert-grouped localize-done queue — one row per alert.
