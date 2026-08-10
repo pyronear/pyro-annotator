@@ -40,6 +40,16 @@ from .shared import group_records_by_sequence
 
 DEFAULT_ALERT_ID_BASE = 1_000_000_000
 
+# The temporal model scores a single tracked object: its ROI is the union of
+# the sequence's own `bbox` values, explicitly excluding `others_bboxes`
+# (pyro-api services/validation.py). Sibling lanes are built from exactly
+# those excluded boxes, so they must not inherit the primary's verdict.
+TEMPORAL_RECORD_KEYS = (
+    "sequence_temporal_model_score",
+    "sequence_temporal_model_version",
+    "sequence_temporal_api_version",
+)
+
 # (frame_key, (x1, y1, x2, y2)) identifying one box on one frame
 BoxKey = Tuple[str, Tuple[float, float, float, float]]
 
@@ -94,21 +104,23 @@ def build_frames(sequence_records: List[dict]) -> Tuple[List[dict], Set[BoxKey]]
     return frames, primary_keys
 
 
+def bbox_sourced_count(obj: TrackedObject, primary_keys: Set[BoxKey]) -> int:
+    """How many of this object's boxes came from the alert API's own `bbox`."""
+    return sum(
+        1 for m in obj.members if (m.image_filename, tuple(m.box[:4])) in primary_keys
+    )
+
+
 def select_primary_index(
     objects: List[TrackedObject], primary_keys: Set[BoxKey]
 ) -> int:
     """Index of the primary object: most `bbox`-sourced boxes, earliest start on ties."""
-
-    def bbox_sourced_count(obj: TrackedObject) -> int:
-        return sum(
-            1
-            for m in obj.members
-            if (m.image_filename, tuple(m.box[:4])) in primary_keys
-        )
-
     return min(
         range(len(objects)),
-        key=lambda i: (-bbox_sourced_count(objects[i]), objects[i].started_at),
+        key=lambda i: (
+            -bbox_sourced_count(objects[i], primary_keys),
+            objects[i].started_at,
+        ),
     )
 
 
@@ -141,6 +153,10 @@ class ObjectGroup:
     records: List[dict]
     # Frames on which this object's boxes were collapsed into one union box.
     same_frame_merges: int = 0
+    # False when no box in the imported window was `bbox`-sourced: the primary
+    # then fell through to "earliest start", which is arbitrary with respect to
+    # the object the temporal model scored, so no lane may claim its verdict.
+    primary_identified: bool = True
 
 
 def split_sequence_records(
@@ -173,6 +189,7 @@ def split_sequence_records(
         ]
 
     primary = select_primary_index(objects, primary_keys)
+    primary_identified = bbox_sourced_count(objects[primary], primary_keys) > 0
     ordered = [objects[primary]] + sorted(
         (o for i, o in enumerate(objects) if i != primary), key=lambda o: o.started_at
     )
@@ -252,6 +269,7 @@ def split_sequence_records(
                 is_fallback=False,
                 records=member_records,
                 same_frame_merges=same_frame_merges,
+                primary_identified=primary_identified,
             )
         )
     return groups
@@ -360,6 +378,10 @@ def split_all_records(
             stats["objects"] += 1
             if not group.is_primary:
                 stats["sibling_objects"] += 1
+            if not group.is_primary or not group.primary_identified:
+                for record in group.records:
+                    for temporal_key in TEMPORAL_RECORD_KEYS:
+                        record[temporal_key] = None
             out.extend(group.records)
     return out, stats
 

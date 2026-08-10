@@ -383,3 +383,103 @@ class TestPlatformAlertId:
         (group,) = split_sequence_records(records)
         for record in group.records:
             assert record["platform_alert_id"] == 47105
+
+
+TEMPORAL_FIELDS = {
+    "sequence_temporal_model_score": 0.87,
+    "sequence_temporal_model_version": "0.1.0",
+    "sequence_temporal_api_version": "v1.4.2",
+}
+
+
+class TestTemporalScoreAttribution:
+    """The temporal model scores ONE object: its ROI is the union of the
+    sequence's primary bboxes, deliberately excluding others_bboxes. Siblings
+    are built from those excluded boxes, so they must not inherit the score.
+    """
+
+    def test_primary_keeps_the_score_and_siblings_are_cleared(self):
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [BOX_A],
+                others=[BOX_B],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["sibling_objects"] >= 1, "fixture must produce a sibling"
+        by_lane = {}
+        for record in out:
+            by_lane.setdefault(record["sequence_id"], []).append(record)
+
+        primary_lane = [
+            recs for sid, recs in by_lane.items() if sid == recs[0]["platform_alert_id"]
+        ]
+        sibling_lanes = [
+            recs for sid, recs in by_lane.items() if sid != recs[0]["platform_alert_id"]
+        ]
+        assert primary_lane and sibling_lanes
+
+        for record in primary_lane[0]:
+            assert record["sequence_temporal_model_score"] == 0.87
+            assert record["sequence_temporal_model_version"] == "0.1.0"
+            assert record["sequence_temporal_api_version"] == "v1.4.2"
+
+        for lane in sibling_lanes:
+            for record in lane:
+                assert record["sequence_temporal_model_score"] is None
+                assert record["sequence_temporal_model_version"] is None
+                assert record["sequence_temporal_api_version"] is None
+
+    def test_fallback_lane_keeps_the_score(self):
+        """Clustering yields no objects, so one lane represents the whole
+        sequence — which is exactly what the model scored."""
+        records = [
+            make_record(1, "2026-07-01T10:00:00", [], **TEMPORAL_FIELDS),
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["fallback_sequences"] == 1
+        assert out, "the fallback lane must still be emitted"
+        for record in out:
+            assert record["sequence_temporal_model_score"] == 0.87
+
+    def test_unscored_sequence_stays_none_everywhere(self):
+        records = [
+            make_record(det_id, f"2026-07-01T10:0{det_id}:00", [BOX_A], others=[BOX_B])
+            for det_id in (1, 2, 3)
+        ]
+        out, _ = split_all_records(records)
+        assert out
+        for record in out:
+            assert record.get("sequence_temporal_model_score") is None
+
+    def test_no_lane_scored_when_no_box_is_bbox_sourced(self):
+        """Every imported frame is a continuity row (empty `bbox`), so all boxes
+        come from others_bboxes. `select_primary_index` then falls through to
+        'earliest start', which is arbitrary w.r.t. the model's ROI — so no lane
+        may claim the score."""
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [],
+                others=[BOX_A],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert (
+            stats["fallback_sequences"] == 0
+        ), "fixture must cluster into a real object, not fall back"
+        assert out
+        for record in out:
+            assert record["sequence_temporal_model_score"] is None
+            assert record["sequence_temporal_model_version"] is None
+            assert record["sequence_temporal_api_version"] is None
