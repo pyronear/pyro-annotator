@@ -17,6 +17,7 @@ import {
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
@@ -24,6 +25,12 @@ interface LocalizeQueueTableProps {
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
   skippedView?: boolean;
   onUnskip?: (item: LocalizationQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // Objects the annotator will draw boxes on (smoke or missed smoke, not unsure).
@@ -63,6 +70,7 @@ export function LocalizeQueueTable({
   onItemClick,
   skippedView = false,
   onUnskip,
+  sort,
 }: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -81,6 +89,13 @@ export function LocalizeQueueTable({
               label="Score"
               tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
               align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
             />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
             <ColumnHeader

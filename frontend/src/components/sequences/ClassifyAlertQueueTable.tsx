@@ -15,6 +15,7 @@ import {
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface ClassifyAlertQueueTableProps {
   items: ClassifyQueueItem[];
@@ -22,6 +23,12 @@ interface ClassifyAlertQueueTableProps {
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
   skippedView?: boolean;
   onUnskip?: (item: ClassifyQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // "3 · 1 classified"; drops the classified suffix when nothing is
@@ -37,6 +44,7 @@ export function ClassifyAlertQueueTable({
   onAlertClick,
   skippedView = false,
   onUnskip,
+  sort,
 }: ClassifyAlertQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -55,6 +63,13 @@ export function ClassifyAlertQueueTable({
               label="Score"
               tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
               align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
             />
             <ColumnHeader label="Objects" tip="Objects to classify in this alert" align="right" />
             <ColumnHeader

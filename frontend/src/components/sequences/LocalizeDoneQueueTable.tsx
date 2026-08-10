@@ -17,10 +17,17 @@ import {
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface LocalizeDoneQueueTableProps {
   items: LocalizeDoneQueueItem[];
   onItemClick: (item: LocalizeDoneQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // The alert's smoke objects (smoke or missed smoke, not unsure) — the ones
@@ -49,7 +56,7 @@ function alertOutcome(item: LocalizeDoneQueueItem) {
   );
 }
 
-export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueueTableProps) {
+export function LocalizeDoneQueueTable({ items, onItemClick, sort }: LocalizeDoneQueueTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -67,6 +74,13 @@ export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueue
               label="Score"
               tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
               align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
             />
             <ColumnHeader
               label="Objects"

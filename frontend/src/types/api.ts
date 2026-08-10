@@ -93,6 +93,9 @@ export interface AlertDetail {
   lanes: AlertLane[];
 }
 
+// Orderable columns of the alert-grouped queue endpoints.
+export type QueueOrderBy = 'recorded_at' | 'temporal_model_score';
+
 // One alert ready for classification (queue row).
 export interface ClassifyQueueItem {
   source_api: string;

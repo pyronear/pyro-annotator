@@ -238,5 +238,35 @@ describe('ClassifyAlertQueueTable', () => {
       );
       expect(screen.getByTitle('Not scored by the platform')).toBeInTheDocument();
     });
+
+    it('calls onSort with the score field when the Score header is clicked', () => {
+      const onSort = vi.fn();
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'recorded_at', orderDirection: 'desc', onSort }}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /score/i }));
+      expect(onSort).toHaveBeenCalledWith('temporal_model_score');
+    });
+
+    it('marks the Score column as sorted when it is the active field', () => {
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'temporal_model_score', orderDirection: 'desc', onSort: vi.fn() }}
+        />
+      );
+      const header = screen.getByRole('columnheader', { name: /score/i });
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+    });
+
+    it('leaves the Score header inert when no sort prop is supplied', () => {
+      render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
+      expect(screen.queryByRole('button', { name: /score/i })).not.toBeInTheDocument();
+    });
   });
 });

@@ -22,10 +22,17 @@ import {
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface ClassifyDoneTableProps {
   items: ClassifyDoneItem[];
   onItemClick: (item: ClassifyDoneItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // Alert-level rollup over every lane: dominant outcome + count of the others.
@@ -54,7 +61,7 @@ function alertDetail(lanes: ClassifyDoneLane[]): string {
   return parts.join(' · ');
 }
 
-export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps) {
+export function ClassifyDoneTable({ items, onItemClick, sort }: ClassifyDoneTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -72,6 +79,13 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
               label="Score"
               tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
               align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
             />
             <ColumnHeader
               label="Alert API annotation"
