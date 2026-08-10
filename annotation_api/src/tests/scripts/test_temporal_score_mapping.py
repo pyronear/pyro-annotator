@@ -1,6 +1,6 @@
 """Temporal-model score mapping from alert-API payload to sequence payload."""
 
-from scripts.data_transfer.ingestion.alert_api import shared, utils
+from scripts.data_transfer.ingestion.alert_api import sequence_fetching, shared, utils
 
 # No __init__.py convention in src/tests/ — pytest inserts the test dir on
 # sys.path, so sibling helpers are imported as top-level modules.
@@ -101,3 +101,28 @@ class TestTransformSequenceData:
         )
         data = shared.transform_sequence_data(record)
         assert data["temporal_model_score"] == 0.0
+
+
+class TestTemporalScoresUnsupported:
+    """Distinguishes 'this alert API predates temporal validation' from
+    'nothing was scored today' — both otherwise import as all-NULL and report
+    success."""
+
+    def test_absent_field_is_unsupported(self):
+        sequences = [{"id": 1}, {"id": 2}]
+        assert sequence_fetching.temporal_scores_unsupported(sequences) is True
+
+    def test_present_but_null_is_supported(self):
+        """A scored-nothing day still sends the key, explicitly as null."""
+        sequences = [
+            {"id": 1, "temporal_model_score": None},
+            {"id": 2, "temporal_model_score": None},
+        ]
+        assert sequence_fetching.temporal_scores_unsupported(sequences) is False
+
+    def test_any_sequence_carrying_the_key_counts_as_supported(self):
+        sequences = [{"id": 1}, {"id": 2, "temporal_model_score": 0.87}]
+        assert sequence_fetching.temporal_scores_unsupported(sequences) is False
+
+    def test_empty_input_is_not_evidence(self):
+        assert sequence_fetching.temporal_scores_unsupported([]) is False

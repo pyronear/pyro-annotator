@@ -223,7 +223,7 @@ class TestSplitAllRecords:
             "fallback_sequences": 0,
             "cross_deduped_siblings": 0,
             "same_frame_merges": 0,
-            "unscored_primary": 0,
+            "dropped_temporal_scores": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
@@ -506,7 +506,7 @@ class TestTemporalScoreAttribution:
             for record in group.records:
                 assert record["sequence_temporal_model_score"] == expected
 
-    def test_unscored_primary_is_reported_in_stats(self):
+    def test_dropped_temporal_scores_is_reported_in_stats(self):
         """A fired guard must be visible, so it stays distinguishable from an
         alert API that simply never sends a score."""
         scored = [
@@ -516,7 +516,7 @@ class TestTemporalScoreAttribution:
             for det_id in (1, 2, 3)
         ]
         _, stats = split_all_records(scored)
-        assert stats["unscored_primary"] == 0
+        assert stats["dropped_temporal_scores"] == 0
 
         continuity_only = [
             make_record(
@@ -529,4 +529,18 @@ class TestTemporalScoreAttribution:
             for det_id in (1, 2, 3)
         ]
         _, stats = split_all_records(continuity_only)
-        assert stats["unscored_primary"] == 1
+        assert stats["dropped_temporal_scores"] == 1
+
+    def test_unscorable_primary_without_a_score_is_not_a_drop(self):
+        """The commonest case today: the platform never scored the sequence, so
+        an unidentifiable primary discards nothing and must not warn."""
+        records = [
+            make_record(det_id, f"2026-07-01T10:0{det_id}:00", [], others=[BOX_A])
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["dropped_temporal_scores"] == 0
+        assert out
+        for record in out:
+            assert record.get("sequence_temporal_model_score") is None

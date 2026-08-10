@@ -55,6 +55,24 @@ from .progress_management import ErrorCollector, LogSuppressor
 from .worker_config import WorkerConfig
 
 
+def temporal_scores_unsupported(sequences: List[Dict[str, Any]]) -> bool:
+    """True when the alert API never sends the temporal-model score field.
+
+    `temporal_model_score` is a declared field on the alert API's SequenceRead,
+    so it is always serialized — as `null` for a sequence the platform never
+    scored. Its total absence across every fetched sequence therefore means the
+    alert API predates temporal validation (pyro-api #615, 2026-06-11) rather
+    than "nothing scored today".
+
+    The distinction matters because both cases otherwise import identically:
+    every sequence lands with a NULL score and the run reports success. Empty
+    input is not evidence either way, so it returns False.
+    """
+    if not sequences:
+        return False
+    return not any("temporal_model_score" in sequence for sequence in sequences)
+
+
 def get_dates_within(date_from: date, date_end: date) -> List[date]:
     """
     Get all dates between date_from and date_end (inclusive).
@@ -395,6 +413,21 @@ def fetch_all_sequences_within(
         )
 
     console.print(f"[green]✅ Found {len(sequences)} sequences[/]")
+
+    # Without this the two cases are indistinguishable: an alert API that
+    # predates temporal validation imports exactly like a day where nothing was
+    # scored — every sequence NULL, run reports success. Warn rather than fail:
+    # not every alert API deployment (e.g. CENIA) necessarily runs the feature,
+    # and a missing provenance field must not block ingestion.
+    if temporal_scores_unsupported(sequences):
+        message = (
+            "Alert API responses carry no `temporal_model_score` field at all "
+            f"({len(sequences)} sequences checked) — this deployment predates "
+            "temporal validation. Every sequence will import with a NULL score, "
+            "which is indistinguishable from 'never scored' downstream."
+        )
+        console.print(f"[yellow]⚠️  {message}[/]")
+        error_collector.add_error(message)
 
     # Now fetch detections and build flattened records using parallel processing
     records = []

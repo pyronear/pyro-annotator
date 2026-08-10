@@ -562,12 +562,12 @@ def main() -> None:
         )
         # Anomaly, not a routine stat: printed only when it fires, so a dropped
         # verdict stays distinguishable from an alert API that sends no score.
-        if split_stats["unscored_primary"]:
+        if split_stats["dropped_temporal_scores"]:
             console.print(
-                f"[yellow]⚠️  {split_stats['unscored_primary']} alert sequence(s) had no "
-                "identifiable primary object (no bbox-sourced box in the imported "
-                "window); their temporal model score was dropped rather than "
-                "attributed to an arbitrary object[/]"
+                f"[yellow]⚠️  {split_stats['dropped_temporal_scores']} scored alert "
+                "sequence(s) had no identifiable primary object (no bbox-sourced box "
+                "in the imported window); their temporal model score was dropped "
+                "rather than attributed to an arbitrary object[/]"
             )
 
         # Boxless alerts import as zero-object lanes the classify page cannot

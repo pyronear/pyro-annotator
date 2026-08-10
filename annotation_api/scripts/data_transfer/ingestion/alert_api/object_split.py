@@ -153,12 +153,13 @@ class ObjectGroup:
     records: List[dict]
     # Frames on which this object's boxes were collapsed into one union box.
     same_frame_merges: int = 0
-    # False when no box in the imported window was `bbox`-sourced: the primary
-    # then fell through to "earliest start", which is arbitrary with respect to
-    # the object the temporal model scored, so no lane claims its verdict (the
-    # records are already cleared). Reported by `split_all_records` so a fired
-    # guard stays distinguishable from an alert API that sends no score.
-    primary_identified: bool = True
+    # True only when a REAL verdict was discarded: the alert sequence carried a
+    # temporal score and no box in the imported window was `bbox`-sourced, so
+    # the primary fell through to "earliest start" and no lane could claim it.
+    # Deliberately not just "the primary was unidentifiable" — a sequence the
+    # platform never scored loses nothing, and while the column is mostly NULL
+    # that case is the common one. Reported by `split_all_records`.
+    dropped_temporal_score: bool = False
 
 
 def split_sequence_records(
@@ -192,6 +193,12 @@ def split_sequence_records(
 
     primary = select_primary_index(objects, primary_keys)
     primary_identified = bbox_sourced_count(objects[primary], primary_keys) > 0
+    # Every record of one alert sequence carries that sequence's score, so any
+    # one of them answers "was there a verdict to lose".
+    had_temporal_score = any(
+        record.get("sequence_temporal_model_score") is not None
+        for record in sequence_records
+    )
     ordered = [objects[primary]] + sorted(
         (o for i, o in enumerate(objects) if i != primary), key=lambda o: o.started_at
     )
@@ -276,7 +283,7 @@ def split_sequence_records(
                 is_fallback=False,
                 records=member_records,
                 same_frame_merges=same_frame_merges,
-                primary_identified=primary_identified,
+                dropped_temporal_score=had_temporal_score and not primary_identified,
             )
         )
     return groups
@@ -328,11 +335,11 @@ def split_all_records(
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
         "same_frame_merges": 0,
-        # Alert sequences whose primary object could not be identified, so the
-        # platform's temporal verdict was dropped rather than misattributed.
-        # Reported so "the guard fired" stays distinguishable from "the alert
-        # API never sent a score" while the column is still mostly NULL.
-        "unscored_primary": 0,
+        # Alert sequences that HAD a temporal verdict which was discarded
+        # because the primary object could not be identified. Reported so a
+        # real drop stays distinguishable from the far commoner case of a
+        # sequence the platform simply never scored.
+        "dropped_temporal_scores": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -390,8 +397,8 @@ def split_all_records(
             stats["objects"] += 1
             if not group.is_primary:
                 stats["sibling_objects"] += 1
-            elif not group.primary_identified:
-                stats["unscored_primary"] += 1
+            elif group.dropped_temporal_score:
+                stats["dropped_temporal_scores"] += 1
             out.extend(group.records)
     return out, stats
 
