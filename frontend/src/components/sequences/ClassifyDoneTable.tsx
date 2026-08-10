@@ -77,7 +77,7 @@ export function ClassifyDoneTable({ items, onItemClick, sort }: ClassifyDoneTabl
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader
               label="Score"
-              tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
+              tip="Alert API temporal-model confidence that this alert is smoke. — means the Alert API never scored it."
               align="right"
               sort={
                 sort && {

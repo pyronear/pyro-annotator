@@ -3,9 +3,9 @@ interface TemporalScoreCellProps {
 }
 
 /**
- * The alert's platform temporal-model score, as a percentage.
+ * The Alert API's temporal-model score for this alert, as a percentage.
  *
- * Null means the platform never scored the alert — distinct from a score of
+ * Null means the Alert API never scored the alert — distinct from a score of
  * zero, which is a real verdict. The check is `== null` rather than a
  * truthiness test precisely so 0 renders as "0%".
  *
@@ -14,7 +14,7 @@ interface TemporalScoreCellProps {
  */
 export function TemporalScoreCell({ score }: TemporalScoreCellProps) {
   if (score == null) {
-    return <span title="Not scored by the platform">—</span>;
+    return <span title="Not scored by the Alert API">—</span>;
   }
   return <span>{Math.round(score * 100)}%</span>;
 }

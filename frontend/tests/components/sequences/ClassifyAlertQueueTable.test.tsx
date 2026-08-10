@@ -236,7 +236,7 @@ describe('ClassifyAlertQueueTable', () => {
           onAlertClick={onAlertClick}
         />
       );
-      expect(screen.getByTitle('Not scored by the platform')).toBeInTheDocument();
+      expect(screen.getByTitle('Not scored by the Alert API')).toBeInTheDocument();
     });
 
     it('calls onSort with the score field when the Score header is clicked', () => {

@@ -21,12 +21,12 @@ describe('TemporalScoreCell', () => {
 
   it('renders a dash with an explanation when the score is null', () => {
     render(<TemporalScoreCell score={null} />);
-    const cell = screen.getByTitle('Not scored by the platform');
+    const cell = screen.getByTitle('Not scored by the Alert API');
     expect(cell).toHaveTextContent('—');
   });
 
   it('treats undefined the same as null', () => {
     render(<TemporalScoreCell score={undefined} />);
-    expect(screen.getByTitle('Not scored by the platform')).toHaveTextContent('—');
+    expect(screen.getByTitle('Not scored by the Alert API')).toHaveTextContent('—');
   });
 });
