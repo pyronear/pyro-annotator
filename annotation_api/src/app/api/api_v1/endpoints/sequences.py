@@ -167,6 +167,12 @@ async def create_sequence(
         None,
         description="Platform alert grouping id (object-split siblings share it). Defaults server-side: synthetic ids are decoded when their primary exists (platform sources), else alert_api_id.",
     ),
+    temporal_model_score: Optional[float] = Form(
+        None,
+        description="Alert-API temporal-model smoke probability for this object. Omit when the platform never scored it.",
+    ),
+    temporal_model_version: Optional[str] = Form(None, max_length=32),
+    temporal_api_version: Optional[str] = Form(None, max_length=32),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceRead:
@@ -189,6 +195,9 @@ async def create_sequence(
         created_at=created_at or datetime.now(UTC),
         last_seen_at=last_seen_at or datetime.now(UTC),
         platform_alert_id=platform_alert_id,
+        temporal_model_score=temporal_model_score,
+        temporal_model_version=temporal_model_version,
+        temporal_api_version=temporal_api_version,
     )
     return await sequences.create(payload)
 

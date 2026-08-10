@@ -40,6 +40,16 @@ from .shared import group_records_by_sequence
 
 DEFAULT_ALERT_ID_BASE = 1_000_000_000
 
+# The temporal model scores a single tracked object: its ROI is the union of
+# the sequence's own `bbox` values, explicitly excluding `others_bboxes`
+# (pyro-api services/validation.py). Sibling lanes are built from exactly
+# those excluded boxes, so they must not inherit the primary's verdict.
+TEMPORAL_RECORD_KEYS = (
+    "sequence_temporal_model_score",
+    "sequence_temporal_model_version",
+    "sequence_temporal_api_version",
+)
+
 # (frame_key, (x1, y1, x2, y2)) identifying one box on one frame
 BoxKey = Tuple[str, Tuple[float, float, float, float]]
 
@@ -94,21 +104,23 @@ def build_frames(sequence_records: List[dict]) -> Tuple[List[dict], Set[BoxKey]]
     return frames, primary_keys
 
 
+def bbox_sourced_count(obj: TrackedObject, primary_keys: Set[BoxKey]) -> int:
+    """How many of this object's boxes came from the alert API's own `bbox`."""
+    return sum(
+        1 for m in obj.members if (m.image_filename, tuple(m.box[:4])) in primary_keys
+    )
+
+
 def select_primary_index(
     objects: List[TrackedObject], primary_keys: Set[BoxKey]
 ) -> int:
     """Index of the primary object: most `bbox`-sourced boxes, earliest start on ties."""
-
-    def bbox_sourced_count(obj: TrackedObject) -> int:
-        return sum(
-            1
-            for m in obj.members
-            if (m.image_filename, tuple(m.box[:4])) in primary_keys
-        )
-
     return min(
         range(len(objects)),
-        key=lambda i: (-bbox_sourced_count(objects[i]), objects[i].started_at),
+        key=lambda i: (
+            -bbox_sourced_count(objects[i], primary_keys),
+            objects[i].started_at,
+        ),
     )
 
 
@@ -141,6 +153,13 @@ class ObjectGroup:
     records: List[dict]
     # Frames on which this object's boxes were collapsed into one union box.
     same_frame_merges: int = 0
+    # True only when a REAL verdict was discarded: the alert sequence carried a
+    # temporal score and no box in the imported window was `bbox`-sourced, so
+    # the primary fell through to "earliest start" and no lane could claim it.
+    # Deliberately not just "the primary was unidentifiable" — a sequence the
+    # platform never scored loses nothing, and while the column is mostly NULL
+    # that case is the common one. Reported by `split_all_records`.
+    dropped_temporal_score: bool = False
 
 
 def split_sequence_records(
@@ -173,6 +192,13 @@ def split_sequence_records(
         ]
 
     primary = select_primary_index(objects, primary_keys)
+    primary_identified = bbox_sourced_count(objects[primary], primary_keys) > 0
+    # Every record of one alert sequence carries that sequence's score, so any
+    # one of them answers "was there a verdict to lose".
+    had_temporal_score = any(
+        record.get("sequence_temporal_model_score") is not None
+        for record in sequence_records
+    )
     ordered = [objects[primary]] + sorted(
         (o for i, o in enumerate(objects) if i != primary), key=lambda o: o.started_at
     )
@@ -242,6 +268,11 @@ def split_sequence_records(
             record["sequence_last_seen_at"] = recorded[-1]
             if cone is not None:
                 record["camera_azimuth"] = cone
+            # Cleared here, where the copy is made, so every caller of this
+            # function gets the invariant — not just the import pipeline.
+            if pos != 0 or not primary_identified:
+                for temporal_key in TEMPORAL_RECORD_KEYS:
+                    record[temporal_key] = None
             member_records.append(record)
 
         groups.append(
@@ -252,6 +283,7 @@ def split_sequence_records(
                 is_fallback=False,
                 records=member_records,
                 same_frame_merges=same_frame_merges,
+                dropped_temporal_score=had_temporal_score and not primary_identified,
             )
         )
     return groups
@@ -303,6 +335,11 @@ def split_all_records(
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
         "same_frame_merges": 0,
+        # Alert sequences that HAD a temporal verdict which was discarded
+        # because the primary object could not be identified. Reported so a
+        # real drop stays distinguishable from the far commoner case of a
+        # sequence the platform simply never scored.
+        "dropped_temporal_scores": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -360,6 +397,8 @@ def split_all_records(
             stats["objects"] += 1
             if not group.is_primary:
                 stats["sibling_objects"] += 1
+            elif group.dropped_temporal_score:
+                stats["dropped_temporal_scores"] += 1
             out.extend(group.records)
     return out, stats
 

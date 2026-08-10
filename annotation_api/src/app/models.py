@@ -163,6 +163,7 @@ class Sequence(SQLModel, table=True):
         Index("ix_sequence_organisation_id", "organisation_id"),
         Index("ix_sequence_organisation_name", "organisation_name"),
         Index("ix_sequence_is_wildfire", "is_wildfire_alertapi"),
+        Index("ix_sequence_temporal_model_score", "temporal_model_score"),
         # Composite indices for common filter combinations
         Index("ix_sequence_source_camera", "source_api", "camera_name"),
         Index("ix_sequence_source_org", "source_api", "organisation_name"),
@@ -218,6 +219,14 @@ class Sequence(SQLModel, table=True):
     is_wildfire_alertapi: Optional[AnnotationType] = Field(
         default=None, sa_column=Column(SQLEnum(AnnotationType))
     )
+    # Platform temporal-model verdict, captured at import time.
+    # NULL means the platform never scored THIS object — pre-2026-06-11
+    # sequences, fail-opens, sub-MIN_FRAMES sequences, risk-gated sequences,
+    # non-primary object-split lanes, and anything imported before this column
+    # existed. It never means "scored low"; do not coalesce it to 0.0.
+    temporal_model_score: Optional[float] = Field(default=None)
+    temporal_model_version: Optional[str] = Field(default=None, max_length=32)
+    temporal_api_version: Optional[str] = Field(default=None, max_length=32)
     organisation_name: str
     organisation_id: int
     # Membership in a SequenceGroup. NULL until `assign_groups` runs (which

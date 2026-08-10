@@ -453,9 +453,7 @@ def main() -> None:
     )
 
     if args.loglevel == "debug":
-        console.print(
-            f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
-        )
+        console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
         console.print(
             f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
         )
@@ -562,6 +560,15 @@ def main() -> None:
             f"{split_stats['cross_deduped_siblings']} cross-deduped, "
             f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
         )
+        # Anomaly, not a routine stat: printed only when it fires, so a dropped
+        # verdict stays distinguishable from an alert API that sends no score.
+        if split_stats["dropped_temporal_scores"]:
+            console.print(
+                f"[yellow]⚠️  {split_stats['dropped_temporal_scores']} scored alert "
+                "sequence(s) had no identifiable primary object (no bbox-sourced box "
+                "in the imported window); their temporal model score was dropped "
+                "rather than attributed to an arbitrary object[/]"
+            )
 
         # Boxless alerts import as zero-object lanes the classify page cannot
         # act on (#333); they are auto-skipped after annotation creation below.

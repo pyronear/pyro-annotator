@@ -2257,3 +2257,89 @@ async def test_needs_localization_filter(
     )
     ids = {item["id"] for item in resp.json()["items"]}
     assert ids == {fp.id, unsure.id}
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_with_temporal_model_score(
+    authenticated_client: AsyncClient,
+):
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "300",
+        "camera_name": "test_cam_temporal",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+        "temporal_model_score": "0.87",
+        "temporal_model_version": "0.1.0",
+        "temporal_api_version": "v1.4.2",
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    sequence = response.json()
+    assert sequence["temporal_model_score"] == 0.87
+    assert sequence["temporal_model_version"] == "0.1.0"
+    assert sequence["temporal_api_version"] == "v1.4.2"
+
+    fetched = await authenticated_client.get(f"/sequences/{sequence['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["temporal_model_score"] == 0.87
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_without_temporal_fields_stores_null(
+    authenticated_client: AsyncClient,
+):
+    """Absent fields must store None, not 0.0 — NULL means 'never scored'."""
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "301",
+        "camera_name": "test_cam_no_temporal",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    sequence = response.json()
+    assert sequence["temporal_model_score"] is None
+    assert sequence["temporal_model_version"] is None
+    assert sequence["temporal_api_version"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_accepts_zero_score(authenticated_client: AsyncClient):
+    """0.0 is a real verdict and must round-trip as 0.0, never as None."""
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "302",
+        "camera_name": "test_cam_zero_temporal",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+        "temporal_model_score": "0.0",
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    assert response.json()["temporal_model_score"] == 0.0

@@ -51,7 +51,8 @@ class TestClusterObjects:
         frames.append(
             {
                 "frame_idx": 3,
-                "recorded_at": T0 + timedelta(minutes=30),  # > 5min spawn window, < 2h relaxation
+                "recorded_at": T0
+                + timedelta(minutes=30),  # > 5min spawn window, < 2h relaxation
                 "image_filename": "img_3.jpg",
                 "boxes": [BOX_A],
             }
