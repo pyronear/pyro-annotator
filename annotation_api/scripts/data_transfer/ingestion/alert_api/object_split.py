@@ -155,7 +155,9 @@ class ObjectGroup:
     same_frame_merges: int = 0
     # False when no box in the imported window was `bbox`-sourced: the primary
     # then fell through to "earliest start", which is arbitrary with respect to
-    # the object the temporal model scored, so no lane may claim its verdict.
+    # the object the temporal model scored, so no lane claims its verdict (the
+    # records are already cleared). Reported by `split_all_records` so a fired
+    # guard stays distinguishable from an alert API that sends no score.
     primary_identified: bool = True
 
 
@@ -259,6 +261,11 @@ def split_sequence_records(
             record["sequence_last_seen_at"] = recorded[-1]
             if cone is not None:
                 record["camera_azimuth"] = cone
+            # Cleared here, where the copy is made, so every caller of this
+            # function gets the invariant — not just the import pipeline.
+            if pos != 0 or not primary_identified:
+                for temporal_key in TEMPORAL_RECORD_KEYS:
+                    record[temporal_key] = None
             member_records.append(record)
 
         groups.append(
@@ -321,6 +328,11 @@ def split_all_records(
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
         "same_frame_merges": 0,
+        # Alert sequences whose primary object could not be identified, so the
+        # platform's temporal verdict was dropped rather than misattributed.
+        # Reported so "the guard fired" stays distinguishable from "the alert
+        # API never sent a score" while the column is still mostly NULL.
+        "unscored_primary": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -378,10 +390,8 @@ def split_all_records(
             stats["objects"] += 1
             if not group.is_primary:
                 stats["sibling_objects"] += 1
-            if not group.is_primary or not group.primary_identified:
-                for record in group.records:
-                    for temporal_key in TEMPORAL_RECORD_KEYS:
-                        record[temporal_key] = None
+            elif not group.primary_identified:
+                stats["unscored_primary"] += 1
             out.extend(group.records)
     return out, stats
 

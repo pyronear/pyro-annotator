@@ -223,6 +223,7 @@ class TestSplitAllRecords:
             "fallback_sequences": 0,
             "cross_deduped_siblings": 0,
             "same_frame_merges": 0,
+            "unscored_primary": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
@@ -483,3 +484,49 @@ class TestTemporalScoreAttribution:
             assert record["sequence_temporal_model_score"] is None
             assert record["sequence_temporal_model_version"] is None
             assert record["sequence_temporal_api_version"] is None
+
+    def test_split_sequence_records_clears_siblings_on_its_own(self):
+        """The invariant must hold for direct callers of the public splitter,
+        not only for the import pipeline going through split_all_records."""
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [BOX_A],
+                others=[BOX_B],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        groups = split_sequence_records(records)
+
+        assert len(groups) >= 2, "fixture must produce a primary and a sibling"
+        for group in groups:
+            expected = 0.87 if group.is_primary else None
+            for record in group.records:
+                assert record["sequence_temporal_model_score"] == expected
+
+    def test_unscored_primary_is_reported_in_stats(self):
+        """A fired guard must be visible, so it stays distinguishable from an
+        alert API that simply never sends a score."""
+        scored = [
+            make_record(
+                det_id, f"2026-07-01T10:0{det_id}:00", [BOX_A], **TEMPORAL_FIELDS
+            )
+            for det_id in (1, 2, 3)
+        ]
+        _, stats = split_all_records(scored)
+        assert stats["unscored_primary"] == 0
+
+        continuity_only = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [],
+                others=[BOX_A],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        _, stats = split_all_records(continuity_only)
+        assert stats["unscored_primary"] == 1
