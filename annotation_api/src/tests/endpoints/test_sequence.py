@@ -67,13 +67,23 @@ async def test_list_sequences(authenticated_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_delete_sequence(authenticated_client: AsyncClient, sequence_session):
+async def test_delete_sequence_refuses_an_imported_one(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Imported sequences are part of the import record and are not deletable.
+
+    Only lanes a human added (is_manual) may be removed — see
+    test_delete_sequence_guard.py for both sides of that rule. Retiring an
+    imported object is a reclassification, not a deletion.
+    """
     sequence_id = 1
     delete_response = await authenticated_client.delete(f"/sequences/{sequence_id}")
-    assert delete_response.status_code in (204, 404)
+    assert delete_response.status_code in (409, 404)
 
-    get_response = await authenticated_client.get(f"/sequences/{sequence_id}")
-    assert get_response.status_code == 404
+    if delete_response.status_code == 409:
+        # Refused, so it is still there.
+        get_response = await authenticated_client.get(f"/sequences/{sequence_id}")
+        assert get_response.status_code == 200
 
 
 @pytest.mark.asyncio

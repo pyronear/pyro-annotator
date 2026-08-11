@@ -1897,4 +1897,29 @@ async def delete_sequence(
     sequences: SequenceCRUD = Depends(get_sequence_crud),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    """Only a lane a human added may be removed.
+
+    An imported lane is part of the import record; retiring one is a
+    reclassification (mark it a false positive, which drops it out of the
+    localize queue and the submit gate), not a deletion.
+
+    The cascade is safe precisely because of that guard: everything reachable
+    from an is_manual lane was created by add_object — cloned Detection rows
+    with no model output, the lane's own SequenceAnnotation, and the boxes the
+    annotator drew. Nothing imported and nothing belonging to another lane is
+    reachable.
+
+    No S3 call happens here, which matters: those cloned detections share
+    bucket_key with the sibling they came from, so deleting the objects (as
+    DELETE /detections/{id} does) would destroy the sibling lanes' images too.
+    """
+    sequence = await sequences.get(sequence_id, strict=True)
+    if not sequence.is_manual:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only manually added objects can be removed. To retire an "
+                "imported object, reclassify it as a false positive."
+            ),
+        )
     await sequences.delete(sequence_id)
