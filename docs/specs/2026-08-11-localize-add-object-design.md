@@ -87,7 +87,12 @@ single transaction:
   richest-lane selection as the source; a requested timestamp no sibling lane
   has is a 422, mirroring `materialize_frame`'s own guard
   (`sequences.py:975-979`).
-- After flushing the detections, write one `DetectionAnnotation` per frame:
+- Fill the per-frame `DetectionAnnotation` rows. These already exist: today
+  `add_object` seeds one per cloned detection with `{"annotation": []}` at
+  `BBOX_ANNOTATION` ("the annotator draws each one"). Now the box arrives with
+  the request, so the row is born committed at `ANNOTATED` instead — and it
+  must be, because this lane has empty `algo_predictions` by construction, so
+  nothing could ever fill a pending row:
 
   ```python
   DetectionAnnotation(

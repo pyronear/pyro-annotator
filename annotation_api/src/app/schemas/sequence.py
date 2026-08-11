@@ -6,7 +6,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -15,6 +15,7 @@ from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 
 __all__ = [
+    "AddObjectFrame",
     "AddObjectRequest",
     "AlertDetail",
     "AlertLane",
@@ -303,14 +304,33 @@ class AlertDetail(BaseModel):
     lanes: List[AlertLane]
 
 
+class AddObjectFrame(BaseModel):
+    """One frame of the added object, with the box the human put on it.
+
+    The client sends every frame explicitly — including the ones it
+    interpolated between the two anchors it drew — so the preview it showed
+    and the data stored are identical by construction, with no second
+    interpolation implementation on the server to drift from it.
+    """
+
+    recorded_at: datetime
+    xyxyn: Tuple[float, float, float, float]
+
+
 class AddObjectRequest(BaseModel):
     """Missed smoke: add a real object (spec: multi-object alert
     collocation, supersedes the carrier-lane pseudo-object). Spawns a new
-    sibling lane for one plume the AI missed entirely."""
+    sibling lane for one plume the AI missed entirely.
+
+    `frames` IS the range: the new lane holds Detection rows only for these
+    timestamps, exactly as an importer-split lane holds rows only for the
+    frames its object was detected on.
+    """
 
     source_api: SourceApi
     platform_alert_id: int
     smoke_type: SmokeType
+    frames: List[AddObjectFrame] = Field(..., min_length=1)
 
 
 class AlertSkipRequest(BaseModel):

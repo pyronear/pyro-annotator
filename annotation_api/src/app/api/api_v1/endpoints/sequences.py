@@ -793,27 +793,41 @@ async def add_object(
     # Richest lane: the sibling with the most detections is the frame source
     # (the missed object is presumably visible wherever the tracked object
     # is, and this maximizes frame coverage).
+    requested = {frame.recorded_at: list(frame.xyxyn) for frame in payload.frames}
+
+    # Any sibling lane's detection at a given timestamp is the same
+    # photograph, so the clone source is whichever lane happens to have that
+    # frame — mirroring materialize_frame. Ordered by alert_api_id so the
+    # choice is deterministic (the primary lane wins when several qualify).
     lane_ids = [lane.id for lane in lanes]
-    counts = (
-        await session.execute(
-            select(Detection.sequence_id, func.count(Detection.id))
-            .where(Detection.sequence_id.in_(lane_ids))
-            .group_by(Detection.sequence_id)
-        )
-    ).all()
-    counts_by_id = dict(counts)
-    richest_id = max(lane_ids, key=lambda sid: counts_by_id.get(sid, 0))
     source_detections = (
         (
             await session.execute(
                 select(Detection)
-                .where(Detection.sequence_id == richest_id)
-                .order_by(asc(Detection.recorded_at))
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Detection.sequence_id.in_(lane_ids),
+                    Detection.recorded_at.in_(list(requested)),
+                )
+                .order_by(asc(Detection.recorded_at), asc(Sequence.alert_api_id))
             )
         )
         .scalars()
         .all()
     )
+    source_by_time: dict[datetime, Detection] = {}
+    for det in source_detections:
+        source_by_time.setdefault(det.recorded_at, det)
+
+    missing = sorted(t for t in requested if t not in source_by_time)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "No sibling lane has a detection at these recorded_at values: "
+                f"{[t.isoformat() for t in missing]}"
+            ),
+        )
 
     now = datetime.now(UTC)
     new_seq = Sequence(
@@ -832,19 +846,20 @@ async def add_object(
         organisation_id=primary.organisation_id,
         auto_annotate_enqueued_at=now,
         auto_annotated_at=now,
+        is_manual=True,
     )
     session.add(new_seq)
     await session.flush()
 
     new_detections = [
         Detection(
-            recorded_at=det.recorded_at,
-            alert_api_id=det.alert_api_id,
+            recorded_at=recorded_at,
+            alert_api_id=source_by_time[recorded_at].alert_api_id,
             sequence_id=new_seq.id,
-            bucket_key=det.bucket_key,
+            bucket_key=source_by_time[recorded_at].bucket_key,
             algo_predictions={"predictions": []},
         )
-        for det in source_detections
+        for recorded_at in sorted(source_by_time)
     ]
     session.add_all(new_detections)
     await session.flush()
@@ -879,15 +894,32 @@ async def add_object(
         )
     )
 
-    # Every frame starts pending bbox annotation: this object has no
-    # AI-proposed box to confirm, so the annotator draws each one. (These rows
-    # are seeded here rather than by auto_create_detection_annotations, which
-    # no longer seeds anything for a lane needing localization — issue #346.)
+    # Every frame arrives already boxed: the human drew the two ends of the
+    # range and the client interpolated the rest, so these are committed
+    # answers rather than pending work. There is no AI-proposed box to accept
+    # on this lane — its detections carry empty algo_predictions by
+    # construction — so the human's box IS the annotation, and the frames
+    # would otherwise be permanently stuck at bbox_annotation with nothing
+    # able to fill them. (Seeded here rather than by
+    # auto_create_detection_annotations, which no longer seeds anything for a
+    # lane needing localization — issue #346.)
+    #
+    # Shape matches what the editor's own per-frame save writes
+    # (saveDetectionReview), so these frames are indistinguishable downstream
+    # from any other human-annotated frame.
     session.add_all(
         DetectionAnnotation(
             detection_id=det.id,
-            annotation={"annotation": []},
-            processing_stage=DetectionAnnotationProcessingStage.BBOX_ANNOTATION,
+            annotation={
+                "annotation": [
+                    {
+                        "xyxyn": requested[det.recorded_at],
+                        "class_name": "smoke",
+                        "smoke_type": payload.smoke_type.value,
+                    }
+                ]
+            },
+            processing_stage=DetectionAnnotationProcessingStage.ANNOTATED,
         )
         for det in new_detections
     )
