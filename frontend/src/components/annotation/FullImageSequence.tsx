@@ -189,28 +189,50 @@ export default function FullImageSequence({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seekRequest?.nonce]);
 
+  // The frame list is read through a ref by the interval below. Listing
+  // `images` in that effect's dependencies tore the 200ms timer down and
+  // recreated it on every single image load, so during the initial load burst
+  // the timer kept resetting and playback lurched.
+  const imagesRef = useRef(images);
+  useEffect(() => {
+    imagesRef.current = images;
+  });
+
+  // The old start condition as one boolean. It flips false -> true once, early
+  // in the load, and stays true — so the effect below re-runs on that single
+  // transition rather than once per loaded image.
+  const canPlay = images.length > 1 && images.filter(img => img.loaded && !img.error).length > 1;
+
   // Auto-play animation with 200ms interval - only when images are loaded
   // and no seek-hold is pinning the current frame.
   useEffect(() => {
-    const loadedImagesCount = images.filter(img => img.loaded && !img.error).length;
+    if (!canPlay || isLoading || isHolding) return;
 
-    if (images.length > 1 && loadedImagesCount > 1 && !isLoading && !isHolding) {
-      intervalRef.current = setInterval(() => {
-        setCurrentIndex(prev => (prev + 1) % images.length);
-      }, 200);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
+    intervalRef.current = setInterval(() => {
+      setCurrentIndex(prev => {
+        // Advance only onto frames the browser has decoded. An <img> whose
+        // src has nothing decoded has no intrinsic height, so landing on one
+        // used to collapse the container entirely; with the box now reserved
+        // it still blanks the player for a tick. Errored frames stay in the
+        // rotation on purpose: "not decoded yet" is transient and the frame
+        // rejoins the loop when it arrives, but an error is permanent, and
+        // skipping it would silently shorten the loop and hide the failure.
+        const frames = imagesRef.current;
+        for (let step = 1; step <= frames.length; step++) {
+          const next = (prev + step) % frames.length;
+          if (frames[next]?.loaded || frames[next]?.error) return next;
+        }
+        return prev;
+      });
+    }, 200);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [images.length, images, isLoading, isHolding]);
+  }, [canPlay, isLoading, isHolding]);
 
   // Cleanup on unmount
   useEffect(() => {

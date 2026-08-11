@@ -25,6 +25,18 @@ class ImmediateImage {
 }
 vi.stubGlobal('Image', ImmediateImage as unknown as typeof Image);
 
+// A second stub for the loop tests below: decides per URL whether the preload
+// resolves, so one frame can be held permanently undecoded.
+const stalled = new Set<string>();
+class ControlledImage {
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  set src(value: string) {
+    if (stalled.has(value)) return;
+    queueMicrotask(() => this.onload?.());
+  }
+}
+
 const frames = [1, 2].map(id => ({ detection_id: id, xyxyn: [0, 0, 1, 1] }));
 
 const viewport = () => screen.getByTestId('full-image-viewport');
@@ -90,5 +102,43 @@ describe('FullImageSequence reserved box', () => {
     });
 
     expect(parseFloat(viewport().style.aspectRatio)).toBeCloseTo(16 / 9, 4);
+  });
+});
+
+const fourFrames = [1, 2, 3, 4].map(id => ({ detection_id: id, xyxyn: [0, 0, 1, 1] }));
+const shownSrc = () => screen.getByRole('img').getAttribute('src');
+
+describe('FullImageSequence undecoded frames', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stalled.clear();
+    vi.stubGlobal('Image', ControlledImage as unknown as typeof Image);
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.stubGlobal('Image', ImmediateImage as unknown as typeof Image);
+  });
+
+  it('steps over a frame whose image has not decoded yet', async () => {
+    stalled.add('https://example.com/3.png');
+
+    render(<FullImageSequence bboxes={fourFrames} sequenceId={101} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(shownSrc()).toBe('https://example.com/1.png');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(shownSrc()).toBe('https://example.com/2.png');
+
+    // Frame 3 never decoded: showing it would blank the player for a tick, so
+    // the loop steps over it to frame 4 and picks it up if it ever arrives.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(shownSrc()).toBe('https://example.com/4.png');
   });
 });
