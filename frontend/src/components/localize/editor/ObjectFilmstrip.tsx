@@ -22,6 +22,7 @@
  * thumbnails are square crops of the object.
  *
  *   solid, source colour    a box is committed, from that source
+ *   solid, neutral          you marked the object not visible on this frame
  *   dashed, source colour   that source offers a box, not yet accepted
  *   hatched, signal         no source found anything — a hole in the track
  *   faint, neutral          the object is not on this frame at all
@@ -50,11 +51,14 @@ export interface ObjectFilmstripProps {
 }
 
 /** What a cell's border says about the frame. */
-type CellState = 'committed' | 'available' | 'none' | 'outside';
+type CellState = 'committed' | 'cleared' | 'available' | 'none' | 'outside';
 
 function cellState(entry: FilmstripEntry): CellState {
   if (!entry.inObject) return 'outside';
   if (entry.committedSource) return 'committed';
+  // Before `available`: a cleared frame keeps its candidate on offer, since
+  // re-picking it is the only way to undo the clear.
+  if (entry.cleared) return 'cleared';
   if (entry.availableSource) return 'available';
   return 'none';
 }
@@ -63,6 +67,10 @@ function borderStyle(entry: FilmstripEntry): React.CSSProperties {
   const state = cellState(entry);
   if (state === 'committed')
     return { borderColor: SOURCE_COLOR[entry.committedSource!], borderStyle: 'solid' };
+  // Solid because the frame is decided; neutral because no source won it.
+  // Reads apart from the only other neutral cell (outside), which is both
+  // dashed and faint.
+  if (state === 'cleared') return { borderColor: '#767B72', borderStyle: 'solid' };
   if (state === 'available')
     return { borderColor: SOURCE_COLOR[entry.availableSource!], borderStyle: 'dashed' };
   if (state === 'none') return { borderColor: '#B3261E', borderStyle: 'solid' };
@@ -73,6 +81,7 @@ function borderStyle(entry: FilmstripEntry): React.CSSProperties {
 function cellLabel(entry: FilmstripEntry): string {
   const state = cellState(entry);
   if (state === 'committed') return `${entry.committedSource} box accepted`;
+  if (state === 'cleared') return 'No box — you marked the object not visible here';
   if (state === 'available') return `${entry.availableSource} box, not accepted yet`;
   if (state === 'none') return 'No box — no model found smoke here';
   return 'This object was not detected on this frame';
@@ -169,7 +178,13 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                   <span
                     className={`relative block overflow-hidden rounded border-2 transition-all ${
                       entry.detectionId === currentDetectionId ? 'h-16' : 'h-12'
-                    } ${entry.inObject ? '' : 'opacity-60 grayscale'}`}
+                    } ${
+                      entry.inObject
+                        ? cellState(entry) === 'cleared'
+                          ? 'opacity-50'
+                          : ''
+                        : 'opacity-60 grayscale'
+                    }`}
                     style={borderStyle(entry)}
                   >
                     <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />

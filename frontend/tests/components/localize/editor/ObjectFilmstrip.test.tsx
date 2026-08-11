@@ -203,4 +203,24 @@ describe('ObjectFilmstrip', () => {
     renderStrip({ currentDetectionId: 995 });
     expect(screen.getAllByTestId('filmstrip-next')[1]).toBeDisabled();
   });
+
+  it('gives a cleared frame its own state, distinct from pending and from a hole', () => {
+    const cleared: FilmstripEntry = {
+      recordedAt: 't9',
+      detectionId: 279,
+      inObject: true,
+      run: 'object',
+      committedSource: null,
+      cleared: true,
+      // Still on offer — this is the undo path, and the thumbnail crops to it.
+      availableSource: 'auto',
+      xyxyn: box,
+    };
+
+    renderStrip({ entries: [cleared], currentDetectionId: 279 });
+
+    const cell = screen.getByTestId('filmstrip-cell-279');
+    expect(cell).toHaveAttribute('data-state', 'cleared');
+    expect(cell).toHaveAttribute('title', 'No box — you marked the object not visible here');
+  });
 });
