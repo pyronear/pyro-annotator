@@ -156,7 +156,13 @@ describe('DetectionAnnotationCanvas single-box model', () => {
     const { rerender } = render(
       <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[engine]} />
     );
-    const at1x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+    // Painted as a box-shadow ring, not laid out as a CSS border: the spread
+    // radius in `0 0 0 <spread>px <color>` is the stroke width.
+    const strokeWidth = (el: HTMLElement) => {
+      const lengths = el.style.boxShadow.match(/[\d.]+px/g) ?? [];
+      return lengths[lengths.length - 1];
+    };
+    const at1x = strokeWidth(screen.getByTestId('ghost-box-engine-0'));
 
     rerender(
       <DetectionAnnotationCanvas
@@ -166,7 +172,7 @@ describe('DetectionAnnotationCanvas single-box model', () => {
         zoomLevel={3}
       />
     );
-    const at3x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+    const at3x = strokeWidth(screen.getByTestId('ghost-box-engine-0'));
 
     expect(parseFloat(at3x)).toBeCloseTo(parseFloat(at1x) / 3);
   });
