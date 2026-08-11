@@ -10,9 +10,15 @@
  * requires the question to be answered, so by the time an alert reaches
  * localize `has_missed_smoke` is a real answer, not "not asked yet".
  *
- * A Yes answer records the flag — it no longer gates an add control. Drawing
- * the missed object isn't supported yet, so the page points the annotator at
- * its Skip alert escape hatch instead (the nudge rendered under the question).
+ * A Yes answer records the flag AND unlocks the work: it reveals "+ Add
+ * object", which opens the two-phase overlay where the missed plume's range
+ * is chosen and boxed. Between PR #312 and this, Yes pointed at the Skip
+ * alert escape hatch instead, because drawing a missed object wasn't
+ * supported — that nudge is gone now that it is.
+ *
+ * The flag itself is NOT cleared once an object is added: it records that the
+ * DETECTOR missed a plume, which is the false-negative signal worth keeping,
+ * not a to-do item.
  */
 
 import React from 'react';
@@ -25,8 +31,11 @@ export interface LocalizeMissedSmokeRowProps {
   isSaving?: boolean;
   /** No lane can carry the flag (nothing annotated yet) — render read-only. */
   disabled?: boolean;
-  /** Queue mode: the Yes answer points at the footer's Skip alert button. */
-  showSkipNudge?: boolean;
+  /**
+   * Opens the add-object overlay. Omitted where adding isn't offered (done
+   * mode), in which case a Yes answer just records the flag.
+   */
+  onAddObject?: () => void;
 }
 
 const chip = (selected: boolean, selectedClasses: string, disabled: boolean) =>
@@ -39,7 +48,7 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
   onChange,
   isSaving = false,
   disabled = false,
-  showSkipNudge = false,
+  onAddObject,
 }) => (
   <div
     data-testid="localize-missed-smoke-row"
@@ -72,12 +81,22 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
         </button>
       </span>
     </div>
-    {hasMissedSmoke && showSkipNudge && (
-      <p className="mt-1.5 font-body text-detail text-haze">
-        Adding the missed object isn&apos;t supported yet. Use{' '}
-        <span className="font-semibold text-ember">Skip alert</span> below to park this alert so it
-        can be annotated once it is.
-      </p>
+    {hasMissedSmoke && onAddObject && (
+      <>
+        <p className="mt-1.5 font-body text-detail text-haze">
+          Add the object the model missed, and box it across the frames it appears on.
+        </p>
+        <button
+          type="button"
+          onClick={onAddObject}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-pine px-3 py-1.5 font-body text-xs font-semibold text-white transition-colors hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+        >
+          + Add object
+          <kbd className="rounded border border-white/40 px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+            N
+          </kbd>
+        </button>
+      </>
     )}
   </div>
 );

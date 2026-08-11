@@ -152,6 +152,10 @@ import {
 } from '@/components/localize';
 import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
+import { AddObjectOverlay } from '@/components/localize/add-object';
+import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
+import type { RangeBox } from '@/utils/annotation/objectRangeInterpolation';
+import { getObjectColor } from '@/utils/annotation/objectColors';
 // Imported from its file rather than the editor barrel: the page tests stub
 // the barrel down to LocalizeObjectEditor, and the popover must stay real.
 import { AcceptRemainingPopover } from '@/components/localize/editor/AcceptRemainingPopover';
@@ -268,6 +272,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
+  // The add-object overlay (missed smoke, Yes → "+ Add object"). Like every
+  // other overlay on this page it must also suspend the keyboard guards.
+  const [addObjectOpen, setAddObjectOpen] = useState(false);
   const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
 
@@ -447,7 +454,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane and
   // the question hasn't already been answered this submit round.
   const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
-  const softConfirmNeeded = anyLaneFlagged && !softConfirmResolved;
+  // The flag is deliberately NOT cleared when the missed object is added — it
+  // records that the DETECTOR missed a plume, which is the false-negative
+  // signal worth keeping, not a to-do item. So the presence of a manually
+  // added object, not the flag, is what says the work was done; without this
+  // term the dialog would nag at submit on every alert where the annotator
+  // did exactly the right thing.
+  const alertHasManualObject = alertDetail?.lanes.some(l => l.sequence.is_manual) ?? false;
+  const softConfirmNeeded = anyLaneFlagged && !alertHasManualObject && !softConfirmResolved;
 
   // The alert-level missed-smoke flag lives on ONE lane's annotation.
   // Whichever lane
@@ -547,6 +561,36 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           };
         })
     : [];
+
+  // The same overlays for the add-object flow, but keyed by frame and with
+  // nothing excluded: the object being added has no lane yet, so EVERY
+  // existing object is context — which is exactly the question the annotator
+  // is asking while choosing a range ("is that plume already someone else's?").
+  const objectOverlaysByRecordedAt: Record<string, ObjectOverlayItem[]> = {};
+  for (const frame of frameModel.frames) {
+    objectOverlaysByRecordedAt[frame.recordedAt] = frame.cells
+      .filter(cell => cell.boxes.length > 0)
+      .map(cell => {
+        const object = frameModel.objectStatus.find(o => o.laneSequenceId === cell.laneSequenceId);
+        return {
+          color: object?.color ?? cell.boxes[0].color,
+          label: object?.label ?? 'Object',
+          boxes: cell.boxes.map(b => ({ xyxyn: b.xyxyn })),
+        };
+      });
+  }
+
+  // Every loaded detection by id, so the add-object stage can show any frame
+  // of the alert without owning a lane. Any lane's detection at a timestamp is
+  // the same photograph.
+  const detectionsById = new Map<number, Detection>();
+  for (const detections of Object.values(detectionsByLaneId)) {
+    for (const detection of detections) detectionsById.set(detection.id, detection);
+  }
+
+  // The colour and number the added object will take: next after every lane
+  // the alert already has, so it matches what the rail will show once created.
+  const newObjectIndex = alertDetail?.lanes.length ?? 0;
 
   // The open object's identity (label + color), as the rail and grid show it.
   const modalObject = modalContext
@@ -697,6 +741,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         return;
       }
       showToastNotification('Failed to remove frame — try again', 'error');
+    },
+  });
+
+  // Add a missed object: one call carrying the whole track, so a failure can
+  // never leave a half-boxed object on screen. The lane, its detections, its
+  // sequence annotation and every per-frame box land in one server
+  // transaction.
+  const addObject = useMutation({
+    mutationFn: ({ frames, smokeType }: { frames: RangeBox[]; smokeType: SmokeType }) =>
+      apiClient.addObject(
+        sequence!.source_api,
+        sequence!.platform_alert_id,
+        smokeType,
+        frames.map(f => ({ recordedAt: f.recordedAt, xyxyn: f.xyxyn }))
+      ),
+    onSuccess: async lane => {
+      setAddObjectOpen(false);
+      await queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      // Land on the new object so per-frame refinement can start at once —
+      // the interpolated track is a first draft, not a finished one.
+      if (sequenceIdNum != null) {
+        navigate(localizeObjectSelect(sequenceIdNum, lane.sequence.id, mode === 'done'));
+      }
+      showToastNotification('Object added', 'success');
+    },
+    onError: () => {
+      showToastNotification('Failed to add object — try again', 'error');
     },
   });
 
@@ -1434,7 +1505,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         detectionIdNum == null &&
         !showShortcutsModal &&
         !skipConfirmOpen &&
-        !revertConfirmOpen
+        !revertConfirmOpen &&
+        !addObjectOpen
       ) {
         setCropMode(prev => !prev);
         e.preventDefault();
@@ -1442,7 +1514,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen, revertConfirmOpen]);
+  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen, revertConfirmOpen, addObjectOpen]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends
@@ -1460,7 +1532,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // per-frame editor, the missed-smoke submit dialog, the skip confirm,
       // the shortcuts sheet, the accept popover — so their controls stay
       // keyboard-reachable (mirrors classify's modal guards).
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+      if (
+        detectionIdNum != null ||
+        missedSmokeConfirm ||
+        skipConfirmOpen ||
+        revertConfirmOpen ||
+        addObjectOpen
+      )
         return;
       if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
@@ -1492,7 +1570,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+      if (
+        detectionIdNum != null ||
+        missedSmokeConfirm ||
+        skipConfirmOpen ||
+        revertConfirmOpen ||
+        addObjectOpen
+      )
         return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1556,6 +1640,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // rows keep Reclassify too.
       if (key === 'r' && activeLaneId != null) {
         handleReclassify(activeLaneId);
+        e.preventDefault();
+        return;
+      }
+      // Same gate as the "+ Add object" button's render condition: it only
+      // exists once the annotator has said there IS a missed smoke, and only
+      // in queue mode.
+      if (key === 'n' && mode !== 'done' && missedSmoke) {
+        setAddObjectOpen(true);
         e.preventDefault();
         return;
       }
@@ -1856,7 +1948,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 onChange={handleMissedSmokeChange}
                 isSaving={setMissedSmokeFlag.isPending}
                 disabled={missedSmokeAnnotationId == null}
-                showSkipNudge={mode !== 'done'}
+                onAddObject={mode !== 'done' ? () => setAddObjectOpen(true) : undefined}
               />
             }
             footer={
@@ -1937,9 +2029,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                             setSkipConfirmOpen(true);
                           }}
                           data-testid="skip-alert-button"
-                          className={`inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft${
-                            missedSmoke ? ' animate-skip-glow motion-reduce:animate-none' : ''
-                          }`}
+                          // No ember glow on a Yes answer any more: it existed
+                          // to steer a flagged alert toward the exit while
+                          // drawing the missed object was unsupported. Now that
+                          // "+ Add object" is right there, pulsing at Skip
+                          // would steer people away from doing the work. Skip
+                          // stays for what drawing cannot fix.
+                          className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
                         >
                           Skip alert
                         </button>
@@ -1967,6 +2063,19 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           </LocalizeRail>
         </div>
       </div>
+
+      {addObjectOpen && (
+        <AddObjectOverlay
+          alertFrames={frameModel.frames}
+          detectionsById={detectionsById}
+          objectColor={getObjectColor(newObjectIndex)}
+          objectLabel={`Object ${newObjectIndex + 1}`}
+          objectOverlaysByRecordedAt={objectOverlaysByRecordedAt}
+          isCreating={addObject.isPending}
+          onCreate={(frames, smokeType) => addObject.mutate({ frames, smokeType })}
+          onClose={() => setAddObjectOpen(false)}
+        />
+      )}
 
       {modalContext && (
         <LocalizeObjectEditor
@@ -2005,7 +2114,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         >
           <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
             <p className="font-body text-sm text-char mb-4">
-              You flagged missed smoke, but adding the missed object isn&apos;t supported yet.
+              You flagged missed smoke, but no object has been added for it.
             </p>
             <div className="flex flex-col gap-2">
               <button

@@ -2518,15 +2518,41 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
-    it('answering Yes shows the skip-alert nudge — there is no add control anymore', async () => {
+    it('answering Yes offers Add object, not the old unsupported nudge', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const row = screen.getByTestId('localize-missed-smoke-row');
+      expect(within(row).queryByRole('button', { name: /add object/i })).not.toBeInTheDocument();
 
       answerMissedSmokeYes();
 
-      const row = screen.getByTestId('localize-missed-smoke-row');
-      expect(within(row).getByText(/Adding the missed object isn/)).toBeInTheDocument();
-      expect(within(row).getByText('Skip alert')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
+      // Yes now unlocks the work rather than apologising for its absence.
+      expect(within(row).getByRole('button', { name: /add object/i })).toBeInTheDocument();
+      expect(within(row).queryByText(/isn't supported yet/i)).not.toBeInTheDocument();
+    });
+
+    it('opens the add-object overlay from the Yes answer', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      answerMissedSmokeYes();
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('button', {
+          name: /add object/i,
+        })
+      );
+      expect(screen.getByTestId('add-object-overlay')).toBeInTheDocument();
+    });
+
+    it('opens the add-object overlay with N once missed smoke is Yes', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Not before: N is gated on the same answer the button is.
+      fireEvent.keyDown(window, { key: 'n' });
+      expect(screen.queryByTestId('add-object-overlay')).not.toBeInTheDocument();
+
+      answerMissedSmokeYes();
+      fireEvent.keyDown(window, { key: 'n' });
+      expect(screen.getByTestId('add-object-overlay')).toBeInTheDocument();
     });
 
     it('answering No hides the nudge again', async () => {
@@ -2615,10 +2641,36 @@ describe('LocalizeAlertPage', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/You flagged missed smoke, but adding the missed object isn/)
+          screen.getByText(/You flagged missed smoke, but no object has been added/)
         ).toBeInTheDocument();
       });
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+    });
+
+    it('does not fire once the alert already carries a manually added object', async () => {
+      // has_missed_smoke is deliberately NOT cleared when the object is added
+      // — it records that the DETECTOR missed a plume. So the added object,
+      // not the flag, is what says the work was done; without that the dialog
+      // would nag on every alert where the annotator did the right thing.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101, has_missed_smoke: true }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002, is_manual: true }),
+            annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
+          },
+        ],
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
+
+      await waitFor(() => expect(apiClient.localizeSubmit).toHaveBeenCalled());
+      expect(screen.queryByTestId('missed-smoke-confirm')).not.toBeInTheDocument();
     });
 
     it('Skip alert is the primary way out — it opens the skip confirm instead of submitting', async () => {
@@ -2649,14 +2701,14 @@ describe('LocalizeAlertPage', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/You flagged missed smoke, but adding the missed object isn/)
+          screen.getByText(/You flagged missed smoke, but no object has been added/)
         ).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
 
       expect(
-        screen.queryByText(/You flagged missed smoke, but adding the missed object isn/)
+        screen.queryByText(/You flagged missed smoke, but no object has been added/)
       ).not.toBeInTheDocument();
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
       expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
@@ -3337,7 +3389,7 @@ describe('LocalizeAlertPage', () => {
       expect(screen.queryByRole('button', { name: /Skip alert/ })).not.toBeInTheDocument();
     });
 
-    it('the Skip alert button glows while missed smoke is Yes', async () => {
+    it('never glows the Skip alert button — Yes now points at the work, not the exit', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       const skipButton = screen.getByTestId('skip-alert-button');
@@ -3345,7 +3397,11 @@ describe('LocalizeAlertPage', () => {
 
       answerMissedSmokeYes();
 
-      expect(skipButton.className).toContain('animate-skip-glow');
+      // The glow steered flagged alerts toward Skip while drawing was
+      // unsupported. With "+ Add object" right there it would steer people
+      // away from doing the work; Skip stays for what drawing cannot fix.
+      expect(skipButton.className).not.toContain('animate-skip-glow');
+      expect(screen.getByTestId('skip-alert-button')).toBeInTheDocument();
     });
 
     it('Tab is inert while the skip confirm is open, so its controls stay reachable', async () => {
