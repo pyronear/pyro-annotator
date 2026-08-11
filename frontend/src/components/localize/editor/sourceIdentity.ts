@@ -46,7 +46,7 @@ export const SOURCE_STROKE: Record<BoxSource, string> = {
 export const SOURCE_COLOR = SOURCE_STROKE;
 
 /**
- * Border width in px, descending with the source's claim.
+ * Stroke width in px, descending with the source's claim.
  *
  * Kept deliberately hairline. A wildfire at the start of an alert can be a
  * dozen pixels across, and a stroke authored for comfort at alert scale sits

@@ -89,9 +89,17 @@ describe('DrawingOverlay stroke weights', () => {
   it('never lays the strokes out as CSS borders, at any zoom', () => {
     // A border would floor to 1 layout px and paint at `zoom` device px,
     // silently discarding every width above.
+    //
+    // Checked as class AND inline style, because the two strokes regressed
+    // differently: the committed box set `borderWidth` inline, while the
+    // rubber band carried `border-2 border-dashed` as a Tailwind class and
+    // no inline border at all. Asserting on the style alone would let the
+    // band's old markup sail through this guard.
     for (const scale of [1, 2, 3, 4]) {
-      expect(renderBox(scale, true).style.borderWidth).toBe('');
-      expect(renderBand(scale).style.borderWidth).toBe('');
+      for (const el of [renderBox(scale, true), renderBand(scale)]) {
+        expect(el.className).not.toMatch(/\bborder(-|\b)/);
+        expect(el.style.borderWidth).toBe('');
+      }
     }
   });
 });

@@ -126,6 +126,10 @@ describe('ObjectIdentityOverlay', () => {
       />
     );
     const box = container.querySelector('[data-testid="object-overlay-box"]') as HTMLElement;
+    // Both spellings: this box carried its border as a Tailwind class
+    // (`border-2 border-dashed`), so asserting on the inline style alone
+    // would pass against the very code this guards against.
+    expect(box.className).not.toMatch(/\bborder(-|\b)/);
     expect(box.style.borderWidth).toBe('');
     expect(box.style.boxShadow).not.toBe('');
   });

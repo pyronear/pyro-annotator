@@ -90,8 +90,11 @@ function CandidateCrop({
       const y = toY(candidate.xyxyn[1]);
       const w = toX(candidate.xyxyn[2]) - x;
       const h = toY(candidate.xyxyn[3]) - y;
-      // Dark halo first, colour over it — the same trick the stage uses, so a
-      // bright stroke stays visible against a bright sky.
+      // Dark halo first, colour over it, so a bright stroke stays visible
+      // against a bright sky. The stage dropped its own halo once its strokes
+      // went hairline — a ring on both sides then outweighed the stroke it
+      // backed. These thumbnails keep theirs: at CROP_STROKE the ring is a
+      // fraction of the stroke, not a multiple of it.
       ctx.strokeStyle = 'rgba(0,0,0,0.65)';
       ctx.lineWidth = CROP_STROKE + 3;
       ctx.strokeRect(x, y, w, h);
