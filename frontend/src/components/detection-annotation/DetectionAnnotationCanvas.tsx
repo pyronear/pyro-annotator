@@ -4,7 +4,7 @@
  *
  * An object has AT MOST ONE box per frame, so this renders exactly one
  * committed box — always draggable and resizable — plus the candidates that
- * are NOT committed, as read-only dashed ghosts. The per-model-box review
+ * are NOT committed, as read-only dimmed ghosts. The per-model-box review
  * vocabulary this component used to carry (reject / adjust / select over an
  * unbounded rectangle array) has nothing left to express: clearing the box
  * is "reject", editing it in place is "adjust". See
@@ -26,11 +26,8 @@ import {
   ObjectIdentityOverlay,
   type ObjectOverlayItem,
 } from '@/components/annotation/ImageOverlays';
-import {
-  haloShadow,
-  SOURCE_COLOR,
-  SOURCE_WEIGHT,
-} from '@/components/localize/editor/sourceIdentity';
+import { SOURCE_COLOR, SOURCE_WEIGHT } from '@/components/localize/editor/sourceIdentity';
+import { hairlineStroke } from '@/utils/annotation/hairlineStroke';
 
 interface ImageInfo {
   width: number;
@@ -46,7 +43,7 @@ interface DetectionAnnotationCanvasProps {
   detection: Detection;
   /** The single committed box, or null on a frame with none. */
   committed: BoxCandidate | null;
-  /** Candidates that are NOT committed, drawn dimmed and dashed. */
+  /** Candidates that are NOT committed, drawn dimmed. */
   ghosts: BoxCandidate[];
   showGhosts: boolean;
   /** Whether the committed box is selected — only then does it show handles. */
@@ -175,7 +172,11 @@ export function DetectionAnnotationCanvas({
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
         {objectOverlays !== undefined && imageInfo && (
-          <ObjectIdentityOverlay objects={objectOverlays} imageInfo={imageInfo} />
+          <ObjectIdentityOverlay
+            objects={objectOverlays}
+            imageInfo={imageInfo}
+            strokeScale={zoomLevel}
+          />
         )}
       </div>
 
@@ -183,8 +184,8 @@ export function DetectionAnnotationCanvas({
           Read-only — committing one is the rail's job, so they never take
           pointer events away from drawing or from the committed box.
           Unlabeled: the rail beside the image is a permanent legend naming
-          every source next to its swatch, and colour, stroke weight and the
-          dashed style already say which is which. Other OBJECTS' boxes do
+          every source next to its swatch, and colour and stroke weight
+          already say which is which. Other OBJECTS' boxes do
           keep their labels — nothing else on screen names them. */}
       {showGhosts && imageInfo && (
         <div
@@ -203,13 +204,17 @@ export function DetectionAnnotationCanvas({
               <div
                 key={`${ghost.source}-${ghost.index}`}
                 data-testid={`ghost-box-${ghost.source}-${ghost.index}`}
-                className="absolute border-dashed opacity-90"
+                className="absolute opacity-90"
                 style={{
-                  borderColor: SOURCE_COLOR[ghost.source],
                   // Divided by the zoom so the stroke keeps its on-screen
-                  // weight however far the image is scaled.
-                  borderWidth: `${SOURCE_WEIGHT[ghost.source] / zoomLevel}px`,
-                  boxShadow: haloShadow(zoomLevel),
+                  // weight however far the image is scaled — and painted
+                  // rather than laid out, so that division is not clamped
+                  // away. See `hairlineStroke`.
+                  ...hairlineStroke({
+                    color: SOURCE_COLOR[ghost.source],
+                    width: SOURCE_WEIGHT[ghost.source],
+                    scale: zoomLevel,
+                  }),
                   left: `${box.left}px`,
                   top: `${box.top}px`,
                   width: `${box.width}px`,
@@ -240,7 +245,6 @@ export function DetectionAnnotationCanvas({
             normalizedToImage={normalizedToImage}
             boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}
             boxWidth={committed ? SOURCE_WEIGHT[committed.source] : undefined}
-            boxShadow={haloShadow(zoomLevel)}
             strokeScale={zoomLevel}
             onBoxPointerDown={(_id, e) => onBoxPointerDown(e)}
             onHandlePointerDown={

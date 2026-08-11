@@ -528,7 +528,7 @@ export function LocalizeObjectEditor({
 
   // --- Coordinates --------------------------------------------------------
 
-  const handleImageLoad = () => {
+  const handleImageLoad = useCallback(() => {
     const img = imgRef.current;
     if (!img || !containerRef.current) return;
     // LAYOUT metrics, not getBoundingClientRect(): the rect is already scaled
@@ -543,7 +543,24 @@ export function LocalizeObjectEditor({
       offsetX: img.offsetLeft,
       offsetY: img.offsetTop,
     });
-  };
+  }, []);
+
+  // Re-measure when the image's rendered size changes without a reload —
+  // browser zoom (ctrl +/-) and window resizes both do that, and `load` does
+  // not fire again. Every overlay is positioned from `imageInfo`, so a stale
+  // measurement leaves the boxes drawn away from the smoke they mark. Same
+  // reasoning, same pattern as `DetectionImageCard`.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (imgRef.current?.complete) handleImageLoad();
+    });
+    observer.observe(img);
+    return () => observer.disconnect();
+    // The canvas renders the <img> only once the URL resolves, so on a cold
+    // open the ref is still null on the first pass — re-run to attach then.
+  }, [handleImageLoad, imageData?.url]);
 
   const getImageInfo = (): {
     containerOffset: Point;

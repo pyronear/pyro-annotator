@@ -14,8 +14,19 @@ beforeAll(() => {
   })) as unknown as HTMLCanvasElement['getContext'];
 });
 
+const IMAGE_URL = 'https://img.example/1.jpg';
+
+/**
+ * Mutable so a test can render the editor BEFORE the image URL resolves,
+ * which is what a cold open really does — the canvas renders no <img> until
+ * then, so anything reaching for `imgRef` on the first pass finds null.
+ */
+const imageState = vi.hoisted(() => ({
+  data: { url: 'https://img.example/1.jpg' } as { url: string } | undefined,
+}));
+
 vi.mock('@/hooks/useDetectionImage', () => ({
-  useDetectionImage: () => ({ data: { url: 'https://img.example/1.jpg' } }),
+  useDetectionImage: () => ({ data: imageState.data }),
 }));
 
 const LANE = 27;
@@ -133,7 +144,10 @@ const renderLoadedEditor = (over: Partial<Props> = {}) => {
   return result;
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  imageState.data = { url: IMAGE_URL };
+});
 
 describe('LocalizeObjectEditor', () => {
   it('commits the clicked candidate with its own origin', () => {
@@ -434,6 +448,49 @@ const drag = (from: [number, number], to: [number, number], init: object = {}) =
 };
 
 describe('LocalizeObjectEditor canvas', () => {
+  // Browser zoom (ctrl +/-) and window resizes change the image's rendered
+  // size without firing `load`. Every overlay is positioned from the measured
+  // geometry, so without this the boxes stay drawn where the image used to be.
+  it('observes the image for resizes, to re-measure overlay geometry', () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(() => ({ observe, disconnect, unobserve: vi.fn() }))
+    );
+
+    const { unmount } = renderLoadedEditor();
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(observe.mock.calls[0][0]).toBe(document.querySelector('img'));
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  // A cold open has no image URL on the first render, so the canvas renders no
+  // <img> at all and the ref is null. Attaching only once on mount would leave
+  // the observer permanently unattached — passing only because test fixtures
+  // hand over the URL synchronously.
+  it('still attaches the observer when the image URL arrives late', () => {
+    const observe = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(() => ({ observe, disconnect: vi.fn(), unobserve: vi.fn() }))
+    );
+
+    imageState.data = undefined;
+    const { rerender } = renderEditor();
+    expect(document.querySelector('img')).toBeNull();
+    expect(observe).not.toHaveBeenCalled();
+
+    imageState.data = { url: IMAGE_URL };
+    rerender(editorWith());
+
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(observe.mock.calls[0][0]).toBe(document.querySelector('img'));
+    vi.unstubAllGlobals();
+  });
+
   it('draws on a plain drag, with nothing to arm first', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });

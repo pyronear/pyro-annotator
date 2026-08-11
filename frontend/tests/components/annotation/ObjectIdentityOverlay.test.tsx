@@ -36,8 +36,10 @@ describe('ObjectIdentityOverlay', () => {
       />
     );
 
-    const box = container.querySelector('.border-2') as HTMLElement;
-    expect(box.style.borderColor).toBe('rgb(22, 106, 93)'); // #166A5D
+    const box = container.querySelector('[data-testid="object-overlay-box"]') as HTMLElement;
+    // The stroke is painted as a box-shadow ring rather than laid out as a
+    // CSS border, so the colour lands there. See hairlineStroke.
+    expect(box.style.boxShadow).toContain('#166A5D');
     const label = screen.getByText('Object 2');
     expect(label.style.backgroundColor).toBe('rgb(22, 106, 93)');
   });
@@ -49,7 +51,7 @@ describe('ObjectIdentityOverlay', () => {
         objects={[{ color: '#166A5D', label: 'Object 2', boxes: [{ xyxyn: [0.1, 0.1, 0.2, 0.2] }] }]}
       />
     );
-    expect(container.querySelector('.border-2')?.className).toContain('pointer-events-none');
+    expect(container.querySelector('[data-testid="object-overlay-box"]')?.className).toContain('pointer-events-none');
   });
 
   it('renders multiple boxes for the same object', () => {
@@ -68,12 +70,12 @@ describe('ObjectIdentityOverlay', () => {
         ]}
       />
     );
-    expect(container.querySelectorAll('.border-2')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-testid="object-overlay-box"]')).toHaveLength(2);
   });
 
   it('renders nothing when there are no objects', () => {
     const { container } = render(<ObjectIdentityOverlay imageInfo={imageInfo} objects={[]} />);
-    expect(container.querySelectorAll('.border-2')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="object-overlay-box"]')).toHaveLength(0);
   });
 
   it('skips an invalid box without crashing', () => {
@@ -85,6 +87,50 @@ describe('ObjectIdentityOverlay', () => {
         ]}
       />
     );
-    expect(container.querySelectorAll('.border-2')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="object-overlay-box"]')).toHaveLength(0);
+  });
+
+  // These boxes live inside the canvas's scaled layer, so a stroke authored in
+  // flat CSS pixels is drawn `zoomLevel` times as thick — worst exactly when
+  // the annotator has zoomed in on a small smoke.
+  it('divides the stroke by the zoom so it keeps its on-screen weight', () => {
+    const strokeAt = (strokeScale: number) => {
+      const { container } = render(
+        <ObjectIdentityOverlay
+          imageInfo={imageInfo}
+          strokeScale={strokeScale}
+          objects={[
+            { color: '#166A5D', label: 'Object 2', boxes: [{ xyxyn: [0.1, 0.1, 0.2, 0.2] }] },
+          ]}
+        />
+      );
+      const box = container.querySelector('[data-testid="object-overlay-box"]') as HTMLElement;
+      // The ring's spread radius is the stroke width: `0 0 0 <spread>px <color>`.
+      const lengths = box.style.boxShadow.match(/[\d.]+px/g) ?? [];
+      return parseFloat(lengths[lengths.length - 1]);
+    };
+
+    const at1x = strokeAt(1);
+    expect(at1x).toBeGreaterThan(0);
+    expect(strokeAt(4)).toBeCloseTo(at1x / 4);
+  });
+
+  // The regression this whole approach exists for: a CSS border cannot paint
+  // below one device pixel per unit of zoom, so it must not come back.
+  it('paints the stroke rather than laying it out as a border', () => {
+    const { container } = render(
+      <ObjectIdentityOverlay
+        imageInfo={imageInfo}
+        strokeScale={3}
+        objects={[{ color: '#166A5D', label: 'Object 2', boxes: [{ xyxyn: [0.1, 0.1, 0.2, 0.2] }] }]}
+      />
+    );
+    const box = container.querySelector('[data-testid="object-overlay-box"]') as HTMLElement;
+    // Both spellings: this box carried its border as a Tailwind class
+    // (`border-2 border-dashed`), so asserting on the inline style alone
+    // would pass against the very code this guards against.
+    expect(box.className).not.toMatch(/\bborder(-|\b)/);
+    expect(box.style.borderWidth).toBe('');
+    expect(box.style.boxShadow).not.toBe('');
   });
 });
