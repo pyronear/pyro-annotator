@@ -20,6 +20,7 @@ import {
   TablePagination,
 } from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
+import type { QueueOrderBy } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useCameras } from '@/hooks/useCameras';
@@ -64,6 +65,26 @@ export default function SequencesPage({
   // The classify queue (alert-grouped, one row per alert) replaces the plain
   // sequences fetch/table only on the un-annotated queue page.
   const isQueueMode = !isAnnotatedView && !isReviewPage;
+
+  // Alert-grouped queue ordering. The work queue leads with the platform's
+  // temporal score so the most likely fires are triaged first; the done list
+  // stays chronological, where recency is what you are looking for.
+  const [queueOrderBy, setQueueOrderBy] = useState<QueueOrderBy>(
+    isQueueMode ? 'temporal_model_score' : 'recorded_at'
+  );
+  const [queueOrderDirection, setQueueOrderDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleQueueSort = (field: QueueOrderBy) => {
+    if (field === queueOrderBy) {
+      setQueueOrderDirection(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setQueueOrderBy(field);
+      setQueueOrderDirection('desc');
+    }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setFilters({ ...filters, page: 1 });
+  };
 
   // Storage key separates done vs queue filters; done filters are shared across stages.
   const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
@@ -158,15 +179,27 @@ export default function SequencesPage({
     isLoading: classifyDoneLoading,
     error: classifyDoneError,
   } = useQuery({
-    queryKey: ['classify-done', apiFilters, selectedModelAccuracy],
+    queryKey: [
+      'classify-done',
+      apiFilters,
+      selectedModelAccuracy,
+      queueOrderBy,
+      queueOrderDirection,
+    ],
     queryFn: () => {
       // processing_stage is a sequences-endpoint concept; classify-done's
       // membership (fully classified) replaces it.
       const rest = { ...apiFilters };
       delete rest.processing_stage;
+      // The sequences-list ordering ('created_at') is not a column of the
+      // alert-grouped subquery; leaking it here would 422 the request.
+      delete rest.order_by;
+      delete rest.order_direction;
       return apiClient.getClassifyDone({
         ...rest,
         model_accuracy: MODEL_ACCURACY_PARAM[selectedModelAccuracy],
+        order_by: queueOrderBy,
+        order_direction: queueOrderDirection,
       });
     },
     enabled: !isQueueMode,
@@ -179,8 +212,19 @@ export default function SequencesPage({
     isLoading: classifyQueueLoading,
     error: classifyQueueError,
   } = useQuery({
-    queryKey: ['classify-queue', apiFilters, showSkipped],
-    queryFn: () => apiClient.getClassifyQueue({ ...apiFilters, skipped: showSkipped }),
+    queryKey: ['classify-queue', apiFilters, showSkipped, queueOrderBy, queueOrderDirection],
+    queryFn: () => {
+      const rest = { ...apiFilters };
+      // See getClassifyDone above: 'created_at' is not orderable here.
+      delete rest.order_by;
+      delete rest.order_direction;
+      return apiClient.getClassifyQueue({
+        ...rest,
+        skipped: showSkipped,
+        order_by: queueOrderBy,
+        order_direction: queueOrderDirection,
+      });
+    },
     enabled: isQueueMode,
   });
 
@@ -538,6 +582,11 @@ export default function SequencesPage({
               <ClassifyAlertQueueTable
                 items={classifyQueue.items}
                 onAlertClick={handleAlertClick}
+                sort={{
+                  orderBy: queueOrderBy,
+                  orderDirection: queueOrderDirection,
+                  onSort: handleQueueSort,
+                }}
                 skippedView={showSkipped}
                 onUnskip={item => unskipMutation.mutate(item)}
               />
@@ -553,7 +602,15 @@ export default function SequencesPage({
           )
         : classifyDone && (
             <div className={TABLE_CARD_CLASSES}>
-              <ClassifyDoneTable items={classifyDone.items} onItemClick={handleDoneClick} />
+              <ClassifyDoneTable
+                items={classifyDone.items}
+                onItemClick={handleDoneClick}
+                sort={{
+                  orderBy: queueOrderBy,
+                  orderDirection: queueOrderDirection,
+                  onSort: handleQueueSort,
+                }}
+              />
 
               <TablePagination
                 page={classifyDone.page}

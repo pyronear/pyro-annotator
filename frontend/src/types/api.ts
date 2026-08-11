@@ -58,6 +58,7 @@ export interface LocalizationQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   skip?: AlertSkipInfo | null;
 }
@@ -71,6 +72,7 @@ export interface LocalizeDoneQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   annotators: string[];
 }
@@ -91,6 +93,9 @@ export interface AlertDetail {
   lanes: AlertLane[];
 }
 
+// Orderable columns of the alert-grouped queue endpoints.
+export type QueueOrderBy = 'recorded_at' | 'temporal_model_score';
+
 // One alert ready for classification (queue row).
 export interface ClassifyQueueItem {
   source_api: string;
@@ -99,6 +104,7 @@ export interface ClassifyQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   total_objects: number;
@@ -124,6 +130,7 @@ export interface ClassifyDoneItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   lanes: ClassifyDoneLane[];
@@ -366,6 +373,7 @@ export type FalsePositiveType =
   | 'antenna'
   | 'building'
   | 'cliff'
+  | 'combine_harvester'
   | 'dark'
   | 'dust'
   | 'high_cloud'

@@ -29,6 +29,7 @@ from rich.console import Console
 from app.clients.annotation_api import (
     get_auth_token,
     create_sequence,
+    update_sequence_temporal_score,
     create_detection_from_bucket_key,
     create_detection_from_url,
     list_detections,
@@ -197,6 +198,11 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "is_wildfire_alertapi": record[
             "sequence_is_wildfire"
         ],  # Alert API enum: 'wildfire_smoke', 'other_smoke', 'other'
+        # None values are dropped from the form body by requests, so an
+        # unscored sequence simply omits these and the server stores NULL.
+        "temporal_model_score": record.get("sequence_temporal_model_score"),
+        "temporal_model_version": record.get("sequence_temporal_model_version"),
+        "temporal_api_version": record.get("sequence_temporal_api_version"),
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": azimuth,
@@ -579,6 +585,54 @@ def _process_single_detection(
     return result
 
 
+# Outcomes of a refresh attempt on an already-imported sequence.
+REFRESH_REFRESHED = "refreshed"
+REFRESH_FAILED = "failed"
+REFRESH_SKIPPED_UNKNOWN = "skipped_unknown"
+
+
+def _refresh_temporal_score(
+    annotation_api_url: str, auth_token: str, sequence_data: dict, record: dict
+) -> str:
+    """Update an existing sequence's temporal columns. Returns the outcome.
+
+    Sends all three values including None, because a sibling lane's correct
+    value IS NULL and omitting the field would let a stale score survive.
+
+    But NULL is only written when this run actually knows the value is NULL.
+    When it does not — the alert API sent no score field, or the primary
+    object could not be identified — the refresh is skipped: writing NULL
+    would destroy a score captured by an earlier, better-informed run, and
+    unlike a bad insert that loss is unrecoverable without re-fetching.
+
+    Never raises: a failed refresh degrades a run but must not abort an import.
+    """
+    if record.get("sequence_temporal_score_unknown"):
+        logging.info(
+            f"Skipping temporal refresh for alert_api_id="
+            f"{sequence_data['alert_api_id']}: this run could not determine the "
+            "score, so writing NULL would erase any previously captured value"
+        )
+        return REFRESH_SKIPPED_UNKNOWN
+
+    payload = {
+        "source_api": sequence_data["source_api"],
+        "alert_api_id": sequence_data["alert_api_id"],
+        "temporal_model_score": sequence_data.get("temporal_model_score"),
+        "temporal_model_version": sequence_data.get("temporal_model_version"),
+        "temporal_api_version": sequence_data.get("temporal_api_version"),
+    }
+    try:
+        update_sequence_temporal_score(annotation_api_url, auth_token, payload)
+        return REFRESH_REFRESHED
+    except AnnotationAPIError as exc:
+        logging.warning(
+            f"Temporal score refresh failed for alert_api_id="
+            f"{payload['alert_api_id']}: {exc}"
+        )
+        return REFRESH_FAILED
+
+
 def post_sequence_to_annotation_api(
     annotation_api_url: str,
     sequence_records: List[dict],
@@ -618,10 +672,17 @@ def post_sequence_to_annotation_api(
         annotation_sequence_id = annotation_sequence["id"]
     except AnnotationAPIError as exc:
         if exc.status_code == 409:
+            # The row already exists, so this is a re-import: refresh the
+            # temporal columns rather than walking away. This is what makes
+            # `make import-alert-api` over a past range a backfill.
+            refresh_status = _refresh_temporal_score(
+                annotation_api_url, auth_token, sequence_data, first_record
+            )
             return {
                 "success": False,
                 "skipped": True,
                 "skip_reason": "already exists",
+                "refresh_status": refresh_status,
                 "sequence_id": None,
                 "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
@@ -730,6 +791,9 @@ def post_records_to_annotation_api(
             "successful_sequences": 0,
             "failed_sequences": 0,
             "skipped_sequences": 0,
+            "refreshed_sequences": 0,
+            "refresh_failures": 0,
+            "refresh_skipped": 0,
             "total_sequences": 0,
             "successful_detections": 0,
             "failed_detections": 0,
@@ -758,6 +822,9 @@ def post_records_to_annotation_api(
     successful_sequences = 0
     failed_sequences = 0
     skipped_sequences = 0
+    refreshed_sequences = 0
+    refresh_failures = 0
+    refresh_skipped = 0
     total_successful_detections = 0
     total_failed_detections = 0
     total_skipped_detections = 0
@@ -801,6 +868,14 @@ def post_records_to_annotation_api(
                         if result.get("skipped"):
                             skipped_sequences += 1
                             total_skipped_detections += result["skipped_detections"]
+                            # Only the 409 branch sets this key.
+                            status = result.get("refresh_status")
+                            if status == REFRESH_REFRESHED:
+                                refreshed_sequences += 1
+                            elif status == REFRESH_FAILED:
+                                refresh_failures += 1
+                            elif status == REFRESH_SKIPPED_UNKNOWN:
+                                refresh_skipped += 1
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
                                 f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
@@ -853,6 +928,9 @@ def post_records_to_annotation_api(
         "successful_sequences": successful_sequences,
         "failed_sequences": failed_sequences,
         "skipped_sequences": skipped_sequences,
+        "refreshed_sequences": refreshed_sequences,
+        "refresh_failures": refresh_failures,
+        "refresh_skipped": refresh_skipped,
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,

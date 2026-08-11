@@ -22,9 +22,11 @@ engine = AsyncEngine(
     create_engine(
         settings.POSTGRES_URL,
         echo=False,
-        # Connection pool configuration for handling thousands of requests
-        pool_size=20,  # Number of connections to maintain in the pool
-        max_overflow=30,  # Additional connections when pool is exhausted
+        # Connection pool configuration for handling thousands of requests.
+        # Sized per worker process: see UVICORN_WORKERS in core/config.py and
+        # the budget assertion in tests/test_pool_sizing.py.
+        pool_size=settings.DB_POOL_SIZE,  # Connections kept open per worker
+        max_overflow=settings.DB_MAX_OVERFLOW,  # Extra when the pool is busy
         pool_timeout=30,  # Seconds to wait for connection from pool
         pool_recycle=3600,  # Recycle connections after 1 hour
         pool_pre_ping=True,  # Validate connections before use

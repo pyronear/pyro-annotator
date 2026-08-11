@@ -274,6 +274,7 @@ describe('sequenceUtils', () => {
     it('should return correct keyboard shortcuts for false positive types', () => {
       expect(getKeyForFalsePositiveType('antenna')).toBe('A');
       expect(getKeyForFalsePositiveType('building')).toBe('B');
+      expect(getKeyForFalsePositiveType('combine_harvester')).toBe('V');
       expect(getKeyForFalsePositiveType('water_body')).toBe('W');
       expect(getKeyForFalsePositiveType('unknown_type')).toBe('');
     });
@@ -282,6 +283,7 @@ describe('sequenceUtils', () => {
   describe('formatFalsePositiveLabel', () => {
     it('should format false positive types for display', () => {
       expect(formatFalsePositiveLabel('antenna')).toBe('Antenna');
+      expect(formatFalsePositiveLabel('combine_harvester')).toBe('Combine Harvester');
       expect(formatFalsePositiveLabel('water_body')).toBe('Water Body');
       expect(formatFalsePositiveLabel('lens_flare')).toBe('Lens Flare');
     });

@@ -33,6 +33,9 @@ from scripts.data_transfer.ingestion.alert_api.shared import get_annotation_cred
 load_dotenv()
 
 SMOKE_TYPES = ["wildfire", "industrial", "other"]
+# YOLO class_id indexes into ALL_CLASSES, so this list is positional:
+# new types must be APPENDED at the end, never inserted, or every class
+# after the insertion point shifts by one in existing datasets.
 FALSE_POSITIVE_TYPES = [
     "antenna",
     "building",
@@ -52,6 +55,7 @@ FALSE_POSITIVE_TYPES = [
     "water_body",
     "other",
     "unlabeled",
+    "combine_harvester",
 ]
 ALL_CLASSES = SMOKE_TYPES + FALSE_POSITIVE_TYPES
 
@@ -230,7 +234,9 @@ def parse_recorded_at(text: str) -> Optional[datetime]:
     return datetime.strptime(raw, "%Y-%m-%dT%H-%M-%S")
 
 
-def parse_name_parts(basename: str) -> Tuple[Optional[str], Optional[int], Optional[str]]:
+def parse_name_parts(
+    basename: str,
+) -> Tuple[Optional[str], Optional[int], Optional[str]]:
     match = RECORDED_AT_RE.search(basename)
     if not match:
         return None, None, None

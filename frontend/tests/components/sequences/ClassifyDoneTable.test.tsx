@@ -32,6 +32,7 @@ const createItem = (overrides: Partial<ClassifyDoneItem> = {}): ClassifyDoneItem
   organisation_name: 'Test Org',
   azimuth: 180,
   recorded_at: '2024-01-01T10:00:00Z',
+  temporal_model_score: 0.42,
   is_wildfire_alertapi: 'wildfire_smoke',
   primary_sequence_id: 1,
   lanes: [createLane()],

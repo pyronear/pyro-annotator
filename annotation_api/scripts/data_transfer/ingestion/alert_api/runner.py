@@ -167,6 +167,9 @@ def run_import(config: ImportConfig) -> ImportResult:
         "sequences_import_successful": 0,
         "sequences_import_failed": 0,
         "sequences_skipped": 0,
+        "sequences_refreshed": 0,
+        "refresh_failures": 0,
+        "refresh_skipped": 0,
         "detections_skipped": 0,
         "detections_attempted_import": 0,
         "detections_import_successful": 0,
@@ -346,6 +349,15 @@ def run_import(config: ImportConfig) -> ImportResult:
             f"{split_stats['cross_deduped_siblings']} cross-deduped, "
             f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
         )
+        # Anomaly, not a routine stat: printed only when it fires, so a dropped
+        # verdict stays distinguishable from an alert API that sends no score.
+        if split_stats["dropped_temporal_scores"]:
+            console.print(
+                f"[yellow]⚠️  {split_stats['dropped_temporal_scores']} scored alert "
+                "sequence(s) had no identifiable primary object (no bbox-sourced box "
+                "in the imported window); their temporal model score was dropped "
+                "rather than attributed to an arbitrary object[/]"
+            )
 
         # Boxless alerts import as zero-object lanes the classify page cannot
         # act on (#333); they are auto-skipped after annotation creation below.
@@ -382,6 +394,15 @@ def run_import(config: ImportConfig) -> ImportResult:
                 stats["detections_import_successful"] = result["successful_detections"]
                 stats["detections_import_failed"] = result["failed_detections"]
                 stats["sequences_skipped"] = result.get("skipped_sequences", 0)
+                stats["sequences_refreshed"] = result.get("refreshed_sequences", 0)
+                stats["refresh_failures"] = result.get("refresh_failures", 0)
+                stats["refresh_skipped"] = result.get("refresh_skipped", 0)
+                if stats["refresh_failures"]:
+                    # Feed the result status and the ❌ summary: a backfill whose
+                    # refreshes all failed must not report success.
+                    error_collector.add_error(
+                        f"{stats['refresh_failures']} temporal score refresh(es) failed"
+                    )
                 stats["detections_skipped"] = result.get("skipped_detections", 0)
                 successfully_imported_sequence_ids = result["successful_sequence_ids"]
 
@@ -461,16 +482,61 @@ def run_import(config: ImportConfig) -> ImportResult:
                     error_collector,
                 )
 
-            # Show final summary with zero processing and exit gracefully
+            # Show final summary with zero processing and exit gracefully.
+            # A pure backfill lands here: every sequence already existed, so
+            # nothing was "imported". This path returns before the detailed
+            # summary below, so the refresh counts must be reported here or
+            # they are invisible in exactly the run that produced them.
+            refresh_note = ""
+            title = f"⚠️ Processing Complete - {organization} - No Annotations Generated"
+            if (
+                stats["sequences_refreshed"]
+                or stats["refresh_failures"]
+                or stats["refresh_skipped"]
+            ):
+                refresh_note = (
+                    f"\n\n[green]Temporal scores refreshed: "
+                    f"{stats['sequences_refreshed']}[/]"
+                )
+                if stats["refresh_skipped"]:
+                    refresh_note += (
+                        f"\n[yellow]Skipped (score not determinable this run, "
+                        f"existing values left intact): "
+                        f"{stats['refresh_skipped']}[/]"
+                    )
+                if stats["refresh_failures"]:
+                    refresh_note += (
+                        f"\n[red]Refresh failures: {stats['refresh_failures']}[/]"
+                    )
+                # Only a run that actually refreshed something may claim success;
+                # 0 refreshed with N failures is a failed backfill, not a green one.
+                if stats["refresh_failures"]:
+                    title = (
+                        f"❌ Processing Complete - {organization} - "
+                        f"{stats['refresh_failures']} Refresh Failure(s)"
+                    )
+                elif stats["sequences_refreshed"]:
+                    title = (
+                        f"✅ Processing Complete - {organization} - "
+                        f"{stats['sequences_refreshed']} Temporal Score(s) Refreshed"
+                    )
             console.print()
             panel = Panel(
                 f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
-                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]",
-                title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
+                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]"
+                + refresh_note,
+                title=title,
                 border_style="yellow",
                 padding=(1, 2),
             )
             console.print(panel)
+            if stats["refresh_failures"]:
+                return ImportResult(
+                    per_organization=org_stats,
+                    error=(
+                        f"{stats['refresh_failures']} temporal score refresh(es) failed"
+                    ),
+                )
             return ImportResult(per_organization=org_stats)
 
         stats["total_sequences_for_annotation"] = len(sequence_ids)
@@ -618,6 +684,14 @@ def run_import(config: ImportConfig) -> ImportResult:
 • Successfully imported: {stats['sequences_import_successful']}
 • Skipped (already imported): {stats['sequences_skipped']} sequences / {stats['detections_skipped']} detections
 • Failed: {stats['sequences_import_failed']}"""
+            if stats["sequences_refreshed"] or stats["refresh_failures"]:
+                import_section += (
+                    f"\n• Temporal scores refreshed: {stats['sequences_refreshed']}"
+                )
+            if stats["refresh_failures"]:
+                import_section += (
+                    f"\n• [yellow]Refresh failures: {stats['refresh_failures']}[/]"
+                )
             if stats["sequences_rolled_back"] > 0:
                 import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
             summary_parts.append(import_section)

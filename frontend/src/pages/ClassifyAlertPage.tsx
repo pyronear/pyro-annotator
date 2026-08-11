@@ -881,7 +881,15 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         // ready_to_annotate), but guard against it anyway.
         if (mode !== 'done') {
           try {
-            const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+            const queue = await apiClient.getClassifyQueue({
+              page: 1,
+              size: 2,
+              // Match the queue page's ordering, or continuous flow
+              // silently advances by recency while the annotator is
+              // working a score-ordered queue.
+              order_by: 'temporal_model_score',
+              order_direction: 'desc',
+            });
             // The user may have navigated elsewhere while the lookup was in
             // flight (unmount / alert switch reset the flag) — don't yank
             // them into another alert.
@@ -941,7 +949,15 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // Same continuous flow as the post-submit advance, but immediate: pull
       // the next alert from the queue, else fall back to the list.
       try {
-        const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+        const queue = await apiClient.getClassifyQueue({
+          page: 1,
+          size: 2,
+          // Match the queue page's ordering, or continuous flow
+          // silently advances by recency while the annotator is
+          // working a score-ordered queue.
+          order_by: 'temporal_model_score',
+          order_direction: 'desc',
+        });
         const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
         if (next) {
           clearAnnotationWorkflow();

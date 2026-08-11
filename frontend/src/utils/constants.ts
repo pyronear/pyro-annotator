@@ -166,6 +166,7 @@ export const PROCESSING_STAGE_LABELS = {
  * @property {string} antenna - Communication antennas or towers
  * @property {string} building - Buildings or structures
  * @property {string} cliff - Rocky cliffs or geological formations
+ * @property {string} combine_harvester - Combine harvesters kicking up harvest dust
  * @property {string} dark - Dark objects or shadows
  * @property {string} dust - Dust clouds or particles
  * @property {string} high_cloud - High altitude clouds
@@ -191,6 +192,7 @@ export const FALSE_POSITIVE_TYPES = [
   'antenna',
   'building',
   'cliff',
+  'combine_harvester',
   'dark',
   'dust',
   'high_cloud',

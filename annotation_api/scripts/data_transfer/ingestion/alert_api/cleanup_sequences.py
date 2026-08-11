@@ -92,7 +92,9 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    alert_ids = parse_sequence_selection(args.sequence_list) if args.sequence_list else None
+    alert_ids = (
+        parse_sequence_selection(args.sequence_list) if args.sequence_list else None
+    )
 
     login, password = shared.get_annotation_credentials(args.url_api_annotation)
     token = annotation_api.get_auth_token(args.url_api_annotation, login, password)
@@ -108,7 +110,11 @@ def main() -> None:
     logging.info(
         f"Found {len(sequences)} sequence(s) matching processing_stage={args.processing_stage}"
         + (f" and alert_ids filter ({len(alert_ids)} provided)" if alert_ids else "")
-        + (f" and organisation_name={args.organisation_name}" if args.organisation_name else "")
+        + (
+            f" and organisation_name={args.organisation_name}"
+            if args.organisation_name
+            else ""
+        )
     )
 
     if args.dry_run or not sequences:
@@ -122,7 +128,9 @@ def main() -> None:
             annotation_api.delete_sequence(args.url_api_annotation, token, seq_id)
             logging.info(f"Deleted sequence id={seq_id} alert_api_id={alert_id}")
         except Exception as exc:
-            logging.error(f"Failed to delete sequence id={seq_id} alert_api_id={alert_id}: {exc}")
+            logging.error(
+                f"Failed to delete sequence id={seq_id} alert_api_id={alert_id}: {exc}"
+            )
 
 
 if __name__ == "__main__":

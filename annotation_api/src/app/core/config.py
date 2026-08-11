@@ -50,6 +50,28 @@ class Settings(BaseSettings):
         "ANNOTATION_API_INTERNAL_URL", "http://annotation_api:5050"
     )
 
+    # Serving / DB pool sizing.
+    #
+    # Each uvicorn worker is a separate process with its own SQLAlchemy pool,
+    # so connection demand is UVICORN_WORKERS x (DB_POOL_SIZE +
+    # DB_MAX_OVERFLOW) and must stay under Postgres's max_connections (minus
+    # its 3 reserved superuser slots). src/tests/test_pool_sizing.py asserts
+    # this: overshooting it does not fail at startup, it surfaces as
+    # intermittent "too many clients already" under load.
+    #
+    # Two workers, not more: each is a whole extra Python process with the app
+    # loaded, and the deployment host is memory-constrained (a sibling VM is
+    # 7.5GB with one service already resident at 3GB). Two is enough to remove
+    # the single-process serialization, which is the point of this. Every value
+    # here is environment-overridable, so raise it once memory headroom on the
+    # real host is known -- no code change needed.
+    UVICORN_WORKERS: int = int(os.environ.get("UVICORN_WORKERS", "2"))
+    DB_POOL_SIZE: int = int(os.environ.get("DB_POOL_SIZE", "10"))
+    DB_MAX_OVERFLOW: int = int(os.environ.get("DB_MAX_OVERFLOW", "10"))
+    POSTGRES_MAX_CONNECTIONS: int = int(
+        os.environ.get("POSTGRES_MAX_CONNECTIONS", "150")
+    )
+
     # DB
     POSTGRES_URL: str = os.environ["POSTGRES_URL"]
 
@@ -84,9 +106,12 @@ class Settings(BaseSettings):
         "PLATFORM_SERVER_NAME", "ovh-alert-api-prod-v2"
     )
 
-    # Auto-annotate model (baked into the image; see Dockerfile)
+    # Auto-annotate model. The Dockerfile extracts the release tarball straight
+    # into /app/models (it has no top-level directory), so the default must be
+    # that directory — not a subdirectory named after the model. Pinned by
+    # test_autoannotate_model_path_holds_the_weights, which globs this path.
     AUTOANNOTATE_MODEL_PATH: str = os.environ.get(
-        "AUTOANNOTATE_MODEL_PATH", "/app/models/yolo11s_sensitive-detector"
+        "AUTOANNOTATE_MODEL_PATH", "/app/models"
     )
     AUTOANNOTATE_MODEL_NAME: str = os.environ.get(
         "AUTOANNOTATE_MODEL_NAME", "yolo11s_sensitive-detector"

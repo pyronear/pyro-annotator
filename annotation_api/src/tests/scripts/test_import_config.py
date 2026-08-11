@@ -159,10 +159,11 @@ def _stub_pipeline(monkeypatch) -> dict:
                 "sibling_objects": 1,
                 "fallback_sequences": 0,
                 "cross_deduped_siblings": 0,
-                # Real split_all_records returns this too (object_split.py);
+                # Real split_all_records returns these too (object_split.py);
                 # the runner's summary line reads every key, so a stub that
                 # omits one raises KeyError inside run_import.
                 "same_frame_merges": 0,
+                "dropped_temporal_scores": 0,
             },
         ),
     )

@@ -223,6 +223,7 @@ class TestSplitAllRecords:
             "fallback_sequences": 0,
             "cross_deduped_siblings": 0,
             "same_frame_merges": 0,
+            "dropped_temporal_scores": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
@@ -383,3 +384,163 @@ class TestPlatformAlertId:
         (group,) = split_sequence_records(records)
         for record in group.records:
             assert record["platform_alert_id"] == 47105
+
+
+TEMPORAL_FIELDS = {
+    "sequence_temporal_model_score": 0.87,
+    "sequence_temporal_model_version": "0.1.0",
+    "sequence_temporal_api_version": "v1.4.2",
+}
+
+
+class TestTemporalScoreAttribution:
+    """The temporal model scores ONE object: its ROI is the union of the
+    sequence's primary bboxes, deliberately excluding others_bboxes. Siblings
+    are built from those excluded boxes, so they must not inherit the score.
+    """
+
+    def test_primary_keeps_the_score_and_siblings_are_cleared(self):
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [BOX_A],
+                others=[BOX_B],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["sibling_objects"] >= 1, "fixture must produce a sibling"
+        by_lane = {}
+        for record in out:
+            by_lane.setdefault(record["sequence_id"], []).append(record)
+
+        primary_lane = [
+            recs for sid, recs in by_lane.items() if sid == recs[0]["platform_alert_id"]
+        ]
+        sibling_lanes = [
+            recs for sid, recs in by_lane.items() if sid != recs[0]["platform_alert_id"]
+        ]
+        assert primary_lane and sibling_lanes
+
+        for record in primary_lane[0]:
+            assert record["sequence_temporal_model_score"] == 0.87
+            assert record["sequence_temporal_model_version"] == "0.1.0"
+            assert record["sequence_temporal_api_version"] == "v1.4.2"
+
+        for lane in sibling_lanes:
+            for record in lane:
+                assert record["sequence_temporal_model_score"] is None
+                assert record["sequence_temporal_model_version"] is None
+                assert record["sequence_temporal_api_version"] is None
+
+    def test_fallback_lane_keeps_the_score(self):
+        """Clustering yields no objects, so one lane represents the whole
+        sequence — which is exactly what the model scored."""
+        records = [
+            make_record(1, "2026-07-01T10:00:00", [], **TEMPORAL_FIELDS),
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["fallback_sequences"] == 1
+        assert out, "the fallback lane must still be emitted"
+        for record in out:
+            assert record["sequence_temporal_model_score"] == 0.87
+
+    def test_unscored_sequence_stays_none_everywhere(self):
+        records = [
+            make_record(det_id, f"2026-07-01T10:0{det_id}:00", [BOX_A], others=[BOX_B])
+            for det_id in (1, 2, 3)
+        ]
+        out, _ = split_all_records(records)
+        assert out
+        for record in out:
+            assert record.get("sequence_temporal_model_score") is None
+
+    def test_no_lane_scored_when_no_box_is_bbox_sourced(self):
+        """Every imported frame is a continuity row (empty `bbox`), so all boxes
+        come from others_bboxes. `select_primary_index` then falls through to
+        'earliest start', which is arbitrary w.r.t. the model's ROI — so no lane
+        may claim the score."""
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [],
+                others=[BOX_A],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert (
+            stats["fallback_sequences"] == 0
+        ), "fixture must cluster into a real object, not fall back"
+        assert out
+        for record in out:
+            assert record["sequence_temporal_model_score"] is None
+            assert record["sequence_temporal_model_version"] is None
+            assert record["sequence_temporal_api_version"] is None
+
+    def test_split_sequence_records_clears_siblings_on_its_own(self):
+        """The invariant must hold for direct callers of the public splitter,
+        not only for the import pipeline going through split_all_records."""
+        records = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [BOX_A],
+                others=[BOX_B],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        groups = split_sequence_records(records)
+
+        assert len(groups) >= 2, "fixture must produce a primary and a sibling"
+        for group in groups:
+            expected = 0.87 if group.is_primary else None
+            for record in group.records:
+                assert record["sequence_temporal_model_score"] == expected
+
+    def test_dropped_temporal_scores_is_reported_in_stats(self):
+        """A fired guard must be visible, so it stays distinguishable from an
+        alert API that simply never sends a score."""
+        scored = [
+            make_record(
+                det_id, f"2026-07-01T10:0{det_id}:00", [BOX_A], **TEMPORAL_FIELDS
+            )
+            for det_id in (1, 2, 3)
+        ]
+        _, stats = split_all_records(scored)
+        assert stats["dropped_temporal_scores"] == 0
+
+        continuity_only = [
+            make_record(
+                det_id,
+                f"2026-07-01T10:0{det_id}:00",
+                [],
+                others=[BOX_A],
+                **TEMPORAL_FIELDS,
+            )
+            for det_id in (1, 2, 3)
+        ]
+        _, stats = split_all_records(continuity_only)
+        assert stats["dropped_temporal_scores"] == 1
+
+    def test_unscorable_primary_without_a_score_is_not_a_drop(self):
+        """The commonest case today: the platform never scored the sequence, so
+        an unidentifiable primary discards nothing and must not warn."""
+        records = [
+            make_record(det_id, f"2026-07-01T10:0{det_id}:00", [], others=[BOX_A])
+            for det_id in (1, 2, 3)
+        ]
+        out, stats = split_all_records(records)
+
+        assert stats["dropped_temporal_scores"] == 0
+        assert out
+        for record in out:
+            assert record.get("sequence_temporal_model_score") is None

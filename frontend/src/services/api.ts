@@ -31,6 +31,7 @@ import {
   SmokeType,
   AnnotationType,
   ClassifyQueueItem,
+  QueueOrderBy,
   ClassifyDoneItem,
   ClassifySubmitRequest,
   ClassifySubmitResponse,
@@ -196,7 +197,13 @@ class ApiClient {
 
   // Alerts ready for smoke localization (alert-grouped Localize queue)
   async getLocalizationQueue(
-    params: { page?: number; size?: number; skipped?: boolean } = {}
+    params: {
+      page?: number;
+      size?: number;
+      skipped?: boolean;
+      order_by?: QueueOrderBy;
+      order_direction?: 'asc' | 'desc';
+    } = {}
   ): Promise<PaginatedResponse<LocalizationQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}localization-queue`,
@@ -283,6 +290,8 @@ class ApiClient {
       recorded_at_lte?: string;
       is_wildfire_alertapi?: AnnotationType | 'null' | null;
       skipped?: boolean;
+      order_by?: QueueOrderBy;
+      order_direction?: 'asc' | 'desc';
     } = {}
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
@@ -304,6 +313,8 @@ class ApiClient {
       recorded_at_lte?: string;
       is_wildfire_alertapi?: AnnotationType | 'null' | null;
       annotator_id?: number;
+      order_by?: QueueOrderBy;
+      order_direction?: 'asc' | 'desc';
     } = {}
   ): Promise<PaginatedResponse<LocalizeDoneQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizeDoneQueueItem>> = await this.client.get(
@@ -329,6 +340,8 @@ class ApiClient {
       is_unsure?: boolean;
       model_accuracy?: 'tp' | 'fp' | 'fn';
       annotator_id?: number;
+      order_by?: QueueOrderBy;
+      order_direction?: 'asc' | 'desc';
     } = {}
   ): Promise<PaginatedResponse<ClassifyDoneItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyDoneItem>> = await this.client.get(

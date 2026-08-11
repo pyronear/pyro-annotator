@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type { AlertDetail, Sequence, SequenceAnnotation, ClassifySubmitRequest } from '@/types/api';
 import { getObjectColor } from '@/utils/annotation/objectColors';
+import { FALSE_POSITIVE_TYPES } from '@/utils/constants';
 
 vi.mock('@/services/api', () => ({
   apiClient: {
@@ -1129,6 +1130,21 @@ describe('ClassifyAlertPage', () => {
     expect(row.getByRole('radio', { name: 'Smoke' })).toBeChecked();
   });
 
+  it('V toggles the combine_harvester chip, but modifier chords (paste) are ignored', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.keyDown(document, { key: 'f' });
+    const row = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    expect(row.getByRole('checkbox', { name: 'Combine harvester' })).not.toBeChecked();
+
+    fireEvent.keyDown(document, { key: 'v' });
+    expect(row.getByRole('checkbox', { name: 'Combine harvester' })).toBeChecked();
+
+    fireEvent.keyDown(document, { key: 'v', metaKey: true });
+    expect(row.getByRole('checkbox', { name: 'Combine harvester' })).toBeChecked();
+  });
+
   it('classification shortcuts are inert while the missed-smoke section is active', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
@@ -1305,8 +1321,8 @@ describe('ClassifyAlertPage', () => {
 
     const row = openRow('101:0');
     fireEvent.click(row.getByRole('radio', { name: 'False positive' }));
-    // 18 FP type chips (Unsure is a radio in the exclusive group).
-    expect(row.getAllByRole('checkbox')).toHaveLength(18);
+    // One chip per FP type (Unsure is a radio in the exclusive group).
+    expect(row.getAllByRole('checkbox')).toHaveLength(FALSE_POSITIVE_TYPES.length);
   });
 });
 

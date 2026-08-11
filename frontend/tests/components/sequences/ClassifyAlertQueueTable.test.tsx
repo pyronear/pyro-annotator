@@ -22,6 +22,7 @@ const createItem = (overrides: Partial<ClassifyQueueItem> = {}): ClassifyQueueIt
   organisation_name: 'Test Org',
   azimuth: 180,
   recorded_at: '2024-01-01T10:00:00Z',
+  temporal_model_score: 0.42,
   is_wildfire_alertapi: 'wildfire_smoke',
   primary_sequence_id: 1,
   total_objects: 3,
@@ -219,6 +220,68 @@ describe('ClassifyAlertQueueTable', () => {
 
       expect(screen.queryByText('Skipped')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Unskip' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('temporal score column', () => {
+    it('renders the alert score as a percentage', () => {
+      render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
+      expect(screen.getByText('42%')).toBeInTheDocument();
+    });
+
+    it('renders the not-scored placeholder when the alert has no score', () => {
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem({ temporal_model_score: null })]}
+          onAlertClick={onAlertClick}
+        />
+      );
+      expect(screen.getByTitle('Not scored by the Alert API')).toBeInTheDocument();
+    });
+
+    it('calls onSort with the score field when the Score header is clicked', () => {
+      const onSort = vi.fn();
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'recorded_at', orderDirection: 'desc', onSort }}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /score/i }));
+      expect(onSort).toHaveBeenCalledWith('temporal_model_score');
+    });
+
+    it('marks the Score column as sorted when it is the active field', () => {
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'temporal_model_score', orderDirection: 'desc', onSort: vi.fn() }}
+        />
+      );
+      const header = screen.getByRole('columnheader', { name: /score/i });
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+    });
+
+    it('leaves the Score header inert when no sort prop is supplied', () => {
+      render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
+      expect(screen.queryByRole('button', { name: /score/i })).not.toBeInTheDocument();
+    });
+
+    it('keeps Recorded sortable so the chronological default stays reachable', () => {
+      // The work queues default to score; if Recorded were inert there would
+      // be no way back to recorded_at ordering from the UI at all.
+      const onSort = vi.fn();
+      render(
+        <ClassifyAlertQueueTable
+          items={[createItem()]}
+          onAlertClick={onAlertClick}
+          sort={{ orderBy: 'temporal_model_score', orderDirection: 'desc', onSort }}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /recorded/i }));
+      expect(onSort).toHaveBeenCalledWith('recorded_at');
     });
   });
 });

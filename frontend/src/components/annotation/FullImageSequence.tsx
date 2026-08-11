@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
@@ -67,6 +67,10 @@ export default function FullImageSequence({
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  // Locked aspect ratio for the reserved box, measured once from the first
+  // frame that decodes so a non-16:9 camera is never letterboxed. Null until
+  // then — the box holds 16:9 in the meantime.
+  const [aspect, setAspect] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -98,6 +102,7 @@ export default function FullImageSequence({
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
+    setAspect(null); // A new frame list measures its own box.
     // A pending seek-hold belongs to the old frame list.
     setIsHolding(false);
     if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
@@ -184,28 +189,56 @@ export default function FullImageSequence({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seekRequest?.nonce]);
 
+  // The frame list is read through a ref by the interval below. Listing
+  // `images` in that effect's dependencies tore the 200ms timer down and
+  // recreated it on every single image load, so during the initial load burst
+  // the timer kept resetting and playback lurched.
+  const imagesRef = useRef(images);
+  useEffect(() => {
+    imagesRef.current = images;
+  });
+
+  // The old start condition as one boolean. It flips false -> true once, early
+  // in the load, and stays true — so the effect below re-runs on that single
+  // transition rather than once per loaded image.
+  const canPlay = images.length > 1 && images.filter(img => img.loaded && !img.error).length > 1;
+
   // Auto-play animation with 200ms interval - only when images are loaded
   // and no seek-hold is pinning the current frame.
   useEffect(() => {
-    const loadedImagesCount = images.filter(img => img.loaded && !img.error).length;
+    if (!canPlay || isLoading || isHolding) return;
 
-    if (images.length > 1 && loadedImagesCount > 1 && !isLoading && !isHolding) {
-      intervalRef.current = setInterval(() => {
-        setCurrentIndex(prev => (prev + 1) % images.length);
-      }, 200);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
+    intervalRef.current = setInterval(() => {
+      setCurrentIndex(prev => {
+        // Advance only onto frames the browser has decoded. An <img> whose
+        // src has nothing decoded has no intrinsic height, so landing on one
+        // used to collapse the container entirely; with the box now reserved
+        // it still blanks the player for a tick. Errored frames stay in the
+        // rotation on purpose: "not decoded yet" is transient and the frame
+        // rejoins the loop when it arrives, but an error is permanent, and
+        // skipping it would silently shorten the loop and hide the failure.
+        // The transient assumption holds for the cases that actually occur —
+        // a frame queued behind the browser's per-host connection limit
+        // settles in seconds, and a hard failure fires onerror. A request
+        // that hangs without firing either handler would stay skipped, which
+        // is accepted: bounding the skip to N passes would just reinstate the
+        // blanking this exists to remove.
+        const frames = imagesRef.current;
+        for (let step = 1; step <= frames.length; step++) {
+          const next = (prev + step) % frames.length;
+          if (frames[next]?.loaded || frames[next]?.error) return next;
+        }
+        return prev;
+      });
+    }, 200);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [images.length, images, isLoading, isHolding]);
+  }, [canPlay, isLoading, isHolding]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -219,23 +252,45 @@ export default function FullImageSequence({
     };
   }, []);
 
+  // Where the image actually sits inside the reserved box — the overlays are
+  // positioned against this, and `object-contain` means it is not simply the
+  // box itself (a frame whose ratio differs from the box's is letterboxed).
+  const measureImage = useCallback(() => {
+    if (!imgRef.current || !containerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+
+    setImageInfo({
+      width: imgRect.width,
+      height: imgRect.height,
+      offsetX: imgRect.left - containerRect.left,
+      offsetY: imgRect.top - containerRect.top,
+    });
+  }, []);
+
+  // Re-measure once a newly locked aspect has actually been applied to the
+  // box. `handleImageLoad` below measures synchronously, before the resize
+  // commits, so its numbers describe the old box — for a 4:3 frame in the
+  // 16:9 default that is 25% too narrow and offset. A multi-frame alert would
+  // paper over it on the next frame's onLoad, but a single-frame alert never
+  // fires one (the loop needs two decoded frames to start), so without this
+  // the overlays would stay wrong for as long as the card is open.
+  useLayoutEffect(() => {
+    if (aspect === null) return;
+    measureImage();
+  }, [aspect, measureImage]);
+
   // Handle image load to get dimensions for bbox positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const imgRect = imgRef.current.getBoundingClientRect();
+      // Lock the reserved box to the first decoded frame's own ratio. The
+      // layout effect above re-measures once that lock lands.
+      if (aspect === null && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0) {
+        setAspect(imgRef.current.naturalWidth / imgRef.current.naturalHeight);
+      }
 
-      const offsetX = imgRect.left - containerRect.left;
-      const offsetY = imgRect.top - containerRect.top;
-      const width = imgRect.width;
-      const height = imgRect.height;
-
-      setImageInfo({
-        width,
-        height,
-        offsetX,
-        offsetY,
-      });
+      measureImage();
     }
   };
 
@@ -345,11 +400,16 @@ export default function FullImageSequence({
       {/* Full Image Container */}
       <div
         ref={containerRef}
-        className="relative border border-gray-300 rounded shadow-sm mx-auto overflow-hidden"
+        data-testid="full-image-viewport"
+        className="relative mx-auto flex items-center justify-center overflow-hidden rounded border border-gray-300 bg-char shadow-sm"
         style={{
           width: '1280px',
           maxWidth: '100%',
-          height: 'auto',
+          // Reserve the height. Deriving it from the image (the old
+          // `height: 'auto'` here plus `w-full h-auto` on the <img>) collapsed
+          // this box to nothing on every frame the browser had not decoded
+          // yet, which resized the whole cockpit 5x a second.
+          aspectRatio: aspect ?? 16 / 9,
         }}
       >
         {/* Loading State */}
@@ -380,7 +440,7 @@ export default function FullImageSequence({
               src={currentImage.url}
               alt={`Detection ${currentIndex + 1}`}
               onLoad={handleImageLoad}
-              className="w-full h-auto"
+              className="max-w-full max-h-full object-contain"
             />
 
             {/* Bounding Box Overlay */}

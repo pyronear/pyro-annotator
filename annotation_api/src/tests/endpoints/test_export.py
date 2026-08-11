@@ -114,7 +114,29 @@ async def annotate_lane(
     is_unsure: bool = False,
     stage: str = "annotated",
 ) -> None:
-    """Create the lane's sequence annotation with one tracked object."""
+    """Create the lane's sequence annotation with one tracked object.
+
+    A smoke lane landing directly at `annotated` must already be localized
+    (issue #346), so its frames are committed first — the same order
+    import_yolo_sequence.py uses. Unsure lanes are exempt from that rule and
+    are left alone, since several tests rely on them staying unlocalized.
+    """
+    if stage == "annotated" and is_smoke and not is_unsure:
+        for det_id in detection_ids:
+            # Empty, not boxed: the guard requires an annotated-stage
+            # annotation per frame, not a box. Seeding boxes here would
+            # invent content and would wrongly fill the gap frames some of
+            # these tests depend on. `annotate_frame` fills in the real ones.
+            resp = await client.post(
+                "/annotations/detections/",
+                data={
+                    "detection_id": str(det_id),
+                    "annotation": json.dumps({"annotation": []}),
+                    "processing_stage": "annotated",
+                },
+            )
+            assert resp.status_code == 201, resp.text
+
     track: dict = {
         "is_smoke": is_smoke,
         "false_positive_types": list(false_positive_types),

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { BoxSelect, Search } from 'lucide-react';
@@ -15,6 +16,7 @@ import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersis
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 import { localizeDetail, ROUTES } from '@/utils/routes';
+import type { QueueOrderBy } from '@/types/api';
 
 // Default filter contract for /localize/done — imported by its defaults test.
 // Membership (which alerts qualify) is entirely server-side now, via
@@ -89,9 +91,26 @@ export default function DetectionReviewPage() {
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
+  // The done list stays chronological by default — recency is what you look
+  // for when reviewing finished work — but the Score column is still sortable.
+  const [orderBy, setOrderBy] = useState<QueueOrderBy>('recorded_at');
+  const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: QueueOrderBy) => {
+    if (field === orderBy) {
+      setOrderDirection(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrderBy(field);
+      setOrderDirection('desc');
+    }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setFilters({ ...filters, page: 1 });
+  };
+
   // Alert-grouped localize-done queue — one row per alert.
   const { data, isLoading, error } = useQuery({
-    queryKey: ['localize-done-queue', filters],
+    queryKey: ['localize-done-queue', filters, orderBy, orderDirection],
     queryFn: () =>
       apiClient.getLocalizeDoneQueue({
         page: filters.page,
@@ -103,6 +122,8 @@ export default function DetectionReviewPage() {
         recorded_at_lte: filters.recorded_at_lte,
         is_wildfire_alertapi: filters.is_wildfire_alertapi,
         annotator_id: filters.annotator_id,
+        order_by: orderBy,
+        order_direction: orderDirection,
       }),
   });
 
@@ -314,7 +335,11 @@ export default function DetectionReviewPage() {
       {/* Results */}
       {data && (
         <div className={TABLE_CARD_CLASSES}>
-          <LocalizeDoneQueueTable items={items} onItemClick={handleAlertClick} />
+          <LocalizeDoneQueueTable
+            items={items}
+            onItemClick={handleAlertClick}
+            sort={{ orderBy, orderDirection, onSort: handleSort }}
+          />
 
           <TablePagination
             page={data.page}

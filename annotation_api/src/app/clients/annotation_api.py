@@ -6,9 +6,11 @@ using the requests library for HTTP communication.
 """
 
 import json
+import threading
 from typing import Dict, Optional
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 # -------------------- CUSTOM EXCEPTIONS --------------------
 
@@ -90,6 +92,51 @@ __all__ = [
 ]
 
 
+# -------------------- CONNECTION POOLING --------------------
+
+# The import script drives this client from several threads at once — a pool for
+# sequences, and a nested one per sequence for its detections — and
+# `requests.Session` is not documented as thread-safe, so each thread keeps its
+# own. Same reasoning as the thread-local boto3 client in
+# `app/services/storage.py`.
+#
+# Without a session every call re-does the TCP (and, against an HTTPS
+# deployment, TLS) handshake. How far one connection then stretches differs by
+# pool: the sequence pool is built once per import, so its sessions last the
+# whole run, while the detection pool is rebuilt for every sequence
+# (`shared.py`), so its sessions die with it. That still collapses a sequence's
+# ~20 detections onto one connection per worker instead of one each.
+_thread_local = threading.local()
+
+# Pooling introduces a failure that dialing fresh every time could not produce:
+# the server (or an intermediary) closes an idle keep-alive socket, and the next
+# request on it fails with RemoteDisconnected. urllib3 discards connections whose
+# close it has already noticed, but not one closed between that check and the
+# write, so a redial is still needed. The importer would not recover on its own —
+# its retry only matches 502/503/504, and a network error carries no status code.
+#
+# `read=1` is what covers this: a dropped connection is classified as a read
+# error, not a connection error. `allowed_methods=None` is required for it to
+# apply to POST, which urllib3 will not retry by default; that is safe here
+# because the import handles a duplicate create as 409. Statuses are left alone
+# (`status=0`) so the script's own 502/503/504 backoff stays the only one.
+_CONNECTION_RETRY = Retry(
+    total=2, connect=2, read=1, status=0, allowed_methods=None, backoff_factor=0.2
+)
+
+
+def _get_session() -> requests.Session:
+    """The calling thread's `requests.Session`, built on first use."""
+    session: Optional[requests.Session] = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        adapter = HTTPAdapter(max_retries=_CONNECTION_RETRY)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        _thread_local.session = session
+    return session
+
+
 # -------------------- AUTHENTICATION UTILITIES --------------------
 
 
@@ -112,7 +159,7 @@ def get_auth_token(base_url: str, username: str, password: str) -> str:
     login_data = {"username": username, "password": password}
 
     try:
-        response = requests.post(login_url, json=login_data, timeout=30)
+        response = _get_session().post(login_url, json=login_data, timeout=30)
         response.raise_for_status()
 
         token_data = response.json()
@@ -176,7 +223,7 @@ def _make_request(
         # forever. Callers may override by passing their own `timeout`.
         kwargs.setdefault("timeout", (10, 120))
 
-        response = requests.request(method, url, **kwargs)
+        response = _get_session().request(method, url, **kwargs)
 
         # Don't raise for status here - we'll handle it in _handle_response
         return response
@@ -289,6 +336,39 @@ def create_sequence(base_url: str, auth_token: str, sequence_data: Dict) -> Dict
     operation = f"create sequence with alert_api_id={sequence_data.get('alert_api_id', 'unknown')}"
     response = _make_request(
         "POST", url, auth_token, operation=operation, data=sequence_data
+    )
+    return _handle_response(response, operation=operation)
+
+
+def update_sequence_temporal_score(
+    base_url: str, auth_token: str, update_data: Dict
+) -> Dict:
+    """
+    Refresh a sequence's platform temporal-model columns by natural key.
+
+    Args:
+        base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
+        update_data: Dictionary containing:
+            - source_api: Source API enum value
+            - alert_api_id: Alert API sequence id identifying the row
+            - temporal_model_score: float or None
+            - temporal_model_version: str or None
+            - temporal_api_version: str or None
+
+    Returns:
+        Dictionary containing the updated sequence data
+
+    Raises:
+        NotFoundError: If no sequence matches (source_api, alert_api_id)
+        AnnotationAPIError: For other API errors
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/sequences/temporal-score"
+    operation = (
+        f"refresh temporal score for alert_api_id={update_data.get('alert_api_id')}"
+    )
+    response = _make_request(
+        "PATCH", url, auth_token, operation=operation, json=update_data
     )
     return _handle_response(response, operation=operation)
 

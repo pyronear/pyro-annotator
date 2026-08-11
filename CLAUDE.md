@@ -89,6 +89,15 @@ make import-alert-api DATE_FROM=2024-01-01 DATE_END=2024-01-02
 
 The import object-splits each alert sequence from the alert API's own boxes and writes one annotation track per object client-side (no pyro-engine/pyro-dataset involved).
 
+### Alert Export
+
+```bash
+# Pull finished annotation work into a dataset directory
+make export-alerts OUTPUT_DIR=outputs/alerts_export
+```
+
+Writes `manifest.jsonl` (one line per alert) plus `images/{source_api}/{platform_alert_id}/{detection_id}.jpg`; each frame carries an `image_path` into that tree. Only alerts whose every lane reached `ANNOTATED` are exported. Re-runs are idempotent — the manifest is rewritten and only missing images are downloaded.
+
 ## Key Architecture Concepts
 
 **Backend data flow**: Alert API → ingestion scripts → annotation_api DB → frontend UI → human annotations

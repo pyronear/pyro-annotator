@@ -28,7 +28,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--username",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")
+        ),
         help="API username",
     )
     parser.add_argument(
@@ -92,7 +94,9 @@ def list_sequences_by_stage(api_url: str, token: str, stage: str) -> List[Dict]:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=args.loglevel.upper(), format="%(levelname)s - %(message)s"
+    )
 
     token = annotation_api.get_auth_token(args.api_url, args.username, args.password)
     sequences = list_sequences_by_stage(args.api_url, token, args.from_stage)
@@ -113,7 +117,9 @@ def main() -> None:
             ann_resp = annotation_api.list_sequence_annotations(
                 args.api_url, token, sequence_id=seq_id, page=1, size=1
             )
-            items = ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
+            items = (
+                ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
+            )
             if not items:
                 logging.warning("Sequence %s has no annotation, skipping", seq_id)
                 continue

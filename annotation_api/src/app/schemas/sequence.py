@@ -5,6 +5,7 @@
 
 
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -26,11 +27,19 @@ __all__ = [
     "LocalizationQueueItem",
     "LocalizationQueueLane",
     "MaterializeFrameRequest",
+    "QueueOrderByField",
     "SequenceCreate",
     "SequenceRead",
     "SequenceUpdateBboxAuto",
     "SequenceUpdateBboxVerified",
 ]
+
+
+class QueueOrderByField(str, Enum):
+    """Orderable columns of the alert-grouped queue endpoints."""
+
+    recorded_at = "recorded_at"
+    temporal_model_score = "temporal_model_score"
 
 
 class Azimuth(BaseModel):
@@ -103,6 +112,33 @@ class SequenceCreate(Azimuth):
         default=None,
         description="Platform alert grouping id. Defaults server-side: decoded from a synthetic alert_api_id when the primary exists (platform sources), else alert_api_id.",
     )
+    temporal_model_score: Optional[float] = Field(
+        default=None,
+        description="Alert-API temporal-model smoke probability for this object. NULL when the platform never scored it — not the same as a low score.",
+    )
+    temporal_model_version: Optional[str] = Field(
+        default=None,
+        description="Model release that produced temporal_model_score (e.g. '0.1.0').",
+    )
+    temporal_api_version: Optional[str] = Field(
+        default=None,
+        description="Temporal API serving-code version (image tag) that produced temporal_model_score.",
+    )
+
+
+class SequenceTemporalScoreUpdate(BaseModel):
+    """Natural-key targeted update of the platform temporal-model columns.
+
+    All three value fields are required but nullable. "Absent" and "null" must
+    not be conflated: a sibling lane's correct value is NULL, so a refresh has
+    to write NULL explicitly rather than leave the field untouched.
+    """
+
+    source_api: SourceApi
+    alert_api_id: int
+    temporal_model_score: Optional[float]
+    temporal_model_version: Optional[str] = Field(..., max_length=32)
+    temporal_api_version: Optional[str] = Field(..., max_length=32)
 
 
 class SequenceRead(Azimuth):
@@ -126,6 +162,9 @@ class SequenceRead(Azimuth):
     organisation_id: int
     platform_alert_id: int
     sequence_group_id: Optional[int] = None
+    temporal_model_score: Optional[float] = None
+    temporal_model_version: Optional[str] = None
+    temporal_api_version: Optional[str] = None
 
 
 class SequenceUpdateBboxAuto(BaseModel):
@@ -169,6 +208,9 @@ class LocalizationQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[int]
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     lanes: List[LocalizationQueueLane]
     # Present only on skipped=true queue rows.
     skip: Optional[AlertSkipInfo] = None
@@ -184,6 +226,9 @@ class LocalizeDoneQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[int]
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     lanes: List[LocalizationQueueLane]
     annotators: List[str] = []
 
@@ -197,6 +242,9 @@ class ClassifyQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[float] = None
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     total_objects: int
@@ -225,6 +273,9 @@ class ClassifyDoneItem(BaseModel):
     organisation_name: str
     azimuth: Optional[float] = None
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]

@@ -213,7 +213,7 @@ def main() -> int:
 
     folders = sorted(p for p in seq_root.iterdir() if p.is_dir())
     if args.skip:
-        folders = folders[args.skip:]
+        folders = folders[args.skip :]
     if args.limit:
         folders = folders[: args.limit]
 
@@ -276,9 +276,7 @@ def main() -> int:
                 continue
             if rc == 0:
                 successes += 1
-                logging.info(
-                    "[%d/%d] OK   %s (seq_id=%d)", idx, total, label, seq_id
-                )
+                logging.info("[%d/%d] OK   %s (seq_id=%d)", idx, total, label, seq_id)
             else:
                 failures += 1
                 logging.error(
