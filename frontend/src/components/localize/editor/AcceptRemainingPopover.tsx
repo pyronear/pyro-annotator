@@ -69,7 +69,10 @@ export interface AcceptRemainingPopoverProps {
  */
 function entryStatus(entry: FilmstripEntry): ObjectStatusStripStatus {
   if (!entry.inObject) return entry.run === 'object' ? 'undetected' : 'absent';
-  if (entry.committedSource) return 'confirmed';
+  // A cleared frame is settled — the annotator answered "not visible here",
+  // and the sweep will pass over it exactly as it passes over a committed
+  // box. It keeps an `availableSource`, so it must be tested first.
+  if (entry.committedSource || entry.cleared) return 'confirmed';
   if (entry.availableSource) return 'pending';
   return 'empty';
 }
