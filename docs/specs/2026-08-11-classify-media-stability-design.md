@@ -82,12 +82,20 @@ Locking to the measured ratio rather than hard-coding `aspect-video` means a
 non-16:9 camera is never letterboxed; the cost is a single settling change on
 load, from the default to the measured value.
 
-The overlay geometry needs no change. `handleImageLoad` already derives
-`offsetX` / `offsetY` from `imgRect.left - containerRect.left`, which is
-correct for an image centred inside a larger box. One accepted consequence: at
-the instant the aspect locks, the image's rect changes after `imageInfo` was
-measured, so the boxes are one frame stale. `onLoad` fires on every frame swap,
-so this self-heals within ~200ms.
+The overlay geometry keeps deriving `offsetX` / `offsetY` from
+`imgRect.left - containerRect.left`, which is correct for an image centred
+inside a larger box. It does, however, need to be measured **twice**: locking
+the aspect resizes the box, which moves the image inside it, so the numbers
+`handleImageLoad` takes synchronously describe the pre-lock box. For a 4:3
+frame in the 16:9 default that is 25% too narrow and horizontally offset.
+
+An earlier draft of this spec dismissed that as self-healing on the next
+frame's `onLoad`. That is wrong for a single-frame alert: the loop needs two
+decoded frames to start, so no second `onLoad` ever fires and the overlays stay
+misplaced for as long as the card is open. The measurement therefore moves into
+a `measureImage` callback invoked both from `handleImageLoad` and from a
+`useLayoutEffect` keyed on `aspect`, which re-measures once the lock has been
+applied to the box.
 
 ### 2. Advance only to decoded frames
 

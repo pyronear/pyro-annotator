@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
@@ -217,6 +217,12 @@ export default function FullImageSequence({
         // rotation on purpose: "not decoded yet" is transient and the frame
         // rejoins the loop when it arrives, but an error is permanent, and
         // skipping it would silently shorten the loop and hide the failure.
+        // The transient assumption holds for the cases that actually occur —
+        // a frame queued behind the browser's per-host connection limit
+        // settles in seconds, and a hard failure fires onerror. A request
+        // that hangs without firing either handler would stay skipped, which
+        // is accepted: bounding the skip to N passes would just reinstate the
+        // blanking this exists to remove.
         const frames = imagesRef.current;
         for (let step = 1; step <= frames.length; step++) {
           const next = (prev + step) % frames.length;
@@ -246,31 +252,45 @@ export default function FullImageSequence({
     };
   }, []);
 
+  // Where the image actually sits inside the reserved box — the overlays are
+  // positioned against this, and `object-contain` means it is not simply the
+  // box itself (a frame whose ratio differs from the box's is letterboxed).
+  const measureImage = useCallback(() => {
+    if (!imgRef.current || !containerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+
+    setImageInfo({
+      width: imgRect.width,
+      height: imgRect.height,
+      offsetX: imgRect.left - containerRect.left,
+      offsetY: imgRect.top - containerRect.top,
+    });
+  }, []);
+
+  // Re-measure once a newly locked aspect has actually been applied to the
+  // box. `handleImageLoad` below measures synchronously, before the resize
+  // commits, so its numbers describe the old box — for a 4:3 frame in the
+  // 16:9 default that is 25% too narrow and offset. A multi-frame alert would
+  // paper over it on the next frame's onLoad, but a single-frame alert never
+  // fires one (the loop needs two decoded frames to start), so without this
+  // the overlays would stay wrong for as long as the card is open.
+  useLayoutEffect(() => {
+    if (aspect === null) return;
+    measureImage();
+  }, [aspect, measureImage]);
+
   // Handle image load to get dimensions for bbox positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
       // Lock the reserved box to the first decoded frame's own ratio. The
-      // measurement below is one frame stale at the instant this locks (the
-      // image's rect moves as the box resizes) — onLoad fires on every frame
-      // swap, so that self-heals within one 200ms tick.
+      // layout effect above re-measures once that lock lands.
       if (aspect === null && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0) {
         setAspect(imgRef.current.naturalWidth / imgRef.current.naturalHeight);
       }
 
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const imgRect = imgRef.current.getBoundingClientRect();
-
-      const offsetX = imgRect.left - containerRect.left;
-      const offsetY = imgRect.top - containerRect.top;
-      const width = imgRect.width;
-      const height = imgRect.height;
-
-      setImageInfo({
-        width,
-        height,
-        offsetX,
-        offsetY,
-      });
+      measureImage();
     }
   };
 

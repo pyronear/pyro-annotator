@@ -79,6 +79,27 @@ describe('FullImageSequence reserved box', () => {
     expect(parseFloat(viewport().style.aspectRatio)).toBeCloseTo(800 / 600, 4);
   });
 
+  // Regression: the lock resizes the box, which moves the image inside it, so
+  // the geometry the load handler measured describes the *old* box. A
+  // single-frame alert never fires a second onLoad (the loop needs two decoded
+  // frames to start), so without a re-measure its overlays stay misplaced.
+  it('re-measures the overlay geometry after the box locks', async () => {
+    await renderPlayer();
+
+    const img = screen.getByRole('img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
+
+    const measured = vi.spyOn(img, 'getBoundingClientRect');
+    await act(async () => {
+      fireEvent.load(img);
+    });
+
+    // Once inside the load handler against the 16:9 default, then again once
+    // the 4:3 lock has been applied to the box.
+    expect(measured.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('re-measures when the frame list changes', async () => {
     const { rerender } = await renderPlayer();
 
