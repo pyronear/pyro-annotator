@@ -44,6 +44,7 @@ vi.mock('@/services/api', () => ({
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
     localizeRevert: vi.fn(),
+    deleteSequence: vi.fn(),
     addObject: vi.fn(),
     skipAlert: vi.fn(),
     materializeFrame: vi.fn(),
@@ -3196,6 +3197,72 @@ describe('LocalizeAlertPage', () => {
       fireEvent.keyDown(window, { key: '?' });
       fireEvent.keyDown(window, { key: 'l' });
       expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  describe('remove object', () => {
+    function mockAlertWithManualLane() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002, is_manual: true }),
+            annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
+          },
+        ],
+      });
+    }
+
+    it('is withheld on an imported object', async () => {
+      // An imported lane is part of the import record; retiring one is a
+      // reclassification, which the API enforces too.
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      expect(
+        within(screen.getByTestId('localize-active-object-actions')).queryByTestId(
+          'remove-object-button'
+        )
+      ).not.toBeInTheDocument();
+    });
+
+    it('is offered on a manually added object', async () => {
+      mockAlertWithManualLane();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      expect(
+        within(screen.getByTestId('localize-active-object-actions')).getByTestId(
+          'remove-object-button'
+        )
+      ).toBeInTheDocument();
+    });
+
+    it('confirms before deleting, and deletes the lane on confirm', async () => {
+      mockAlertWithManualLane();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-active-object-actions')).getByTestId(
+          'remove-object-button'
+        )
+      );
+      // The boxes are the annotator's own work and this is not undoable.
+      expect(screen.getByTestId('remove-object-confirm')).toBeInTheDocument();
+      expect(apiClient.deleteSequence).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('remove-object-confirm-button'));
+      await waitFor(() => expect(apiClient.deleteSequence).toHaveBeenCalledWith(102));
+    });
+
+    it('does not offer removal in done mode', async () => {
+      mockAlertWithManualLane();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      expect(screen.queryByTestId('remove-object-button')).not.toBeInTheDocument();
     });
   });
 

@@ -275,6 +275,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // The add-object overlay (missed smoke, Yes → "+ Add object"). Like every
   // other overlay on this page it must also suspend the keyboard guards.
   const [addObjectOpen, setAddObjectOpen] = useState(false);
+  // Confirm before removing a manually added object: its boxes are the
+  // annotator's own work, and the delete is not undoable.
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
 
@@ -771,6 +774,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
+  // Remove a manually added object. The API refuses any lane without
+  // `is_manual`, so this can never reach an imported one even if the UI is
+  // wrong; the cascade takes the lane's cloned detections and its boxes and
+  // touches no S3 object, because those detections share their bucket_key
+  // with the sibling they were cloned from.
+  const removeObject = useMutation({
+    mutationFn: (laneId: number) => apiClient.deleteSequence(laneId),
+    onSuccess: async () => {
+      setRemoveConfirmOpen(false);
+      await queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      // The URL names the lane that just went away; drop back to the bare
+      // alert and let the arrival auto-select pick the next object.
+      navigate(`${basePath}${location.search}`, { replace: true });
+      showToastNotification('Object removed', 'success');
+    },
+    onError: () => {
+      showToastNotification('Failed to remove object — try again', 'error');
+    },
+  });
+
   // The alert-level missed-smoke flag. Written from two places: the rail's
   // own Yes/No row, and the soft-confirm's "Submit & clear flag" path.
   const setMissedSmokeFlag = useMutation({
@@ -990,6 +1013,16 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     // demotes the lane server-side and re-runs its auto-review pass
     // (spec: fp-promote-relocalize, issue #275).
     onReclassify: () => handleReclassify(object.laneSequenceId),
+    // Only ever offered on an object a human added, and only in queue mode:
+    // removing one from an alert already submitted would silently change a
+    // finished record. The API refuses imported lanes regardless.
+    onRemoveObject:
+      mode !== 'done' &&
+      (alertDetail?.lanes.find(l => l.sequence.id === object.laneSequenceId)?.sequence.is_manual ??
+        false)
+        ? () => setRemoveConfirmOpen(true)
+        : undefined,
+    isRemoving: removeObject.isPending,
   });
 
   const renderObjectRow = (object: AlertObjectStatus) => {
@@ -1506,7 +1539,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         !showShortcutsModal &&
         !skipConfirmOpen &&
         !revertConfirmOpen &&
-        !addObjectOpen
+        !addObjectOpen &&
+        !removeConfirmOpen
       ) {
         setCropMode(prev => !prev);
         e.preventDefault();
@@ -1514,7 +1548,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen, revertConfirmOpen, addObjectOpen]);
+  }, [
+    detectionIdNum,
+    showShortcutsModal,
+    skipConfirmOpen,
+    revertConfirmOpen,
+    addObjectOpen,
+    removeConfirmOpen,
+  ]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends
@@ -1537,7 +1578,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         missedSmokeConfirm ||
         skipConfirmOpen ||
         revertConfirmOpen ||
-        addObjectOpen
+        addObjectOpen ||
+        removeConfirmOpen
       )
         return;
       if (showShortcutsModal || acceptPopoverOpen) return;
@@ -1575,7 +1617,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         missedSmokeConfirm ||
         skipConfirmOpen ||
         revertConfirmOpen ||
-        addObjectOpen
+        addObjectOpen ||
+        removeConfirmOpen
       )
         return;
       // Shift stays allowed: `?` requires it.
@@ -2198,6 +2241,52 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Skip alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {removeConfirmOpen && activeObject && activeLaneId != null && (
+        <div
+          data-testid="remove-object-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">
+                Remove {activeObject.label}?
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRemoveConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              This deletes the object and every box drawn on it. The alert&apos;s other objects and
+              their images are untouched. It cannot be undone — you would add the object again from
+              scratch.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveConfirmOpen(false)}
+                className="inline-flex items-center rounded-lg px-3 py-2 font-body text-sm font-medium text-haze hover:text-char"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => removeObject.mutate(activeLaneId)}
+                disabled={removeObject.isPending}
+                data-testid="remove-object-confirm-button"
+                className="inline-flex items-center rounded-lg bg-signal px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Remove object
               </button>
             </div>
           </div>
