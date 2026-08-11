@@ -1058,6 +1058,43 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
   });
 });
 
+describe('LocalizeObjectEditor cleared frames', () => {
+  it('a cleared frame draws no box — the ghost coming back is what made a delete look undone', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cleared-frame-chip')).toBeInTheDocument();
+  });
+
+  it('G still reveals the candidates on a cleared frame — that is how you undo one', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    fireEvent.keyDown(window, { key: 'g' });
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+  });
+
+  it('leaves the chip off a frame that simply has no decision yet', () => {
+    renderLoadedEditor();
+    expect(screen.queryByTestId('cleared-frame-chip')).not.toBeInTheDocument();
+  });
+
+  it('excludes cleared frames from the accept count', () => {
+    // The object is on t003 and t004. Clear both and there is nothing left
+    // for a sweep to fill, so the button goes away entirely.
+    renderLoadedEditor({
+      laneAnnotations: [clearedAnnotation(firstDetection.id), clearedAnnotation(lastDetection.id)],
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+    });
+    expect(screen.queryByTestId('editor-accept-remaining')).not.toBeInTheDocument();
+  });
+
+  it('still offers the accept when an undecided frame remains', () => {
+    renderLoadedEditor({ laneAnnotations: [clearedAnnotation(firstDetection.id)] });
+    expect(screen.getByTestId('editor-accept-remaining')).toBeInTheDocument();
+  });
+});
+
 describe('open/close transition', () => {
   /** WAAPI stub: records calls, lets the test fire the finish listener. */
   const makeAnimateMock = () => {

@@ -324,7 +324,7 @@ export function LocalizeObjectEditor({
       ? []
       : boxVisibility === 'all'
         ? losers
-        : shownCommitted
+        : shownCommitted || cleared
           ? []
           : pick
             ? [pick]
@@ -916,12 +916,13 @@ export function LocalizeObjectEditor({
 
   // Frames of this object that a bulk accept would fill, and frames it
   // cannot — no source offers a box there, so they stay empty and keep the
-  // alert off the submit gate.
+  // alert off the submit gate. A cleared frame is neither: the annotator
+  // already settled it, and re-filling it would undo their answer.
   const acceptRemainingCount = entries.filter(
-    e => e.inObject && !e.committedSource && e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && e.availableSource
   ).length;
   const gapCount = entries.filter(
-    e => e.inObject && !e.committedSource && !e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && !e.availableSource
   ).length;
 
   // Exactly what the lane's track would be after accepting: committed boxes
@@ -1126,6 +1127,24 @@ export function LocalizeObjectEditor({
               <span className="font-body text-detail text-pine">
                 {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
                 to add this frame to {objectLabel}.
+              </span>
+            </div>
+          )}
+
+          {/* A cleared frame is the one state with nothing to draw, so the
+              stage has to say so in words — otherwise it is indistinguishable
+              from a frame nobody has looked at. Ash, not signal: this is a
+              recorded answer, not a problem. */}
+          {!peeked && cleared && (
+            <div
+              data-testid="cleared-frame-chip"
+              className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-line bg-ash px-4 py-2"
+            >
+              <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                No box on this frame
+              </span>
+              <span className="font-body text-detail text-haze">
+                You marked {objectLabel} as not visible here. Pick a box on the right to undo it.
               </span>
             </div>
           )}
