@@ -2477,3 +2477,34 @@ async def test_patch_temporal_score_is_scoped_to_source_api(
         },
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sequence_read_exposes_is_manual_defaulting_false(
+    authenticated_client: AsyncClient,
+):
+    """An imported sequence is never manual, and the flag must reach clients.
+
+    SequenceRead enumerates its fields rather than deriving them from the
+    model, so a new column is invisible without explicit plumbing — and both
+    the delete guard and the localize UI key off this one.
+    """
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "99100",
+        "camera_name": "test_cam",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "is_wildfire_alertapi": "wildfire_smoke",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    assert response.json()["is_manual"] is False

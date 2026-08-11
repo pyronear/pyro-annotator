@@ -165,6 +165,9 @@ class SequenceRead(Azimuth):
     temporal_model_score: Optional[float] = None
     temporal_model_version: Optional[str] = None
     temporal_api_version: Optional[str] = None
+    # Human-added lane. This schema enumerates its fields rather than deriving
+    # them from the model, so a new column is invisible to clients without it.
+    is_manual: bool = False
 
 
 class SequenceUpdateBboxAuto(BaseModel):

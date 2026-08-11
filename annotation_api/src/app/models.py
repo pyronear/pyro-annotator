@@ -256,6 +256,13 @@ class Sequence(SQLModel, table=True):
     auto_annotated_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
+    # True only for lanes a human added through POST /sequences/alert/add-object.
+    # It cannot be inferred: add_object assigns the SAME synthetic alert_api_id
+    # formula the importer uses for object-split siblings, so a delete gated on
+    # "object index >= 1" would destroy real imported objects. Gates
+    # DELETE /sequences/{id}, and tells the localize submit soft-confirm that a
+    # flagged missed smoke has actually been added.
+    is_manual: bool = Field(default=False)
 
 
 class SequenceGroup(SQLModel, table=True):
