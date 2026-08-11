@@ -1153,9 +1153,11 @@ export function LocalizeObjectEditor({
         <BoxSourceRail
           candidates={editable ? candidates : []}
           committed={editable ? committed : null}
+          cleared={editable && cleared}
           imageUrl={editable ? (imageData?.url ?? null) : null}
           disabled={!editable}
           onCommit={commitCandidate}
+          onClear={clear}
           onPreview={setPreviewed}
         />
       </div>

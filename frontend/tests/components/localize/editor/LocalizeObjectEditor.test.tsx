@@ -1093,6 +1093,18 @@ describe('LocalizeObjectEditor cleared frames', () => {
     renderLoadedEditor({ laneAnnotations: [clearedAnnotation(firstDetection.id)] });
     expect(screen.getByTestId('editor-accept-remaining')).toBeInTheDocument();
   });
+
+  it("the rail's None row clears the frame", () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.click(screen.getByTestId('source-row-none'));
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('presses the None row once the frame is cleared', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.getByTestId('source-row-none')).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 describe('open/close transition', () => {
