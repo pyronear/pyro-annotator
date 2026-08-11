@@ -78,9 +78,9 @@ export function getCellState(
 /** A lane box for the preview loop, with the marker that dims a cleared one. */
 export interface LaneBox extends BoundingBox {
   /**
-   * True on a frame the annotator cleared. The box is the model's — the one
-   * they rejected — carried so the loop still plays the frame; the loop draws
-   * it dashed and faint rather than as part of the track.
+   * True on a frame the annotator cleared. The geometry is the model's — the
+   * box they rejected — carried only so the loop still plays the frame and
+   * stays framed on the object. The loop draws nothing on a cleared frame.
    */
   cleared?: boolean;
 }
@@ -92,10 +92,11 @@ export interface LaneBox extends BoundingBox {
  *
  * `options.markCleared` adds the cleared frames: committed but deliberately
  * empty, so they have no box to contribute, and dropping them punched a hole
- * the object's track jumped over. They play carrying the model box that was
- * rejected, flagged `cleared` so the loop can show it as not part of the
- * track. Nothing downstream of the preview reads these — `buildQuickSubmitPlan`
- * decides what gets written, and it skips committed frames outright.
+ * the object's track jumped over. They are emitted carrying the rejected
+ * model box's geometry, flagged `cleared` — enough for the loop to play the
+ * frame and stay framed on the object, while drawing nothing on it. Nothing
+ * downstream of the preview reads these — `buildQuickSubmitPlan` decides what
+ * gets written, and it skips committed frames outright.
  *
  * It is opt-in because this function cannot tell a cleared frame from a
  * false-positive lane's frame: BOTH are an annotated-stage annotation with no

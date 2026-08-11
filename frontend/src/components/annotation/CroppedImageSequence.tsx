@@ -17,7 +17,8 @@ const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
 interface CroppedImageSequenceProps {
   /**
    * One entry per box; frames absent from this list are not played. A box
-   * marked `cleared` is drawn dashed and faint — see the draw block.
+   * marked `cleared` puts its frame in the loop but draws nothing on it —
+   * the annotator's "no box here". It still steers the crop window.
    */
   bboxes: (BoundingBox & { cleared?: boolean })[];
   sequenceId: number;
@@ -266,12 +267,11 @@ export default function CroppedImageSequence({
       ctx.lineWidth = 4;
       for (const box of bboxes) {
         if (box.detection_id !== detectionId) continue;
-        // A frame the annotator cleared plays like any other — a hole would
-        // make the track jump — but its box is the one they REJECTED, so it
-        // is dashed and faint rather than drawn as part of the track. Same
-        // "not committed" idiom the editor's stage ghosts use.
-        ctx.setLineDash(box.cleared ? [14, 12] : []);
-        ctx.globalAlpha = box.cleared ? 0.4 : 1;
+        // A frame the annotator cleared plays like any other — dropping it
+        // would make the track jump a hole — but nothing is drawn on it.
+        // That IS the answer they recorded: no box here. Its geometry still
+        // steers the crop window, so the loop stays framed on the object.
+        if (box.cleared) continue;
         const [x1, y1, x2, y2] = box.xyxyn;
         ctx.strokeRect(
           ((x1 * img.naturalWidth - crop.x) / crop.size) * CANVAS_RES,
@@ -280,10 +280,6 @@ export default function CroppedImageSequence({
           (((y2 - y1) * img.naturalHeight) / crop.size) * CANVAS_RES
         );
       }
-      // Canvas state is sticky across draws — a dashed cleared box would
-      // leave every later frame dashed and faint.
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
     }
   }, [bboxes, currentIndex, images, zoomLevel, showBoxes, accentColor]);
 
