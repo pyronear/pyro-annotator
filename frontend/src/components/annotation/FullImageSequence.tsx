@@ -67,6 +67,10 @@ export default function FullImageSequence({
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  // Locked aspect ratio for the reserved box, measured once from the first
+  // frame that decodes so a non-16:9 camera is never letterboxed. Null until
+  // then — the box holds 16:9 in the meantime.
+  const [aspect, setAspect] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -98,6 +102,7 @@ export default function FullImageSequence({
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
+    setAspect(null); // A new frame list measures its own box.
     // A pending seek-hold belongs to the old frame list.
     setIsHolding(false);
     if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
@@ -222,6 +227,14 @@ export default function FullImageSequence({
   // Handle image load to get dimensions for bbox positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
+      // Lock the reserved box to the first decoded frame's own ratio. The
+      // measurement below is one frame stale at the instant this locks (the
+      // image's rect moves as the box resizes) — onLoad fires on every frame
+      // swap, so that self-heals within one 200ms tick.
+      if (aspect === null && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0) {
+        setAspect(imgRef.current.naturalWidth / imgRef.current.naturalHeight);
+      }
+
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
 
@@ -345,11 +358,16 @@ export default function FullImageSequence({
       {/* Full Image Container */}
       <div
         ref={containerRef}
-        className="relative border border-gray-300 rounded shadow-sm mx-auto overflow-hidden"
+        data-testid="full-image-viewport"
+        className="relative mx-auto flex items-center justify-center overflow-hidden rounded border border-gray-300 bg-char shadow-sm"
         style={{
           width: '1280px',
           maxWidth: '100%',
-          height: 'auto',
+          // Reserve the height. Deriving it from the image (the old
+          // `height: 'auto'` here plus `w-full h-auto` on the <img>) collapsed
+          // this box to nothing on every frame the browser had not decoded
+          // yet, which resized the whole cockpit 5x a second.
+          aspectRatio: aspect ?? 16 / 9,
         }}
       >
         {/* Loading State */}
@@ -380,7 +398,7 @@ export default function FullImageSequence({
               src={currentImage.url}
               alt={`Detection ${currentIndex + 1}`}
               onLoad={handleImageLoad}
-              className="w-full h-auto"
+              className="max-w-full max-h-full object-contain"
             />
 
             {/* Bounding Box Overlay */}
