@@ -5,6 +5,17 @@
 @layer base {
   html {
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
+
+    /* Reserve the scrollbar's space whether or not it is showing. Without
+       this, a page whose height lands near the viewport's can oscillate
+       forever: the scrollbar appears, which narrows the viewport, which
+       narrows the classify cockpit's media column, whose height is its width
+       divided by the frame's aspect ratio — so the page gets shorter, the
+       scrollbar goes away, the column widens, and it starts over. On
+       /classify/:id that reads as the player juddering several times a
+       second. Browser zoom "fixed" it only by pushing the page clear of the
+       threshold so the scrollbar stayed put. */
+    scrollbar-gutter: stable;
   }
 
   body {
