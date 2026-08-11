@@ -221,6 +221,6 @@ describe('ObjectFilmstrip', () => {
 
     const cell = screen.getByTestId('filmstrip-cell-279');
     expect(cell).toHaveAttribute('data-state', 'cleared');
-    expect(cell).toHaveAttribute('title', 'No box — you marked the object not visible here');
+    expect(cell).toHaveAttribute('title', 'No box — the object is recorded as not visible here');
   });
 });

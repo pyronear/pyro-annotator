@@ -156,9 +156,12 @@ describe('BoxSourceRail', () => {
     expect(onClear).toHaveBeenCalled();
   });
 
-  it('presses the None row on a cleared frame', () => {
+  it('presses the None row on a cleared frame, and disables it like a committed source row', () => {
     render(<BoxSourceRail {...props} committed={null} cleared />);
-    expect(screen.getByTestId('source-row-none')).toHaveAttribute('aria-pressed', 'true');
+    const none = screen.getByTestId('source-row-none');
+    expect(none).toHaveAttribute('aria-pressed', 'true');
+    // Pressing again is a no-op, so it must not offer itself as one.
+    expect(none).toBeDisabled();
   });
 
   it('keeps the source rows live on a cleared frame — re-picking one is the undo', () => {

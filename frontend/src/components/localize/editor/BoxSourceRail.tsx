@@ -227,7 +227,12 @@ export function BoxSourceRail({
             type="button"
             data-testid="source-row-none"
             aria-pressed={cleared}
-            disabled={disabled}
+            // Disabled once pressed, exactly as a committed source row is:
+            // pressing again is a no-op (`clear` returns early on an already
+            // cleared frame), and an enabled toggle that announces itself as
+            // pressed promises an un-press it cannot deliver. The undo is a
+            // source row above.
+            disabled={disabled || cleared}
             onKeyDown={e => {
               // Same trap the source rows guard against: Enter must be this
               // row's own activation, not the editor's global accept — which

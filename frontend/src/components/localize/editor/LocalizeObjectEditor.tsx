@@ -422,11 +422,19 @@ export function LocalizeObjectEditor({
 
   const acceptAndNext = useCallback(() => {
     if (!editable) return;
+    // A cleared frame is already settled, so Enter only moves on. Committing
+    // the pick here would silently reinstate the box the annotator just
+    // rejected — and Enter is the habitual advance key, so they would be on
+    // the next frame before it happened.
+    if (cleared) {
+      step(1);
+      return;
+    }
     const pick = priorityPick(candidates);
     if (!pick) return;
     commitCandidate(pick);
     step(1);
-  }, [editable, candidates, commitCandidate, step]);
+  }, [editable, cleared, candidates, commitCandidate, step]);
 
   // --- Zoom ---------------------------------------------------------------
 
@@ -856,7 +864,14 @@ export function LocalizeObjectEditor({
           // committed: on an undecided frame it rejects the model's
           // proposal, on a committed one it takes the box back. A no-op
           // outside the object's range, and on an already-cleared frame.
-          if (!editable) return;
+          //
+          // Auto-repeat is dropped: the write is async, so a held key would
+          // fire before `existingAnnotation` refetches. On a frame with no
+          // annotation yet that means N creates against a detection_id
+          // unique constraint — a burst of failure toasts on a save that
+          // succeeded — and on an evidence-free frame, N deletes of a row
+          // the first one already removed.
+          if (!editable || e.repeat) return;
           clearRef.current();
           break;
         case 'g':
@@ -1149,16 +1164,22 @@ export function LocalizeObjectEditor({
               <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                 No box on this frame
               </span>
-              {/* The undo depends on there being something to go back TO.
-                  A cleared frame no model boxed has every rail row disabled
+              {/* Stated impersonally: `isCleared` only sees "committed with
+                  no box", which a boxless annotated frame reaches without
+                  anyone deciding it (issue #346), and the editor opens on
+                  already-annotated lanes. "You marked" would credit the
+                  viewer with a decision they may never have made.
+
+                  The undo depends on there being something to go back TO. A
+                  cleared frame no model boxed has every rail row disabled
                   and Delete guarded, so pointing at the rail would be a lie
                   — drawing is the only way back. Reachable through the
                   un-materialize 409 fallback (LocalizeAlertPage). */}
               <span className="font-body text-detail text-haze">
-                You marked {objectLabel} as not visible here.{' '}
+                {objectLabel} is recorded as not visible on this frame.{' '}
                 {candidates.length > 0
-                  ? 'Pick a box on the right to undo it.'
-                  : 'Draw a box to undo it.'}
+                  ? 'Pick a box on the right to change that.'
+                  : 'Draw a box to change that.'}
               </span>
             </div>
           )}

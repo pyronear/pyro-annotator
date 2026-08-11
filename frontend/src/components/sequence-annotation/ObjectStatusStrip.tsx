@@ -45,6 +45,7 @@
  */
 
 import React from 'react';
+import { clearedHatch } from '@/components/annotation/clearedEncoding';
 
 export type ObjectStatusStripStatus =
   | 'confirmed'
@@ -141,7 +142,7 @@ function segmentAppearance(
     return {
       className: SEGMENT_BASE_CLASS,
       style: {
-        backgroundImage: `repeating-linear-gradient(45deg, ${color} 0px, ${color} 2px, transparent 2px, transparent 4px)`,
+        ...clearedHatch(color),
         ...(playhead ? { boxShadow: PLAYHEAD_SHADOW } : {}),
       },
     };

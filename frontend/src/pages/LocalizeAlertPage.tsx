@@ -1274,7 +1274,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // panel's actions beside it: closing the frame editor leaves an object
   // active without re-entering focus, and that is exactly when someone is
   // most obviously working one object.
-  const canShowCrop = activeLaneId != null && activeLaneBoxes.length > 0;
+  // Cleared boxes don't count: the loop draws nothing on those frames, so a
+  // lane whose every frame is cleared would open onto an empty square — the
+  // exact thing this gate exists to prevent.
+  const canShowCrop = activeLaneId != null && activeLaneBoxes.some(b => !b.cleared);
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
   // for looking closely at just this object, and the selection its rail row

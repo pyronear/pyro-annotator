@@ -1094,6 +1094,35 @@ describe('LocalizeObjectEditor cleared frames', () => {
     expect(screen.getByTestId('editor-accept-remaining')).toBeInTheDocument();
   });
 
+  it('Enter on a cleared frame advances without re-committing the box it rejected', () => {
+    // Enter is the habitual advance key here. Re-committing the priority
+    // pick would silently undo the clear, and the annotator would already be
+    // on the next frame when it happened.
+    const onCommit = vi.fn();
+    const onNavigateToDetection = vi.fn();
+    renderLoadedEditor({
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+      onCommit,
+      onNavigateToDetection,
+    });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
+  });
+
+  it('ignores auto-repeat on Delete, so holding it writes once', () => {
+    // Held Delete used to fire clear() per repeat. On a frame with no
+    // annotation yet each one POSTs, and the detection_id unique constraint
+    // turns every call after the first into a "Failed to save" toast on a
+    // save that actually succeeded.
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    fireEvent.keyDown(window, { key: 'Delete', repeat: true });
+    fireEvent.keyDown(window, { key: 'Delete', repeat: true });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
   it("the rail's None row clears the frame", () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
@@ -1120,7 +1149,7 @@ describe('LocalizeObjectEditor cleared frames', () => {
       laneDetections: [detectionWithNoBoxes, lastDetection],
       existingAnnotation: clearedAnnotation(detectionWithNoBoxes.id),
     });
-    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Draw a box to undo/);
+    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Draw a box to change that/);
   });
 
   it('leaves Enter to a focused None row, so it never commits the box it rejects', () => {

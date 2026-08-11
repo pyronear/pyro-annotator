@@ -261,4 +261,13 @@ describe('isCleared', () => {
   it('is false while the annotation is not yet committed', () => {
     expect(isCleared({ ...annotated([]), processing_stage: 'bbox_annotation' })).toBe(false);
   });
+
+  it('is false for a malformed item with neither smoke nor false-positive type', () => {
+    // `collectLaneBoxes` counts that item as a real box and draws it. If this
+    // reported cleared, the editor would show "no box on this frame" while
+    // the accept preview drew one.
+    expect(isCleared(annotated([{ xyxyn: [0.1, 0.1, 0.3, 0.3], class_name: 'smoke' }]))).toBe(
+      false
+    );
+  });
 });

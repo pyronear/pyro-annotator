@@ -98,7 +98,10 @@ export function buildFilmstripEntries(
       inObject: true,
       run,
       committedSource: committed?.source ?? null,
-      cleared: isCleared(annotation),
+      // `committed` rather than a second `isCleared` scan of the same items:
+      // one pass, and the flag cannot drift out of step with the
+      // `committedSource` on its own entry.
+      cleared: committed === null && isCleared(annotation),
       availableSource: available?.source ?? null,
       xyxyn: (committed ?? available)?.xyxyn ?? null,
     };

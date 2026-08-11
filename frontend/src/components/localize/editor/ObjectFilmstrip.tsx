@@ -22,7 +22,7 @@
  * thumbnails are square crops of the object.
  *
  *   solid, source colour    a box is committed, from that source
- *   solid, neutral          you marked the object not visible on this frame
+ *   solid, neutral          the object is recorded as not visible on this frame
  *   dashed, source colour   that source offers a box, not yet accepted
  *   hatched, signal         no source found anything — a hole in the track
  *   faint, neutral          the object is not on this frame at all
@@ -81,7 +81,9 @@ function borderStyle(entry: FilmstripEntry): React.CSSProperties {
 function cellLabel(entry: FilmstripEntry): string {
   const state = cellState(entry);
   if (state === 'committed') return `${entry.committedSource} box accepted`;
-  if (state === 'cleared') return 'No box — you marked the object not visible here';
+  // Impersonal: a boxless annotated frame reaches this state without anyone
+  // deciding it (issue #346), and the strip cannot tell the two apart.
+  if (state === 'cleared') return 'No box — the object is recorded as not visible here';
   if (state === 'available') return `${entry.availableSource} box, not accepted yet`;
   if (state === 'none') return 'No box — no model found smoke here';
   return 'This object was not detected on this frame';
@@ -178,16 +180,17 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                   <span
                     className={`relative block overflow-hidden rounded border-2 transition-all ${
                       entry.detectionId === currentDetectionId ? 'h-16' : 'h-12'
-                    } ${
-                      entry.inObject
-                        ? cellState(entry) === 'cleared'
-                          ? 'opacity-50'
-                          : ''
-                        : 'opacity-60 grayscale'
-                    }`}
+                    } ${entry.inObject ? '' : 'opacity-60 grayscale'}`}
                     style={borderStyle(entry)}
                   >
-                    <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />
+                    {/* Muting the CELL would fade its border too, and at
+                        opacity-50 the cleared border came out fainter than
+                        the out-of-range one it has to read apart from. Only
+                        the picture is dimmed; the border stays at full
+                        strength to carry the state. */}
+                    <span className={`block ${cellState(entry) === 'cleared' ? 'opacity-50' : ''}`}>
+                      <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />
+                    </span>
                     {cellState(entry) === 'none' && (
                       // A hole in the object's track. Hatching reads as
                       // "nothing here" without spending a glyph on it, and

@@ -248,6 +248,8 @@ describe('AcceptRemainingPopover frame context', () => {
     const segment = screen.getByTestId('status-segment-0-1');
     expect(segment.style.backgroundImage).toContain('repeating-linear-gradient');
     expect(segment.style.backgroundColor).toBe('');
-    expect(screen.getByTestId('accept-remaining-legend')).toHaveTextContent('not visible');
+    // The same word the rail's own legend uses — LocalizeTimelineLegend
+    // copies this file's labels verbatim.
+    expect(screen.getByTestId('accept-remaining-legend')).toHaveTextContent('cleared');
   });
 });

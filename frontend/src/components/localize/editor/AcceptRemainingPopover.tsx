@@ -43,20 +43,25 @@
 import { useState, type CSSProperties } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import { clearedHatch } from '@/components/annotation/clearedEncoding';
 import {
   ObjectStatusStrip,
   UNDETECTED_OUTLINE,
   type ObjectStatusStripStatus,
 } from '@/components/sequence-annotation/ObjectStatusStrip';
 import type { FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
-import type { BoundingBox } from '@/types/api';
+import type { LaneBox } from '@/utils/annotation/quickSubmitUtils';
 
 export interface AcceptRemainingPopoverProps {
   objectLabel: string;
   objectColor: string;
   sequenceId: number;
-  /** The lane's boxes as they would stand after accepting. */
-  previewBoxes: BoundingBox[];
+  /**
+   * The lane's boxes as they would stand after accepting. `LaneBox`, not
+   * `BoundingBox`: the `cleared` flag has to survive the trip to the loop,
+   * and under the wider type any normalization here would drop it silently.
+   */
+  previewBoxes: LaneBox[];
   /** One entry per alert frame (chronological) — drives the status strip, the frame counter and the playhead. */
   entries: FilmstripEntry[];
   /** Frames that will gain a box. */
@@ -121,10 +126,11 @@ export function AcceptRemainingPopover({
   }
   if (present.has('cleared')) {
     legendItems.push({
-      label: 'not visible',
-      swatchStyle: {
-        backgroundImage: `repeating-linear-gradient(45deg, ${objectColor} 0px, ${objectColor} 2px, transparent 2px, transparent 4px)`,
-      },
+      // `LocalizeTimelineLegend` copies this file's labels verbatim so both
+      // surfaces teach the same words; its cleared chip already says
+      // "cleared", so this one must too.
+      label: 'cleared',
+      swatchStyle: clearedHatch(objectColor),
     });
   }
   if (present.has('pending')) {
