@@ -77,6 +77,20 @@ export function committedBox(
 }
 
 /**
+ * Whether this frame carries a committed "no box for this object here" —
+ * the annotator's clear, as opposed to a frame nobody has decided yet.
+ *
+ * Same derivation `alertLocalizeUtils.ts` uses for its `cleared` timeline
+ * status (committed stage, zero smoke boxes); the editor needs its own read
+ * because it works from a single annotation rather than from the alert
+ * model. False-positive items are already excluded by `committedBox`, so a
+ * frame carrying only those reads as cleared — which is what it is.
+ */
+export function isCleared(annotation: DetectionAnnotation | null | undefined): boolean {
+  return annotation?.processing_stage === 'annotated' && committedBox(annotation) === null;
+}
+
+/**
  * Every box on offer for this object on this frame, in priority order
  * (manual, then auto, then engine). A manual candidate exists only once one
  * has been drawn and saved — drawing commits immediately, so the committed
