@@ -230,16 +230,24 @@ describe('AcceptRemainingPopover frame context', () => {
     expect(screen.getByTestId('status-segment-0-3')).not.toHaveAttribute('data-playhead');
   });
 
-  it('shows a cleared frame as settled, not as one the sweep will fill', () => {
+  it('gives a cleared frame its own status — settled, but with nothing on the frame', () => {
     // Same frame as ENTRIES[1] — an auto box on offer — except the annotator
-    // already answered "not visible here". The sweep will pass over it, so
-    // the strip must not colour it like one still awaiting a box.
+    // already answered "not visible here". The sweep passes over it, so it
+    // must not read as pending; but a solid fill (what `confirmed` draws)
+    // would show a box the annotator deleted, which is what this guards.
     const cleared: FilmstripEntry = { ...ENTRIES[1], cleared: true };
     renderPopover([ENTRIES[0], cleared]);
 
     expect(screen.getByTestId('status-segment-0-1')).toHaveAttribute(
       'aria-label',
-      'Object 2, frame 2: confirmed'
+      'Object 2, frame 2: cleared'
     );
+    // Hatched, matching the localize rail's own cleared segment — and
+    // explicitly NOT the solid fill `confirmed` uses, which is the whole
+    // point: a solid segment shows a box that is not there.
+    const segment = screen.getByTestId('status-segment-0-1');
+    expect(segment.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(segment.style.backgroundColor).toBe('');
+    expect(screen.getByTestId('accept-remaining-legend')).toHaveTextContent('not visible');
   });
 });

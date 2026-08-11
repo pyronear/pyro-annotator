@@ -25,8 +25,11 @@
  * rather than after.
  *
  * Below the loop, a bare single-object status strip shows the object's frames
- * as they stand NOW — committed solid, acceptable faded, gaps outlined — so
- * the faded segments are exactly what the button will fill. The frame counter
+ * as they stand NOW — committed solid, cleared hatched, acceptable faded,
+ * gaps outlined — so the faded segments are exactly what the button will
+ * fill. A cleared frame is settled and untouched by the sweep, but hatched
+ * rather than solid: a solid segment would show a box on a frame the
+ * annotator emptied. The frame counter
  * and the strip's playhead follow the loop's reported position; the loop only
  * plays frames that have boxes, so the counter visibly skips gap frames and
  * the playhead never lands on an outlined segment.
@@ -70,9 +73,12 @@ export interface AcceptRemainingPopoverProps {
 function entryStatus(entry: FilmstripEntry): ObjectStatusStripStatus {
   if (!entry.inObject) return entry.run === 'object' ? 'undetected' : 'absent';
   // A cleared frame is settled — the annotator answered "not visible here",
-  // and the sweep will pass over it exactly as it passes over a committed
-  // box. It keeps an `availableSource`, so it must be tested first.
-  if (entry.committedSource || entry.cleared) return 'confirmed';
+  // and the sweep passes over it exactly as it passes over a committed box.
+  // Its own status rather than `confirmed`, whose solid fill would show a
+  // box on a frame the annotator emptied. It keeps an `availableSource`, so
+  // it must be tested before `pending`.
+  if (entry.committedSource) return 'confirmed';
+  if (entry.cleared) return 'cleared';
   if (entry.availableSource) return 'pending';
   return 'empty';
 }
@@ -107,6 +113,14 @@ export function AcceptRemainingPopover({
   const legendItems: { label: string; swatchStyle: CSSProperties }[] = [];
   if (present.has('confirmed')) {
     legendItems.push({ label: 'committed', swatchStyle: { backgroundColor: objectColor } });
+  }
+  if (present.has('cleared')) {
+    legendItems.push({
+      label: 'not visible',
+      swatchStyle: {
+        backgroundImage: `repeating-linear-gradient(45deg, ${objectColor} 0px, ${objectColor} 2px, transparent 2px, transparent 4px)`,
+      },
+    });
   }
   if (present.has('pending')) {
     legendItems.push({

@@ -139,6 +139,40 @@ describe('collectLaneBoxes', () => {
 });
 
 describe('buildQuickSubmitPlan', () => {
+  it('keeps a cleared frame out of the accept preview loop', () => {
+    // The popover's flipbook shows the track as it WOULD stand after
+    // accepting; a cleared frame contributes nothing to it.
+    const cleared = makeDetection(1, { auto: [box()] });
+    const pending = makeDetection(2, { auto: [box(0.2, 0.2, 0.4, 0.4)] });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    const boxes = collectLaneBoxes([cleared, pending], annotations);
+
+    expect(boxes.map(b => b.detection_id)).toEqual([2]);
+  });
+
+  it('never re-adds a box to a frame the annotator cleared', () => {
+    // The clear leaves the predictions untouched (re-picking one is the
+    // undo), so the frame still LOOKS acceptable. Accepting it would
+    // silently reinstate the box the annotator just rejected.
+    const cleared = makeDetection(1, { auto: [box()], engine: [box()] });
+    const pending = makeDetection(2, { auto: [box(0.2, 0.2, 0.4, 0.4)] });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    const plan = buildQuickSubmitPlan([cleared, pending], annotations, 'wildfire');
+
+    expect(plan.payloads.map(p => p.detection.id)).toEqual([2]);
+  });
+
+  it('leaves a cleared frame empty when it is the only frame', () => {
+    const cleared = makeDetection(1, { auto: [box()] });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    const plan = buildQuickSubmitPlan([cleared], annotations, 'wildfire');
+
+    expect(plan.payloads).toHaveLength(0);
+  });
+
   it('skips done frames, accepts auto boxes for pending frames', () => {
     const dDone = makeDetection(1, { auto: [box()] });
     const dPending = makeDetection(2, { auto: [box(0.2, 0.2, 0.4, 0.4)] });
