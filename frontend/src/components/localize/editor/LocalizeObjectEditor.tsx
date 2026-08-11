@@ -33,6 +33,7 @@ import {
   candidateToBbox,
   committedBox,
   hasModelEvidence,
+  isCleared,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -283,10 +284,9 @@ export function LocalizeObjectEditor({
   const { data: imageData } = useDetectionImage(detection.id);
   const queryClient = useQueryClient();
 
-  // Read by the keyboard handler; kept in refs so a save (which changes the
-  // committed box) doesn't re-bind the window listener.
+  // Read by the keyboard handler; kept in a ref so a save (which rebuilds
+  // `clear`) doesn't re-bind the window listener.
   const clearRef = useRef<() => void>(() => undefined);
-  const committedRef = useRef<BoxCandidate | null>(null);
 
   // --- The object's box on this frame -------------------------------------
 
@@ -295,6 +295,9 @@ export function LocalizeObjectEditor({
     [detection, existingAnnotation]
   );
   const committed = useMemo(() => committedBox(existingAnnotation), [existingAnnotation]);
+  // The annotator's "not visible here" for this frame — a decision, not the
+  // absence of one, and the difference the stage and the rail have to show.
+  const cleared = isCleared(existingAnnotation);
   // A live drag renders from `boxEdit.next` so the box tracks the cursor
   // before the save round-trips.
   const shownCommitted: BoxCandidate | null = boxEdit
@@ -326,7 +329,6 @@ export function LocalizeObjectEditor({
           : pick
             ? [pick]
             : [];
-  committedRef.current = committed;
 
   const entries = useMemo(
     () => buildFilmstripEntries(alertFrames, laneSequenceId, laneDetections, laneAnnotations),
@@ -376,11 +378,14 @@ export function LocalizeObjectEditor({
 
   const clear = useCallback(() => {
     setPreviewed(null);
+    // Already settled empty. Nothing to write — and on an evidence-free
+    // frame a second press must not remove a frame the annotator kept.
+    if (cleared) return;
     // A frame with no model evidence exists only because a human boxed it;
     // clearing removes the frame itself (issue #287's un-materialize).
     if (hasModelEvidence(detection)) onCommit(detection, []);
     else onUnmaterialize(detection);
-  }, [detection, onCommit, onUnmaterialize]);
+  }, [cleared, detection, onCommit, onUnmaterialize]);
 
   clearRef.current = clear;
 
@@ -846,10 +851,12 @@ export function LocalizeObjectEditor({
           break;
         case 'Delete':
         case 'Backspace':
-          // Removes whatever is committed, not only a hand-drawn box — for a
-          // model box this is the review's "reject". A no-op on a frame with
-          // nothing committed or one outside the object's range.
-          if (!editable || !committedRef.current) return;
+          // "This object is not visible on this frame" — the one answer the
+          // editor had no way to say. Works whether or not a box is
+          // committed: on an undecided frame it rejects the model's
+          // proposal, on a committed one it takes the box back. A no-op
+          // outside the object's range, and on an already-cleared frame.
+          if (!editable) return;
           clearRef.current();
           break;
         case 'g':

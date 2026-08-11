@@ -78,6 +78,15 @@ const committedAnnotation = (detectionId: number, origin: string): DetectionAnno
     },
   }) as unknown as DetectionAnnotation;
 
+/** A frame the annotator settled as empty — "not visible here". */
+const clearedAnnotation = (detectionId: number): DetectionAnnotation =>
+  ({
+    id: 6,
+    detection_id: detectionId,
+    annotation: { annotation: [] },
+    processing_stage: 'annotated',
+  }) as unknown as DetectionAnnotation;
+
 type Props = React.ComponentProps<typeof LocalizeObjectEditor>;
 
 const baseProps = (): Props => ({
@@ -573,11 +582,37 @@ describe('LocalizeObjectEditor box selection', () => {
     expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
   });
 
-  it('Delete does nothing on a frame with no committed box', () => {
+  it('Delete rejects the model on an undecided frame — the answer that had no other way to be said', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
     fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('Delete writes nothing on a frame already cleared', () => {
+    const onCommit = vi.fn();
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+      onCommit,
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
     expect(onCommit).not.toHaveBeenCalled();
+    expect(onUnmaterialize).not.toHaveBeenCalled();
+  });
+
+  it('Delete un-materializes an evidence-free frame even with nothing committed', () => {
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
   });
 
   it('Delete does nothing on an out-of-range frame', () => {
