@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import type { Detection, SmokeType } from '@/types/api';
 import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
 import {
@@ -152,12 +152,19 @@ export function AddObjectOverlay({
     setCurrentRecordedAt(first);
   };
 
-  const reopenRange = () => {
+  // Start the range over, from either phase. Choosing a range is a two-click
+  // gesture with no natural undo — a mis-click on the first frame otherwise
+  // strands you until the second click — so this is always available once
+  // anything is selected. It drops the anchor boxes too: re-anchoring a box
+  // onto a frame that may have left the range is not worth the complexity.
+  const restartRange = () => {
     setPhase('range');
     setPendingFirst(null);
     setRange(null);
     setAnchorBoxes({ first: null, last: null });
   };
+
+  const hasSelection = range !== null || pendingFirst !== null;
 
   const step = useCallback(
     (direction: -1 | 1) => {
@@ -227,48 +234,61 @@ export function AddObjectOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-char/95"
+      // Same surfaces as the object editor (bg-ash ground, bg-paper chrome,
+      // border-line): this is the same job on the same alert, so it should not
+      // look like a different application.
+      className="fixed inset-0 z-50 flex flex-col bg-ash"
       role="dialog"
       aria-modal="true"
       aria-label="Add object"
       data-testid="add-object-overlay"
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
-        <div className="flex items-baseline gap-3">
-          <span className="font-body text-sm font-semibold text-white">New object</span>
-          <span className="font-data text-detail text-white/60">
-            {range
-              ? `${entries.filter(e => e.inRange).length} frames`
-              : 'choose the frames it appears on'}
+      <div className="relative z-40 flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
+        <span className="font-body text-sm font-semibold text-char">New object</span>
+        <span className="font-data text-detail text-haze">
+          {range
+            ? `${entries.filter(e => e.inRange).length} frames`
+            : 'choose the frames it appears on'}
+        </span>
+        {currentEntry && (
+          <span className="font-data text-detail text-haze">
+            {formatDateTime(currentEntry.recordedAt, { seconds: true })}
           </span>
-          {currentEntry && (
-            <span className="font-data text-detail text-white/40">
-              {formatDateTime(currentEntry.recordedAt, { seconds: true })}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {phase === 'draw' && (
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {hasSelection && (
             <button
               type="button"
-              onClick={reopenRange}
-              className="rounded-lg border border-white/20 px-3 py-1 font-body text-xs text-white hover:bg-white/10"
+              onClick={restartRange}
+              data-testid="restart-range"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
             >
-              Change range
+              <RotateCcw className="h-3.5 w-3.5" />
+              Restart range
             </button>
           )}
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white"
+            className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      {/*
+        MUST centre its content, and must hug the image. `calculateImageBounds`
+        works out where an object-contain image sits by assuming it is CENTRED
+        in its container (x = (containerWidth - width) / 2), and the canvas root
+        shrink-wraps the <img>. Drop the centring and the container stretches to
+        the full panel width while the image stays left-aligned, so every
+        screen-to-image conversion is off by half the leftover width and drawn
+        boxes land away from the cursor. Same classes as the editor's stage, for
+        exactly that reason.
+      */}
+      <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
         {shownDetection && (
           <DetectionAnnotationCanvas
             detection={shownDetection}
@@ -301,15 +321,18 @@ export function AddObjectOverlay({
             overlaysVisible
           />
         )}
+        {/* Floated over the stage rather than stacked into the column, so the
+            photo never resizes as the instruction changes — the same treatment
+            the editor gives its out-of-range banner, and the same pine. */}
         <p
           data-testid="add-object-instruction"
-          className="pointer-events-none absolute inset-x-0 bottom-3 text-center font-body text-detail text-white/90"
+          className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-line bg-pine-soft px-4 py-2 font-body text-detail text-pine"
         >
-          <span className="rounded-full bg-black/60 px-3 py-1">{instruction}</span>
+          {instruction}
         </p>
       </div>
 
-      <div className="border-t border-white/10 bg-paper">
+      <div className="flex-none border-t border-line bg-paper">
         <ObjectRangeStrip
           entries={entries}
           currentRecordedAt={currentRecordedAt}

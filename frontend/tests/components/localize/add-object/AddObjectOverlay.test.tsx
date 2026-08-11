@@ -220,15 +220,75 @@ describe('AddObjectOverlay drawing', () => {
     expect(onCreate.mock.calls[0][1]).toBe('industrial');
   });
 
-  it('drops the boxes when the range is re-opened', () => {
+  it('drops the boxes when the range is restarted', () => {
     renderOverlay();
     setRangeAndBoxBothAnchors();
     expect(createButton()).toBeEnabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /change range/i }));
+    fireEvent.click(screen.getByTestId('restart-range'));
     // Re-anchoring a box onto a frame that may have left the range is not
     // worth the complexity, so the anchors are simply re-asked.
     expect(createButton()).toBeDisabled();
+  });
+});
+
+describe('AddObjectOverlay range restart', () => {
+  it('offers no restart before anything is selected', () => {
+    renderOverlay();
+    expect(screen.queryByTestId('restart-range')).not.toBeInTheDocument();
+  });
+
+  it('undoes a mis-clicked first frame mid-selection', () => {
+    // The two-click gesture has no natural undo: without this, a wrong first
+    // click strands you until you commit a range you did not want.
+    renderOverlay();
+    fireEvent.click(cell(TIMES[3]));
+    expect(cell(TIMES[3])).toHaveAttribute('data-anchor', 'true');
+
+    fireEvent.click(screen.getByTestId('restart-range'));
+    expect(
+      screen.queryAllByTestId(/^range-strip-cell-/).filter(el => el.hasAttribute('data-in-range'))
+    ).toHaveLength(0);
+
+    // And the next click starts a fresh first anchor rather than completing
+    // the abandoned one.
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[1]));
+    expect(cell(TIMES[0])).toHaveAttribute('data-anchor', 'true');
+    expect(cell(TIMES[1])).toHaveAttribute('data-anchor', 'true');
+    expect(cell(TIMES[3])).not.toHaveAttribute('data-in-range');
+  });
+
+  it('restarts from the draw phase too', () => {
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    fireEvent.click(screen.getByTestId('restart-range'));
+
+    // Back to choosing: the next two clicks set a range again rather than
+    // being swallowed as draw-phase frame steps.
+    fireEvent.click(cell(TIMES[1]));
+    fireEvent.click(cell(TIMES[3]));
+    expect(cell(TIMES[0])).not.toHaveAttribute('data-in-range');
+    expect(cell(TIMES[1])).toHaveAttribute('data-anchor', 'true');
+    expect(cell(TIMES[3])).toHaveAttribute('data-anchor', 'true');
+  });
+});
+
+describe('AddObjectOverlay stage geometry', () => {
+  it('centres the stage, which the coordinate maths depends on', () => {
+    // `calculateImageBounds` locates an object-contain image by assuming it is
+    // CENTRED in its container, and the canvas root shrink-wraps the <img>.
+    // Without centring the container stretches to the full panel width while
+    // the image stays left-aligned, and every screen-to-image conversion is
+    // off by half the leftover width — boxes land away from the cursor.
+    // jsdom does no layout, so the fixture cannot catch this by measuring;
+    // this pins the contract the maths relies on instead.
+    renderOverlay();
+    const image = screen.getByAltText(/^Detection /);
+    const stage = image.parentElement?.parentElement as HTMLElement;
+    expect(stage.className).toContain('items-center');
+    expect(stage.className).toContain('justify-center');
   });
 });
 
