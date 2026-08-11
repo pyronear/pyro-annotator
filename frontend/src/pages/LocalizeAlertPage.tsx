@@ -1214,7 +1214,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return collectLaneBoxes(
       detectionsByLaneId[activeLaneId] ?? [],
       new Map((annotationsByLaneId[activeLaneId] ?? []).map(a => [a.detection_id, a])),
-      { falsePositive: activeLaneIsFalsePositive }
+      // Cleared frames play, marked, so the loop doesn't jump over them.
+      // Safe alongside `falsePositive`, which takes precedence: an FP lane's
+      // empty annotation is never read as a clear.
+      { falsePositive: activeLaneIsFalsePositive, markCleared: true }
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
 
@@ -1231,11 +1234,16 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       annotationsByLaneId[activeLaneId] ?? []
     );
   }, [frameModel.frames, activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  // `!e.cleared` on both, matching the editor's own counts: a cleared frame
+  // keeps its `availableSource` (the predictions are untouched, so re-picking
+  // one is the undo), but the annotator already settled it and
+  // `buildQuickSubmitPlan` skips it. Counting it here would leave a button
+  // whose accept writes nothing and never clears the count.
   const acceptRemainingCount = acceptEntries.filter(
-    e => e.inObject && !e.committedSource && e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && e.availableSource
   ).length;
   const acceptGapCount = acceptEntries.filter(
-    e => e.inObject && !e.committedSource && !e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && !e.availableSource
   ).length;
 
   // A popover left open while the selection moves would preview the wrong
@@ -1266,7 +1274,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // panel's actions beside it: closing the frame editor leaves an object
   // active without re-entering focus, and that is exactly when someone is
   // most obviously working one object.
-  const canShowCrop = activeLaneId != null && activeLaneBoxes.length > 0;
+  // Cleared boxes don't count: the loop draws nothing on those frames, so a
+  // lane whose every frame is cleared would open onto an empty square — the
+  // exact thing this gate exists to prevent.
+  const canShowCrop = activeLaneId != null && activeLaneBoxes.some(b => !b.cleared);
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
   // for looking closely at just this object, and the selection its rail row

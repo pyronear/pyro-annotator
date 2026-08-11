@@ -168,6 +168,43 @@ describe('CroppedImageSequence', () => {
       expect(ctx2d.lineWidth).toBe(4);
     });
 
+    it('plays a cleared frame but draws no box on it — that is the recorded answer', async () => {
+      render(
+        <CroppedImageSequence
+          bboxes={[{ ...BBOXES[0], cleared: true }]}
+          sequenceId={9}
+          accentColor="#E4572E"
+          showBoxes
+        />
+      );
+      // The frame is in the loop (dropping it made the track jump a hole)...
+      await waitFor(() => expect(ctx2d.drawImage).toHaveBeenCalled());
+      // ...but nothing is drawn on it.
+      expect(ctx2d.strokeRect).not.toHaveBeenCalled();
+    });
+
+    it('keeps a cleared box out of the crop framing — it is usually not the object', async () => {
+      // The reason to clear is often that the model boxed something else
+      // entirely; averaging that in would drag the crop off the plume.
+      // Same geometry as the plain overlay test, plus a far-corner cleared
+      // box that must not move the window.
+      render(
+        <CroppedImageSequence
+          bboxes={[BBOXES[0], { detection_id: 1, xyxyn: [0.9, 0.9, 0.99, 0.99], cleared: true }]}
+          sequenceId={9}
+          accentColor="#E4572E"
+          showBoxes
+        />
+      );
+      await waitFor(() => expect(ctx2d.strokeRect).toHaveBeenCalled());
+      expect(ctx2d.strokeRect).toHaveBeenCalledWith(
+        expect.closeTo(280, 3),
+        expect.closeTo(341.25, 3),
+        expect.closeTo(280, 3),
+        expect.closeTo(157.5, 3)
+      );
+    });
+
     it('draws no boxes without showBoxes', async () => {
       await renderLoaded();
       await waitFor(() => expect(ctx2d.drawImage).toHaveBeenCalled());

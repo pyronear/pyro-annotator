@@ -7,14 +7,23 @@
  *
  * Rows for sources with no box still render (disabled), so the rail's shape
  * doesn't jump as you step frames.
+ *
+ * A fourth row below them records the opposite answer — no box on this frame
+ * at all — which the rail previously left to the Delete key alone.
  */
 
 import { useEffect, useRef } from 'react';
-import { Check } from 'lucide-react';
+import { Ban, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { SOURCE_COLOR, SOURCE_EXPLANATION, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
+import {
+  NONE_EXPLANATION,
+  SOURCE_COLOR,
+  SOURCE_EXPLANATION,
+  SOURCE_LABEL,
+  SOURCE_ORDER,
+} from './sourceIdentity';
 
 const CROP_RES = 128;
 /**
@@ -35,9 +44,13 @@ export interface BoxSourceRailProps {
   committed: BoxCandidate | null;
   /** URL of the frame image, or null while it loads. */
   imageUrl: string | null;
+  /** True when this frame carries a committed "not visible here". */
+  cleared: boolean;
   /** True on a frame outside the object's range: view only. */
   disabled: boolean;
   onCommit: (candidate: BoxCandidate) => void;
+  /** Record "not visible here" for this frame. */
+  onClear: () => void;
   /**
    * Solo-preview this candidate on the stage (null to release). Fired on
    * hover and keyboard focus; never for the committed or empty rows, whose
@@ -117,9 +130,11 @@ function CandidateCrop({
 export function BoxSourceRail({
   candidates,
   committed,
+  cleared,
   imageUrl,
   disabled,
   onCommit,
+  onClear,
   onPreview,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
@@ -202,8 +217,47 @@ export function BoxSourceRail({
         );
       })}
 
-      {/* No buttons: the canvas has no modes, so there is nothing to arm, and
-          removing a box is Delete's job (see the shortcuts sheet). */}
+      {/* The sources answer "which box"; this answers "no box". A rule, not
+          a gap — that is a real boundary rather than spacing. Enabled on
+          every in-range frame including one no model boxed, which is the
+          only way such a frame can ever be settled. */}
+      <div className="mt-2.5 border-t border-line pt-2.5">
+        <Tooltip tip={NONE_EXPLANATION} className="w-full">
+          <button
+            type="button"
+            data-testid="source-row-none"
+            aria-pressed={cleared}
+            // Disabled once pressed, exactly as a committed source row is:
+            // pressing again is a no-op (`clear` returns early on an already
+            // cleared frame), and an enabled toggle that announces itself as
+            // pressed promises an un-press it cannot deliver. The undo is a
+            // source row above.
+            disabled={disabled || cleared}
+            onKeyDown={e => {
+              // Same trap the source rows guard against: Enter must be this
+              // row's own activation, not the editor's global accept — which
+              // would commit the very box this row exists to reject.
+              if (e.key === 'Enter') e.stopPropagation();
+            }}
+            onClick={onClear}
+            className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
+              cleared ? 'border-pine bg-pine-soft' : 'border-transparent hover:bg-ash'
+            } ${disabled ? 'opacity-40' : ''}`}
+          >
+            <span className="flex h-11 w-14 flex-none items-center justify-center rounded border border-line bg-ash">
+              <Ban className="h-5 w-5 text-haze" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
+                None
+                {cleared && <Check className="h-3.5 w-3.5 text-pine" />}
+              </span>
+              <span className="block font-data text-detail text-haze">not visible here · Del</span>
+            </span>
+          </button>
+        </Tooltip>
+      </div>
+
       <p className="mt-3 font-body text-detail leading-relaxed text-haze">
         Drag on the image to draw. It replaces the box on this frame — each object carries one box
         per frame.

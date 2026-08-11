@@ -3,6 +3,7 @@ import {
   boxCandidates,
   committedBox,
   hasModelEvidence,
+  isCleared,
   priorityPick,
   candidateToBbox,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -21,6 +22,10 @@ const detection = (over: Partial<Detection> = {}): Detection =>
 
 const annotation = (items: DetectionAnnotation['annotation']['annotation']): DetectionAnnotation =>
   ({ id: 9, detection_id: 1, annotation: { annotation: items } }) as DetectionAnnotation;
+
+/** A committed annotation — what every editor write produces. */
+const annotated = (items: DetectionAnnotation['annotation']['annotation']): DetectionAnnotation =>
+  ({ ...annotation(items), processing_stage: 'annotated' }) as DetectionAnnotation;
 
 describe('boxCandidates', () => {
   it('orders manual, then auto, then engine', () => {
@@ -217,5 +222,52 @@ describe('hasModelEvidence', () => {
         auto_predictions: null,
       } as unknown as Detection)
     ).toBe(false);
+  });
+});
+
+describe('isCleared', () => {
+  it('is true for a committed annotation holding no box — the annotator said "not visible here"', () => {
+    expect(isCleared(annotated([]))).toBe(true);
+  });
+
+  it("is true when only false-positive items remain — those are not this object's box", () => {
+    expect(
+      isCleared(
+        annotated([{ xyxyn: [0, 0, 1, 1], class_name: 'smoke', false_positive_type: 'antenna' }])
+      )
+    ).toBe(true);
+  });
+
+  it('is false when a smoke box is committed', () => {
+    expect(
+      isCleared(
+        annotated([
+          {
+            xyxyn: [0.2, 0.2, 0.3, 0.3],
+            class_name: 'smoke',
+            smoke_type: 'wildfire',
+            origin: 'auto',
+          },
+        ])
+      )
+    ).toBe(false);
+  });
+
+  it('is false with no annotation at all — that frame is undecided, not cleared', () => {
+    expect(isCleared(null)).toBe(false);
+    expect(isCleared(undefined)).toBe(false);
+  });
+
+  it('is false while the annotation is not yet committed', () => {
+    expect(isCleared({ ...annotated([]), processing_stage: 'bbox_annotation' })).toBe(false);
+  });
+
+  it('is false for a malformed item with neither smoke nor false-positive type', () => {
+    // `collectLaneBoxes` counts that item as a real box and draws it. If this
+    // reported cleared, the editor would show "no box on this frame" while
+    // the accept preview drew one.
+    expect(isCleared(annotated([{ xyxyn: [0.1, 0.1, 0.3, 0.3], class_name: 'smoke' }]))).toBe(
+      false
+    );
   });
 });

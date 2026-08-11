@@ -6,7 +6,8 @@
  * row per object — a color swatch + label button ("Go to Object N") plus a
  * per-frame status bar across the union of the alert's frame timestamps,
  * where each frame is its own button reporting that object's status at that
- * timestamp: `confirmed` (solid fill), `pending` (reduced-opacity fill — a
+ * timestamp: `confirmed` (solid fill), `cleared` (hatched fill — committed
+ * with no box, "object not visible here"), `pending` (reduced-opacity fill — a
  * model box waiting to be accepted), `empty` (outline only — on this frame
  * but with nothing on it yet), `undetected` (haze outline — inside the
  * object's span but never detected there, a potential hole in the track),
@@ -44,8 +45,15 @@
  */
 
 import React from 'react';
+import { clearedHatch } from '@/components/annotation/clearedEncoding';
 
-export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'empty' | 'undetected' | 'absent';
+export type ObjectStatusStripStatus =
+  | 'confirmed'
+  | 'cleared'
+  | 'pending'
+  | 'empty'
+  | 'undetected'
+  | 'absent';
 
 /**
  * Outline for `undetected` segments — the haze token, hard-coded because
@@ -123,6 +131,20 @@ function segmentAppearance(
     return {
       className: SEGMENT_BASE_CLASS,
       style: { backgroundColor: color, ...(playhead ? { boxShadow: PLAYHEAD_SHADOW } : {}) },
+    };
+  }
+  if (status === 'cleared') {
+    // Committed with no box — the annotator's "object not visible here".
+    // Settled like confirmed, so it is not faded like a pending frame; but
+    // hatched rather than solid, because a solid fill would show a box that
+    // is not on the frame — exactly the box the annotator deleted. Same
+    // treatment the localize rail's own timeline gives it.
+    return {
+      className: SEGMENT_BASE_CLASS,
+      style: {
+        ...clearedHatch(color),
+        ...(playhead ? { boxShadow: PLAYHEAD_SHADOW } : {}),
+      },
     };
   }
   if (status === 'pending') {

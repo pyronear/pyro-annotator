@@ -78,6 +78,15 @@ const committedAnnotation = (detectionId: number, origin: string): DetectionAnno
     },
   }) as unknown as DetectionAnnotation;
 
+/** A frame the annotator settled as empty — "not visible here". */
+const clearedAnnotation = (detectionId: number): DetectionAnnotation =>
+  ({
+    id: 6,
+    detection_id: detectionId,
+    annotation: { annotation: [] },
+    processing_stage: 'annotated',
+  }) as unknown as DetectionAnnotation;
+
 type Props = React.ComponentProps<typeof LocalizeObjectEditor>;
 
 const baseProps = (): Props => ({
@@ -573,11 +582,37 @@ describe('LocalizeObjectEditor box selection', () => {
     expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
   });
 
-  it('Delete does nothing on a frame with no committed box', () => {
+  it('Delete rejects the model on an undecided frame — the answer that had no other way to be said', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
     fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('Delete writes nothing on a frame already cleared', () => {
+    const onCommit = vi.fn();
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+      onCommit,
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
     expect(onCommit).not.toHaveBeenCalled();
+    expect(onUnmaterialize).not.toHaveBeenCalled();
+  });
+
+  it('Delete un-materializes an evidence-free frame even with nothing committed', () => {
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
   });
 
   it('Delete does nothing on an out-of-range frame', () => {
@@ -1020,6 +1055,117 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     // t003 -> t002 -> t001, then nothing left before it.
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
     expect(screen.getByTestId('filmstrip-cell-99001')).toHaveAttribute('aria-current', 'true');
+  });
+});
+
+describe('LocalizeObjectEditor cleared frames', () => {
+  it('a cleared frame draws no box — the ghost coming back is what made a delete look undone', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cleared-frame-chip')).toBeInTheDocument();
+  });
+
+  it('G still reveals the candidates on a cleared frame — that is how you undo one', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    fireEvent.keyDown(window, { key: 'g' });
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+  });
+
+  it('leaves the chip off a frame that simply has no decision yet', () => {
+    renderLoadedEditor();
+    expect(screen.queryByTestId('cleared-frame-chip')).not.toBeInTheDocument();
+  });
+
+  it('excludes cleared frames from the accept count', () => {
+    // The object is on t003 and t004. Clear both and there is nothing left
+    // for a sweep to fill, so the button goes away entirely.
+    renderLoadedEditor({
+      laneAnnotations: [clearedAnnotation(firstDetection.id), clearedAnnotation(lastDetection.id)],
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+    });
+    expect(screen.queryByTestId('editor-accept-remaining')).not.toBeInTheDocument();
+  });
+
+  it('still offers the accept when an undecided frame remains', () => {
+    renderLoadedEditor({ laneAnnotations: [clearedAnnotation(firstDetection.id)] });
+    expect(screen.getByTestId('editor-accept-remaining')).toBeInTheDocument();
+  });
+
+  it('Enter on a cleared frame advances without re-committing the box it rejected', () => {
+    // Enter is the habitual advance key here. Re-committing the priority
+    // pick would silently undo the clear, and the annotator would already be
+    // on the next frame when it happened.
+    const onCommit = vi.fn();
+    const onNavigateToDetection = vi.fn();
+    renderLoadedEditor({
+      existingAnnotation: clearedAnnotation(firstDetection.id),
+      onCommit,
+      onNavigateToDetection,
+    });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
+  });
+
+  it('ignores auto-repeat on Delete, so holding it writes once', () => {
+    // Held Delete used to fire clear() per repeat. On a frame with no
+    // annotation yet each one POSTs, and the detection_id unique constraint
+    // turns every call after the first into a "Failed to save" toast on a
+    // save that actually succeeded.
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    fireEvent.keyDown(window, { key: 'Delete', repeat: true });
+    fireEvent.keyDown(window, { key: 'Delete', repeat: true });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("the rail's None row clears the frame", () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.click(screen.getByTestId('source-row-none'));
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('presses the None row once the frame is cleared', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.getByTestId('source-row-none')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('points a cleared frame at the rail, while the rail still has something to offer', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Pick a box on the right/);
+  });
+
+  it('points a candidate-less cleared frame at drawing, its only remaining undo', () => {
+    // Every rail row is disabled here and Delete is guarded, so pointing at
+    // the rail would be a lie. Reachable via the un-materialize 409
+    // fallback, which writes exactly this state.
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+      existingAnnotation: clearedAnnotation(detectionWithNoBoxes.id),
+    });
+    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Draw a box to change that/);
+  });
+
+  it('leaves Enter to a focused None row, so it never commits the box it rejects', () => {
+    const onCommit = vi.fn();
+    const onNavigateToDetection = vi.fn();
+    renderLoadedEditor({ onCommit, onNavigateToDetection });
+    const row = screen.getByTestId('source-row-none');
+    row.focus();
+
+    // Without the guard this reaches the global accept-and-next, which
+    // commits the priority model box and steps on — the exact opposite of
+    // what the focused row says it does. (jsdom doesn't run native button
+    // activation, so the observable is the suppressed global commit.)
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
   });
 });
 
