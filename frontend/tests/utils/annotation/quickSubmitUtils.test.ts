@@ -139,16 +139,63 @@ describe('collectLaneBoxes', () => {
 });
 
 describe('buildQuickSubmitPlan', () => {
-  it('keeps a cleared frame out of the accept preview loop', () => {
-    // The popover's flipbook shows the track as it WOULD stand after
-    // accepting; a cleared frame contributes nothing to it.
+  it('keeps a cleared frame in the preview loop, marked rather than dropped', () => {
+    // Dropping it made the loop jump a hole in the object's track. It plays,
+    // carrying the model box the annotator rejected, flagged so the loop can
+    // draw it as not part of the track.
     const cleared = makeDetection(1, { auto: [box()] });
     const pending = makeDetection(2, { auto: [box(0.2, 0.2, 0.4, 0.4)] });
     const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
 
-    const boxes = collectLaneBoxes([cleared, pending], annotations);
+    const boxes = collectLaneBoxes([cleared, pending], annotations, { markCleared: true });
 
-    expect(boxes.map(b => b.detection_id)).toEqual([2]);
+    expect(boxes.map(b => b.detection_id)).toEqual([1, 2]);
+    expect(boxes[0].cleared).toBe(true);
+    expect(boxes[0].xyxyn).toEqual(box().xyxyn);
+    // The frames that ARE the track carry no marker.
+    expect(boxes[1].cleared).toBeUndefined();
+  });
+
+  it('marks nothing on a cleared frame no model boxed — there is no box to show', () => {
+    const cleared = makeDetection(1);
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    expect(collectLaneBoxes([cleared], annotations, { markCleared: true })).toEqual([]);
+  });
+
+  it('leaves a committed box unmarked, so a real box never draws as cleared', () => {
+    const committed = makeDetection(1, { auto: [box()] });
+    const annotations = new Map([
+      [
+        1,
+        makeAnnotation(1, 'annotated', [
+          { xyxyn: [0.1, 0.1, 0.3, 0.3], class_name: 'smoke', smoke_type: 'wildfire' },
+        ]),
+      ],
+    ]);
+
+    const boxes = collectLaneBoxes([committed], annotations, { markCleared: true });
+
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0].cleared).toBeUndefined();
+  });
+
+  it('never marks a false-positive lane cleared — its annotation is empty by construction', () => {
+    // The two states are identical in the data (annotated stage, no boxes),
+    // so only the caller can tell them apart. Asking for both at once must
+    // leave the FP lane on its engine track, unmarked.
+    const detection = makeDetection(1, {
+      engine: [box(0.5, 0.5, 0.7, 0.7)],
+      auto: [box(0.1, 0.1, 0.2, 0.2)],
+    });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    const boxes = collectLaneBoxes([detection], annotations, {
+      falsePositive: true,
+      markCleared: true,
+    });
+
+    expect(boxes).toEqual([{ detection_id: 1, xyxyn: [0.5, 0.5, 0.7, 0.7] }]);
   });
 
   it('never re-adds a box to a frame the annotator cleared', () => {

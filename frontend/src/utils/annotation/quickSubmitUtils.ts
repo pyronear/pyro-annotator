@@ -75,10 +75,33 @@ export function getCellState(
   return getWinningBoxes(detection).boxes.length > 0 ? 'auto' : 'no-box';
 }
 
+/** A lane box for the preview loop, with the marker that dims a cleared one. */
+export interface LaneBox extends BoundingBox {
+  /**
+   * True on a frame the annotator cleared. The box is the model's — the one
+   * they rejected — carried so the loop still plays the frame; the loop draws
+   * it dashed and faint rather than as part of the track.
+   */
+  cleared?: boolean;
+}
+
 /**
  * The lane's committal boxes across all frames, in CroppedImageSequence's
  * input shape: committed smoke boxes for done frames, winning-layer boxes
  * for pending frames, nothing for no-box frames.
+ *
+ * `options.markCleared` adds the cleared frames: committed but deliberately
+ * empty, so they have no box to contribute, and dropping them punched a hole
+ * the object's track jumped over. They play carrying the model box that was
+ * rejected, flagged `cleared` so the loop can show it as not part of the
+ * track. Nothing downstream of the preview reads these — `buildQuickSubmitPlan`
+ * decides what gets written, and it skips committed frames outright.
+ *
+ * It is opt-in because this function cannot tell a cleared frame from a
+ * false-positive lane's frame: BOTH are an annotated-stage annotation with no
+ * boxes (see `falsePositiveContextBoxes`). Only the caller knows which lane it
+ * is holding, so only the caller may ask for the distinction — a caller that
+ * forgot `falsePositive` would otherwise start drawing boxes on an FP lane.
  *
  * `options.falsePositive` switches the whole lane to its engine track
  * instead: an FP lane's committed annotation is empty by construction, so
@@ -88,23 +111,40 @@ export function getCellState(
 export function collectLaneBoxes(
   detections: Detection[],
   annotations: Map<number, DetectionAnnotation>,
-  options: { falsePositive?: boolean } = {}
-): BoundingBox[] {
-  const out: BoundingBox[] = [];
+  options: { falsePositive?: boolean; markCleared?: boolean } = {}
+): LaneBox[] {
+  const out: LaneBox[] = [];
   for (const detection of detections) {
     const existing = annotations.get(detection.id);
     const state = getCellState(detection, existing);
+    const committedBoxes = (existing?.annotation?.annotation ?? []).filter(
+      item => item.false_positive_type == null
+    );
+    // Committed with nothing on it. An FP lane's annotation is empty by
+    // construction, so it is never "cleared" in this sense — it has its own
+    // branch below.
+    const cleared =
+      Boolean(options.markCleared) &&
+      !options.falsePositive &&
+      state === 'done' &&
+      committedBoxes.length === 0;
     const boxes: { xyxyn: number[] }[] = options.falsePositive
       ? falsePositiveContextBoxes(detection)
       : state === 'done'
-        ? (existing?.annotation?.annotation ?? []).filter(item => item.false_positive_type == null)
+        ? cleared
+          ? getWinningBoxes(detection).boxes
+          : committedBoxes
         : state === 'auto'
           ? getWinningBoxes(detection).boxes
           : [];
     // The flipbook frames the lane's main object; stray boxes near sibling
     // objects would skew its averaged crop window.
     for (const box of focusOnMainObject<{ xyxyn: number[] }>(detection, boxes)) {
-      out.push({ detection_id: detection.id, xyxyn: box.xyxyn as BoundingBox['xyxyn'] });
+      out.push({
+        detection_id: detection.id,
+        xyxyn: box.xyxyn as BoundingBox['xyxyn'],
+        ...(cleared ? { cleared: true } : {}),
+      });
     }
   }
   return out;

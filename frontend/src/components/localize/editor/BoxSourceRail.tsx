@@ -17,7 +17,13 @@ import { Ban, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { SOURCE_COLOR, SOURCE_EXPLANATION, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
+import {
+  NONE_EXPLANATION,
+  SOURCE_COLOR,
+  SOURCE_EXPLANATION,
+  SOURCE_LABEL,
+  SOURCE_ORDER,
+} from './sourceIdentity';
 
 const CROP_RES = 128;
 /**
@@ -216,33 +222,35 @@ export function BoxSourceRail({
           every in-range frame including one no model boxed, which is the
           only way such a frame can ever be settled. */}
       <div className="mt-2.5 border-t border-line pt-2.5">
-        <button
-          type="button"
-          data-testid="source-row-none"
-          aria-pressed={cleared}
-          disabled={disabled}
-          onKeyDown={e => {
-            // Same trap the source rows guard against: Enter must be this
-            // row's own activation, not the editor's global accept — which
-            // would commit the very box this row exists to reject.
-            if (e.key === 'Enter') e.stopPropagation();
-          }}
-          onClick={onClear}
-          className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
-            cleared ? 'border-pine bg-pine-soft' : 'border-transparent hover:bg-ash'
-          } ${disabled ? 'opacity-40' : ''}`}
-        >
-          <span className="flex h-11 w-14 flex-none items-center justify-center rounded border border-line bg-ash">
-            <Ban className="h-5 w-5 text-haze" />
-          </span>
-          <span className="min-w-0">
-            <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
-              None
-              {cleared && <Check className="h-3.5 w-3.5 text-pine" />}
+        <Tooltip tip={NONE_EXPLANATION} className="w-full">
+          <button
+            type="button"
+            data-testid="source-row-none"
+            aria-pressed={cleared}
+            disabled={disabled}
+            onKeyDown={e => {
+              // Same trap the source rows guard against: Enter must be this
+              // row's own activation, not the editor's global accept — which
+              // would commit the very box this row exists to reject.
+              if (e.key === 'Enter') e.stopPropagation();
+            }}
+            onClick={onClear}
+            className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
+              cleared ? 'border-pine bg-pine-soft' : 'border-transparent hover:bg-ash'
+            } ${disabled ? 'opacity-40' : ''}`}
+          >
+            <span className="flex h-11 w-14 flex-none items-center justify-center rounded border border-line bg-ash">
+              <Ban className="h-5 w-5 text-haze" />
             </span>
-            <span className="block font-data text-detail text-haze">not visible here · Del</span>
-          </span>
-        </button>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
+                None
+                {cleared && <Check className="h-3.5 w-3.5 text-pine" />}
+              </span>
+              <span className="block font-data text-detail text-haze">not visible here · Del</span>
+            </span>
+          </button>
+        </Tooltip>
       </div>
 
       <p className="mt-3 font-body text-detail leading-relaxed text-haze">

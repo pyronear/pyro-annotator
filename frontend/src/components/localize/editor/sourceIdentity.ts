@@ -74,3 +74,11 @@ export const SOURCE_EXPLANATION: Record<BoxSource, string> = {
   auto: 'From the more sensitive model this app runs over the alert after import. Kept only where it agrees with the engine that something is there — usually tighter than the engine box.',
   engine: "From the camera's own detector — the box it raised this alert with.",
 };
+
+/**
+ * The rail's fourth row is not a source, so it sits outside
+ * `SOURCE_EXPLANATION`'s record — but it answers the same question the
+ * source tooltips do, in the same voice.
+ */
+export const NONE_EXPLANATION =
+  'Records that this object is not visible on this frame. The frame counts as done and no box is saved — the models keep their boxes, so picking one above undoes it.';

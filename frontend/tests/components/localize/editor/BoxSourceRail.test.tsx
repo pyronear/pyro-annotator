@@ -172,4 +172,14 @@ describe('BoxSourceRail', () => {
     render(<BoxSourceRail {...props} disabled />);
     expect(screen.getByTestId('source-row-none')).toBeDisabled();
   });
+
+  it('explains the None row on hover, as the source rows explain themselves', () => {
+    render(<BoxSourceRail {...props} />);
+    const none = screen.getByTestId('source-row-none');
+    const tip = none.getAttribute('aria-describedby');
+    expect(tip).toBeTruthy();
+    expect(document.getElementById(tip as string)).toHaveTextContent(
+      /not visible on this frame.*picking one above undoes it/i
+    );
+  });
 });

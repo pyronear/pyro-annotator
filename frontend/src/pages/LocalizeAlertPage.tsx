@@ -1214,7 +1214,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return collectLaneBoxes(
       detectionsByLaneId[activeLaneId] ?? [],
       new Map((annotationsByLaneId[activeLaneId] ?? []).map(a => [a.detection_id, a])),
-      { falsePositive: activeLaneIsFalsePositive }
+      // Cleared frames play, marked, so the loop doesn't jump over them.
+      // Safe alongside `falsePositive`, which takes precedence: an FP lane's
+      // empty annotation is never read as a clear.
+      { falsePositive: activeLaneIsFalsePositive, markCleared: true }
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
 

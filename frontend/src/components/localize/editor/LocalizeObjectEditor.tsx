@@ -929,7 +929,13 @@ export function LocalizeObjectEditor({
   // where the annotator decided, winning boxes everywhere else. Only built
   // while the dialog is open — it walks every frame of the lane.
   const previewBoxes = acceptOpen
-    ? collectLaneBoxes(laneDetections, new Map(laneAnnotations.map(a => [a.detection_id, a])))
+    ? collectLaneBoxes(laneDetections, new Map(laneAnnotations.map(a => [a.detection_id, a])), {
+        // Cleared frames still play, marked — a hole in the loop made the
+        // object's track jump. The editor only ever opens on a workable
+        // lane, so an annotated-empty frame here is a clear, never an FP
+        // lane's empty-by-construction annotation.
+        markCleared: true,
+      })
     : [];
 
   /**

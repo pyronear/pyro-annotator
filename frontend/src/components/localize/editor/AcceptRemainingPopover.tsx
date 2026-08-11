@@ -29,7 +29,12 @@
  * gaps outlined — so the faded segments are exactly what the button will
  * fill. A cleared frame is settled and untouched by the sweep, but hatched
  * rather than solid: a solid segment would show a box on a frame the
- * annotator emptied. The frame counter
+ * annotator emptied.
+ *
+ * A cleared frame still plays in the loop — dropping it punched a hole the
+ * track jumped over — carrying the model box that was rejected, drawn dashed
+ * and faint so it reads as context rather than as part of the track. The
+ * accept never touches those frames; `buildQuickSubmitPlan` skips them. The frame counter
  * and the strip's playhead follow the loop's reported position; the loop only
  * plays frames that have boxes, so the counter visibly skips gap frames and
  * the playhead never lands on an outlined segment.

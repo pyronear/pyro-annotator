@@ -14,8 +14,10 @@ const ctx2d = {
   clearRect: vi.fn(),
   drawImage: vi.fn(),
   strokeRect: vi.fn(),
+  setLineDash: vi.fn(),
   strokeStyle: '',
   lineWidth: 0,
+  globalAlpha: 1,
 };
 
 beforeAll(() => {
@@ -166,6 +168,33 @@ describe('CroppedImageSequence', () => {
       );
       expect(ctx2d.strokeStyle).toBe('#E4572E');
       expect(ctx2d.lineWidth).toBe(4);
+    });
+
+    it('draws a cleared frame dashed and faint — it plays, but is not the track', async () => {
+      // The annotator rejected this box; it is in the loop only so the
+      // object's track does not jump a hole where the frame was.
+      const cleared = [{ ...BBOXES[0], cleared: true }];
+      render(
+        <CroppedImageSequence bboxes={cleared} sequenceId={9} accentColor="#E4572E" showBoxes />
+      );
+      await waitFor(() => expect(ctx2d.strokeRect).toHaveBeenCalled());
+      expect(ctx2d.setLineDash).toHaveBeenCalledWith([14, 12]);
+    });
+
+    it('leaves no dash or fade behind for the next frame', async () => {
+      // Canvas state is sticky: without the reset, one cleared frame would
+      // turn the whole rest of the loop dashed and faint.
+      render(
+        <CroppedImageSequence
+          bboxes={[{ ...BBOXES[0], cleared: true }]}
+          sequenceId={9}
+          accentColor="#E4572E"
+          showBoxes
+        />
+      );
+      await waitFor(() => expect(ctx2d.strokeRect).toHaveBeenCalled());
+      expect(ctx2d.setLineDash).toHaveBeenLastCalledWith([]);
+      expect(ctx2d.globalAlpha).toBe(1);
     });
 
     it('draws no boxes without showBoxes', async () => {
