@@ -1,8 +1,8 @@
 """Add alert API connector, organization, and import coverage tables
 
-Revision ID: c5d6e7f8a9b0
-Revises: b4c5d6e7f8a9
-Create Date: 2026-08-06 10:00:00.000000
+Revision ID: d6e7f8a9b0c1
+Revises: c5d6e7f8a9b0
+Create Date: 2026-08-11 10:00:00.000000
 
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "c5d6e7f8a9b0"
-down_revision = "b4c5d6e7f8a9"
+revision = "d6e7f8a9b0c1"
+down_revision = "c5d6e7f8a9b0"
 branch_labels = None
 depends_on = None
 
