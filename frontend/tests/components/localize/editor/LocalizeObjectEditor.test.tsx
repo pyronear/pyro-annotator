@@ -1105,6 +1105,39 @@ describe('LocalizeObjectEditor cleared frames', () => {
     renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
     expect(screen.getByTestId('source-row-none')).toHaveAttribute('aria-pressed', 'true');
   });
+
+  it('points a cleared frame at the rail, while the rail still has something to offer', () => {
+    renderLoadedEditor({ existingAnnotation: clearedAnnotation(firstDetection.id) });
+    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Pick a box on the right/);
+  });
+
+  it('points a candidate-less cleared frame at drawing, its only remaining undo', () => {
+    // Every rail row is disabled here and Delete is guarded, so pointing at
+    // the rail would be a lie. Reachable via the un-materialize 409
+    // fallback, which writes exactly this state.
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+      existingAnnotation: clearedAnnotation(detectionWithNoBoxes.id),
+    });
+    expect(screen.getByTestId('cleared-frame-chip')).toHaveTextContent(/Draw a box to undo/);
+  });
+
+  it('leaves Enter to a focused None row, so it never commits the box it rejects', () => {
+    const onCommit = vi.fn();
+    const onNavigateToDetection = vi.fn();
+    renderLoadedEditor({ onCommit, onNavigateToDetection });
+    const row = screen.getByTestId('source-row-none');
+    row.focus();
+
+    // Without the guard this reaches the global accept-and-next, which
+    // commits the priority model box and steps on — the exact opposite of
+    // what the focused row says it does. (jsdom doesn't run native button
+    // activation, so the observable is the suppressed global commit.)
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
+  });
 });
 
 describe('open/close transition', () => {

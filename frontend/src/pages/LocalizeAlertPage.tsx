@@ -1231,11 +1231,16 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       annotationsByLaneId[activeLaneId] ?? []
     );
   }, [frameModel.frames, activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  // `!e.cleared` on both, matching the editor's own counts: a cleared frame
+  // keeps its `availableSource` (the predictions are untouched, so re-picking
+  // one is the undo), but the annotator already settled it and
+  // `buildQuickSubmitPlan` skips it. Counting it here would leave a button
+  // whose accept writes nothing and never clears the count.
   const acceptRemainingCount = acceptEntries.filter(
-    e => e.inObject && !e.committedSource && e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && e.availableSource
   ).length;
   const acceptGapCount = acceptEntries.filter(
-    e => e.inObject && !e.committedSource && !e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && !e.availableSource
   ).length;
 
   // A popover left open while the selection moves would preview the wrong

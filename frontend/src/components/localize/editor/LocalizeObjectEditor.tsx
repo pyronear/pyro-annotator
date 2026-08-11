@@ -1143,8 +1143,16 @@ export function LocalizeObjectEditor({
               <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                 No box on this frame
               </span>
+              {/* The undo depends on there being something to go back TO.
+                  A cleared frame no model boxed has every rail row disabled
+                  and Delete guarded, so pointing at the rail would be a lie
+                  — drawing is the only way back. Reachable through the
+                  un-materialize 409 fallback (LocalizeAlertPage). */}
               <span className="font-body text-detail text-haze">
-                You marked {objectLabel} as not visible here. Pick a box on the right to undo it.
+                You marked {objectLabel} as not visible here.{' '}
+                {candidates.length > 0
+                  ? 'Pick a box on the right to undo it.'
+                  : 'Draw a box to undo it.'}
               </span>
             </div>
           )}

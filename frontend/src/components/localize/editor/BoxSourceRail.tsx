@@ -221,6 +221,12 @@ export function BoxSourceRail({
           data-testid="source-row-none"
           aria-pressed={cleared}
           disabled={disabled}
+          onKeyDown={e => {
+            // Same trap the source rows guard against: Enter must be this
+            // row's own activation, not the editor's global accept — which
+            // would commit the very box this row exists to reject.
+            if (e.key === 'Enter') e.stopPropagation();
+          }}
           onClick={onClear}
           className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
             cleared ? 'border-pine bg-pine-soft' : 'border-transparent hover:bg-ash'
