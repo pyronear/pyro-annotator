@@ -10,9 +10,9 @@
  * would mean switching off most of a component the editor depends on; a
  * separate strip leaves the editor untouched.
  *
- * Once both anchors are boxed, each in-range cell crops to its interpolated
- * box, so the strip IS the propagation preview — there is no separate confirm
- * step to show what will be written.
+ * Once the box is drawn on the first frame, each in-range cell crops to its
+ * copy of it, so the strip IS the propagation preview — there is no separate
+ * confirm step to show what will be written.
  *
  * The frame on the stage grows rather than gaining an outline: colour here is
  * spent entirely on range membership, and the anchors already take a heavier

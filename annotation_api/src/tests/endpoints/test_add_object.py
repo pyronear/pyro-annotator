@@ -278,9 +278,18 @@ async def test_clones_only_the_requested_frames_from_whichever_sibling_has_them(
     )
     assert len(da_rows) == 1
     assert {da.processing_stage.value for da in da_rows} == {"annotated"}
+    # Built through DetectionAnnotationData, so it carries the same full,
+    # validated shape the editor's own per-frame save writes — origin included,
+    # rather than a hand-rolled dict that skips the box invariants.
     assert da_rows[0].annotation == {
         "annotation": [
-            {"xyxyn": BOX, "class_name": "smoke", "smoke_type": "wildfire"}
+            {
+                "xyxyn": BOX,
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "false_positive_type": None,
+                "origin": "human",
+            }
         ]
     }
 
@@ -510,6 +519,41 @@ async def test_invalid_smoke_type_422(authenticated_client: AsyncClient, async_s
             "platform_alert_id": 806,
             "smoke_type": "not-a-real-type",
             "frames": _frames(NOW),
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_box",
+    [
+        [0.4, 0.2, 0.1, 0.5],  # x1 > x2
+        [0.1, 0.5, 0.3, 0.2],  # y1 > y2
+        [0.1, 0.2, 1.4, 0.5],  # outside 0..1
+        [0.2, 0.2, 0.2, 0.5],  # zero area
+    ],
+)
+async def test_rejects_a_malformed_box(
+    authenticated_client: AsyncClient, async_session, bad_box
+):
+    """The box invariants live in DetectionAnnotationItem; AddObjectFrame.xyxyn
+    on its own is just four floats. A client that skipped them could persist an
+    inverted or out-of-range box that breaks the crop maths and then fails
+    validation on any later PATCH of the same annotation."""
+    await _lane(
+        async_session,
+        alert_api_id=811 + int(bad_box[2] * 100),
+        platform_alert_id=811 + int(bad_box[2] * 100),
+        detections=[("img1.jpg", NOW)],
+    )
+    resp = await authenticated_client.post(
+        "/sequences/alert/add-object",
+        json={
+            "source_api": "pyronear_french",
+            "platform_alert_id": 811 + int(bad_box[2] * 100),
+            "smoke_type": "wildfire",
+            "frames": _frames(NOW, box=bad_box),
         },
     )
     assert resp.status_code == 422

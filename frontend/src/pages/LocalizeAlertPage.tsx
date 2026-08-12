@@ -632,12 +632,24 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // add leaves no trace in history to walk forward into.
   const openAddObject = useCallback(() => {
     if (sequenceIdNum == null) return;
-    navigate(`${localizeAddObject(sequenceIdNum)}${location.search}`);
+    // Marked so close knows the entry is ours to pop.
+    navigate(`${localizeAddObject(sequenceIdNum)}${location.search}`, {
+      state: { addObjectPushed: true },
+    });
   }, [sequenceIdNum, location.search, navigate]);
 
   const closeAddObject = useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
+    // Going back is only right when THIS session pushed the entry. After a
+    // reload or a pasted link the previous entry belongs to another site — or
+    // in a fresh tab does not exist — so `navigate(-1)` would leave the app
+    // or do nothing, stranding the annotator on the overlay. Replace instead,
+    // which also leaves no add-object entry to walk forward into.
+    if ((location.state as { addObjectPushed?: boolean } | null)?.addObjectPushed) {
+      navigate(-1);
+      return;
+    }
+    navigate(`${basePath}${location.search}`, { replace: true });
+  }, [basePath, location.search, location.state, navigate]);
 
   // Closing the editor keeps its object selected: the editor URL names the
   // lane, so the close target is that lane's selection URL (bare alert URL

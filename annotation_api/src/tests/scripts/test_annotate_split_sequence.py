@@ -76,16 +76,27 @@ class TestAnnotateSplitSequence:
     def test_partial_import_rolls_back_sequence(self, monkeypatch):
         deleted = []
         tokens = []
+        forced = []
         monkeypatch.setattr(
             am,
             "delete_sequence",
-            lambda url, token, sid: (deleted.append(sid), tokens.append(token)),
+            lambda url, token, sid, force=False: (
+                deleted.append(sid),
+                tokens.append(token),
+                forced.append(force),
+            ),
         )
         result = am.annotate_split_sequence(
             seq_result(failed=1), "http://annotation.test", "tok", dry_run=False
         )
         assert tokens == ["tok"]
         assert deleted == [42]
+        # force, because the lane being rolled back is an IMPORTED one and the
+        # API refuses to delete those (so annotators cannot remove objects from
+        # the import record). Without it the rollback 409s, the caller swallows
+        # it as a warning, and the half-imported sequence this exists to remove
+        # survives to 409 on every later run.
+        assert forced == [True]
         assert result["annotation_created"] is False
         assert result["errors"] and "rolled back" in result["errors"][0]
 
@@ -98,7 +109,9 @@ class TestAnnotateSplitSequence:
             am, "create_annotation_from_data", lambda *args, **kwargs: False
         )
         monkeypatch.setattr(
-            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
+            am,
+            "delete_sequence",
+            lambda url, token, sid, force=False: deleted.append(sid),
         )
         result = am.annotate_split_sequence(
             seq_result(), "http://annotation.test", "tok", dry_run=False
@@ -116,7 +129,9 @@ class TestAnnotateSplitSequence:
             am, "create_annotation_from_data", lambda *args, **kwargs: False
         )
         monkeypatch.setattr(
-            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
+            am,
+            "delete_sequence",
+            lambda url, token, sid, force=False: deleted.append(sid),
         )
         result = am.annotate_split_sequence(
             seq_result(), "http://annotation.test", "tok", dry_run=False
@@ -135,7 +150,9 @@ class TestAnnotateSplitSequence:
 
         monkeypatch.setattr(am, "build_single_track_annotation", _raise)
         monkeypatch.setattr(
-            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
+            am,
+            "delete_sequence",
+            lambda url, token, sid, force=False: deleted.append(sid),
         )
         result = am.annotate_split_sequence(
             seq_result(), "http://annotation.test", "tok", dry_run=False

@@ -140,6 +140,31 @@ async def test_deletes_a_manual_lane_and_leaves_the_sibling_intact(
 
 
 @pytest.mark.asyncio
+async def test_force_deletes_an_imported_lane_for_trusted_tooling(
+    authenticated_client: AsyncClient, async_session
+):
+    """The import rollback and the cleanup scripts exist to delete IMPORTED
+    rows. Without this escape the guard silently defeats them: the rollback
+    swallows the 409 as a warning and the half-imported, annotation-less
+    sequence it was undoing survives — the exact debris it exists to prevent.
+    """
+    seq, det = await _lane(
+        async_session,
+        alert_api_id=9202,
+        platform_alert_id=9202,
+        bucket_key="partial.jpg",
+    )
+    seq_id, det_id = seq.id, det.id
+
+    resp = await authenticated_client.delete(f"/sequences/{seq_id}?force=true")
+    assert resp.status_code == 204
+
+    async_session.expire_all()
+    assert await async_session.get(Sequence, seq_id) is None
+    assert await async_session.get(Detection, det_id) is None
+
+
+@pytest.mark.asyncio
 async def test_unknown_sequence_404(authenticated_client: AsyncClient):
     resp = await authenticated_client.delete("/sequences/99999999")
     assert resp.status_code == 404

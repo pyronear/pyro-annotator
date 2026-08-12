@@ -56,12 +56,11 @@ export default function GuidePage() {
           Start from the dashboard’s “Start localizing” queue — it opens the alert page with every
           object’s status. If the classify pass missed smoke entirely, answer the missed-smoke
           question Yes and use “+ Add object”: pick the first and last frame the plume appears on,
-          box it on each of those two, and the frames between are filled in for you — then refine
-          any of them in the editor. “Skip alert” remains for what drawing can’t fix, such as an
-          alert you can’t judge. “Accept all & submit alert” accepts every object’s pending
-          predictions and submits the whole alert in one step. The old per-object editor still
-          exists, but only as a direct link to a specific frame — it’s no longer part of the normal
-          queue flow.
+          draw one box on the first, and every frame in that range gets a copy — then refine any of
+          them in the editor. “Skip alert” remains for what drawing can’t fix, such as an alert you
+          can’t judge. “Accept all & submit alert” accepts every object’s pending predictions and
+          submits the whole alert in one step. The old per-object editor still exists, but only as a
+          direct link to a specific frame — it’s no longer part of the normal queue flow.
         </p>
       </section>
 

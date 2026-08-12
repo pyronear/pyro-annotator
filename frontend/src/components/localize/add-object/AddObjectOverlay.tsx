@@ -95,6 +95,17 @@ export function AddObjectOverlay({
   const [smokeType, setSmokeType] = useState<SmokeType>('wildfire' as SmokeType);
   const [boxSelected, setBoxSelected] = useState(false);
 
+  // On the deep-link path (`/localize/:id/add-object` reloaded or pasted) this
+  // mounts as soon as the alert resolves, while the per-lane detection queries
+  // — which `alertFrames` is derived from — are still in flight. The state
+  // initializer runs once against an empty list, so without this the stage
+  // would stay blank until the annotator happened to hover a thumbnail.
+  useEffect(() => {
+    if (currentRecordedAt === '' && alertFrames.length > 0) {
+      setCurrentRecordedAt(alertFrames[0].recordedAt);
+    }
+  }, [alertFrames, currentRecordedAt]);
+
   const entries = useMemo(
     () => buildRangeStripEntries(alertFrames, range, box),
     [alertFrames, range, box]
@@ -207,6 +218,13 @@ export function AddObjectOverlay({
       // Enter sets a boundary while choosing the range; it never creates the
       // object, which is a deliberate press of its own button.
       if (e.key === 'Enter' && phase === 'range') {
+        // Never steal Enter from a focused control — the same carve-out the
+        // page's own handler uses. Without it, a keyboard user who tabs to a
+        // smoke-type chip, Restart range or Close and presses Enter commits a
+        // range anchor instead of activating the button, which puts those
+        // controls out of keyboard reach entirely during step 1.
+        const target = e.target;
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
         const entry = entries.find(en => en.recordedAt === currentRecordedAt);
         if (entry) handleSelectFrame(entry);
         e.preventDefault();

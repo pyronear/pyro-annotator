@@ -242,7 +242,12 @@ def main() -> None:
     for dup in duplicates:
         seq_id = dup["sequence"].get("id", dup["annotation"]["sequence_id"])
         try:
-            annotation_api.delete_sequence(args.url_api_annotation, token, seq_id)
+            # force: duplicates of IMPORTED sequences, which the API otherwise
+            # refuses to delete so annotators cannot remove objects from the
+            # import record.
+            annotation_api.delete_sequence(
+                args.url_api_annotation, token, seq_id, force=True
+            )
             logger.info(
                 f"Deleted sequence {seq_id} | {format_seq_info(dup['sequence'])}"
             )

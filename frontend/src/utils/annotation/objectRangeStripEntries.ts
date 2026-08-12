@@ -7,8 +7,8 @@
  * engine, committed versus merely offered) — and the object being added has no
  * lane and no sources at all, so nearly every state it can express is
  * unreachable here. This is the two-state version: in range or out, plus the
- * two anchors the human draws on and, once both are drawn, the interpolated
- * box each in-range frame will receive.
+ * two ends of the range and, once a box has been drawn on the first frame, the
+ * copy of it each in-range frame will receive.
  */
 
 import type { AlertFrame } from './alertLocalizeUtils';

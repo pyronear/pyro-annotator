@@ -385,6 +385,46 @@ describe('AddObjectOverlay guidance', () => {
   });
 });
 
+describe('AddObjectOverlay late-arriving frames', () => {
+  it('shows the first frame once the alert frames load', async () => {
+    // The deep-link path mounts this before the per-lane detection queries
+    // resolve, so `alertFrames` is empty on the first render. The state
+    // initializer runs once — without a re-sync the stage stays blank until
+    // the annotator happens to hover a thumbnail.
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <AddObjectOverlay
+          alertFrames={[]}
+          detectionsById={detectionsById}
+          objectColor="#1baf7a"
+          objectLabel="Object 3"
+          objectOverlaysByRecordedAt={{}}
+          isCreating={false}
+          onCreate={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    expect(screen.queryByAltText(/^Detection /)).not.toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <AddObjectOverlay
+          alertFrames={alertFrames}
+          detectionsById={detectionsById}
+          objectColor="#1baf7a"
+          objectLabel="Object 3"
+          objectOverlaysByRecordedAt={{}}
+          isCreating={false}
+          onCreate={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    expect(screen.getByAltText(/^Detection /)).toHaveAttribute('alt', 'Detection 101');
+  });
+});
+
 describe('AddObjectOverlay hover preview', () => {
   const shownDetection = () =>
     (screen.getByAltText(/^Detection /) as HTMLImageElement).getAttribute('alt');
@@ -566,6 +606,23 @@ describe('AddObjectOverlay stage geometry', () => {
 });
 
 describe('AddObjectOverlay exit', () => {
+  it('does not steal Enter from a focused control while choosing the range', () => {
+    // Otherwise tabbing to a smoke-type chip, Restart range or Close and
+    // pressing Enter commits a range anchor instead of activating the button,
+    // which puts those controls out of keyboard reach during step 1.
+    renderOverlay();
+    const chip = screen.getByRole('radio', { name: /industrial/i });
+    chip.focus();
+    // Dispatched on the chip, not on window: the listener is on window and the
+    // event bubbles, which is what makes `e.target` the button rather than the
+    // window — exactly the case the carve-out reads.
+    fireEvent.keyDown(chip, { key: 'Enter' });
+
+    expect(
+      screen.queryAllByTestId(/^range-strip-cell-/).filter(el => el.hasAttribute('data-in-range'))
+    ).toHaveLength(0);
+  });
+
   it('closes on Escape without creating anything', () => {
     const { onCreate, onClose } = renderOverlay();
     fireEvent.keyDown(window, { key: 'Escape' });
