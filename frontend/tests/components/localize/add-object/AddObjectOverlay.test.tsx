@@ -315,6 +315,18 @@ describe('AddObjectOverlay guidance', () => {
     expect(prompt.contains(createButton())).toBe(true);
   });
 
+  it('places Create right after the instruction, not at the far edge', () => {
+    // The eye lands there once it has finished reading the sentence naming
+    // the action; a CTA pinned to the right edge has to be found.
+    renderOverlay();
+    const children = Array.from(screen.getByTestId('add-object-instruction').children);
+    const buttonIndex = children.indexOf(screen.getByTestId('create-object'));
+    const hintIndex = children.findIndex(el => /preview a frame/i.test(el.textContent ?? ''));
+    expect(buttonIndex).toBeGreaterThan(-1);
+    expect(hintIndex).toBeGreaterThan(-1);
+    expect(buttonIndex).toBeLessThan(hintIndex);
+  });
+
   it('keeps exactly one Create button, in the prompt', () => {
     renderOverlay();
     expect(screen.getAllByTestId('create-object')).toHaveLength(1);

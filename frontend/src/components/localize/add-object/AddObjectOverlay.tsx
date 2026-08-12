@@ -256,12 +256,14 @@ export function AddObjectOverlay({
         Step {stepNumber} of 3
       </span>
       <span className="font-body text-sm font-medium text-pine">{instruction}</span>
-      <span className="ml-auto whitespace-nowrap font-body text-detail text-pine/70">{hint}</span>
       {/* The button lives IN the prompt rather than in the top bar: at step 3
           it is the thing the prompt is telling you to press, and a control
-          named by the sentence beside it needs no hunting. Rendered at every
-          step, disabled until there is a box — so the goal is visible from the
-          start and the control never moves. */}
+          named by the sentence beside it needs no hunting. It sits directly
+          after that sentence rather than at the far edge, because that is
+          where the eye already is once it has finished reading — a CTA pinned
+          right needs finding. Rendered at every step, disabled until there is
+          a box, so the goal is visible from the start and the control never
+          moves. */}
       <button
         type="button"
         onClick={submit}
@@ -277,6 +279,8 @@ export function AddObjectOverlay({
       >
         {isCreating ? 'Creating…' : 'Create object'}
       </button>
+      {/* Ancillary, so it takes the far edge the button gave up. */}
+      <span className="ml-auto whitespace-nowrap font-body text-detail text-pine/70">{hint}</span>
     </div>
   );
 
