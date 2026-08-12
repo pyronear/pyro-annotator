@@ -525,6 +525,36 @@ describe('LocalizeObjectEditor canvas', () => {
     vi.unstubAllGlobals();
   });
 
+  it('pans with the cursor, not faster than it', () => {
+    // The pan applies inside the scale, so a 100px drag at 3x over an 800px
+    // image is 100 / (800 * 3) of the image — anything else and the picture
+    // slides out from under the hand.
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = stubGeometry();
+    fireEvent.keyDown(window, { key: 'z' });
+
+    fireEvent.keyDown(window, { code: 'Space' });
+    fireEvent.mouseDown(image, { button: 0, clientX: 400, clientY: 225 });
+    fireEvent.mouseMove(image, { clientX: 500, clientY: 225 });
+    fireEvent.mouseUp(image);
+    fireEvent.keyUp(window, { code: 'Space' });
+
+    // The 16.667% object framing plus 100 / 2400 of the image.
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(20.833%, 16.667%)' });
+  });
+
+  it('keeps the stage container hugging the image, which the percentage pan rests on', () => {
+    // `translate(%)` on the overlay layers resolves against the container and
+    // on the <img> against the picture. They agree only while the container is
+    // a shrink-to-fit flex item centring one image — the same centring
+    // `calculateImageBounds` assumes. jsdom lays nothing out, so this pins the
+    // mechanism; the measured version is a browser check.
+    renderLoadedEditor();
+    const stage = screen.getByAltText(/^Detection /).parentElement?.parentElement;
+    expect(stage?.className).toContain('items-center');
+    expect(stage?.className).toContain('justify-center');
+  });
+
   it('draws on a plain drag, with nothing to arm first', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
@@ -974,7 +1004,7 @@ describe('LocalizeObjectEditor chrome', () => {
     // The fixture box spans 0.1 of the frame, so the framing wants 3.2x and
     // the ceiling holds it at 3.
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -985,7 +1015,7 @@ describe('LocalizeObjectEditor chrome', () => {
 
     fireEvent.click(toggle);
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
@@ -996,7 +1026,7 @@ describe('LocalizeObjectEditor chrome', () => {
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -1004,7 +1034,7 @@ describe('LocalizeObjectEditor chrome', () => {
     renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
     fireEvent.keyDown(window, { key: 'r' });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
   });
 
@@ -1013,7 +1043,7 @@ describe('LocalizeObjectEditor chrome', () => {
     fireEvent.keyDown(window, { key: 'r' });
     fireEvent.keyDown(window, { key: 'z' });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -1037,7 +1067,7 @@ describe('LocalizeObjectEditor chrome', () => {
     // 0.32 target fill over the pick's 0.2 span = 1.6. The union of all
     // three candidates spans 0.7, which clamps to 1 — no zoom at all.
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1.6) translate(0px, 0px)',
+      transform: 'scale(1.6) translate(9.375%, 9.375%)',
     });
   });
 
@@ -1047,7 +1077,7 @@ describe('LocalizeObjectEditor chrome', () => {
       laneDetections: [detectionWithNoBoxes, lastDetection],
     });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
   });
 

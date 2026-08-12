@@ -11,6 +11,7 @@ import {
   ModelLayer,
   ResizeHandle,
   HANDLE_CURSOR,
+  stageTransform,
 } from '@/utils/annotation';
 import {
   normalizedToPixelBox,
@@ -363,8 +364,8 @@ interface DrawingOverlayProps {
   selectedRectangleId: string | null;
   imageInfo: ImageInfo;
   zoomLevel: number;
+  /** Pan, as a fraction of the image's rendered size. */
   panOffset: { x: number; y: number };
-  transformOrigin: { x: number; y: number };
   isDragging: boolean;
   normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
   // Drag-to-move (box body) and drag-to-resize (handles) on the selected box.
@@ -393,7 +394,6 @@ export function DrawingOverlay({
   imageInfo,
   zoomLevel,
   panOffset,
-  transformOrigin,
   isDragging,
   normalizedToImage,
   onBoxPointerDown,
@@ -438,8 +438,7 @@ export function DrawingOverlay({
     <div
       className="absolute inset-0 pointer-events-none"
       style={{
-        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-        transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+        transform: stageTransform({ scale: zoomLevel, pan: panOffset }),
         cursor: isDragging ? 'grabbing' : 'default',
       }}
     >

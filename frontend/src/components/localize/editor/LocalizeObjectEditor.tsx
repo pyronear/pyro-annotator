@@ -858,7 +858,6 @@ export function LocalizeObjectEditor({
             imageInfo={stage.imageInfo}
             zoomLevel={stage.zoomLevel}
             panOffset={stage.panOffset}
-            transformOrigin={stage.transformOrigin}
             isDragging={stage.isDragging}
             onMouseDown={stage.handleMouseDown}
             onMouseMove={stage.handleMouseMove}

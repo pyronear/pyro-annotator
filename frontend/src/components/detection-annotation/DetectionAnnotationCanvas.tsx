@@ -28,6 +28,7 @@ import {
 } from '@/components/annotation/ImageOverlays';
 import { SOURCE_COLOR, SOURCE_WEIGHT } from '@/components/localize/editor/sourceIdentity';
 import { hairlineStroke } from '@/utils/annotation/hairlineStroke';
+import { stageTransform } from '@/utils/annotation';
 
 interface ImageInfo {
   width: number;
@@ -64,10 +65,10 @@ interface DetectionAnnotationCanvasProps {
   containerRef: React.RefObject<HTMLDivElement>;
   imgRef: React.RefObject<HTMLImageElement>;
   imageInfo: ImageInfo | null;
-  // Zoom/pan state passed from parent
+  // Zoom/pan state passed from parent. The pan is a fraction of the image's
+  // rendered size; the transform origin is always the image's centre.
   zoomLevel: number;
   panOffset: Point;
-  transformOrigin: Point;
   isDragging: boolean;
   // Event handlers
   onMouseDown: (e: React.MouseEvent) => void;
@@ -98,7 +99,6 @@ export function DetectionAnnotationCanvas({
   imageInfo,
   zoomLevel,
   panOffset,
-  transformOrigin,
   isDragging,
   onMouseDown,
   onMouseMove,
@@ -110,6 +110,10 @@ export function DetectionAnnotationCanvas({
   overlaysVisible,
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
+
+  // Every layer shares the stage's transform — the image, the other objects'
+  // boxes, the ghosts and the drawing overlay have to scale and pan as one.
+  const transform = stageTransform({ scale: zoomLevel, pan: panOffset });
 
   // `DrawingOverlay` speaks in rectangle arrays; the committed box is a
   // one-element array. Selecting it is what reveals its move/resize
@@ -150,8 +154,7 @@ export function DetectionAnnotationCanvas({
         alt={`Detection ${detection.id}`}
         className="max-w-full max-h-[95vh] object-contain block"
         style={{
-          transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-          transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+          transform,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out',
         }}
         onLoad={handleImageLoad}
@@ -162,8 +165,7 @@ export function DetectionAnnotationCanvas({
       <div
         className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ease-in-out"
         style={{
-          transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-          transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+          transform,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out, opacity 0.3s ease-in-out',
           opacity: imageInfo && overlaysVisible ? 1 : 0,
         }}
@@ -191,8 +193,7 @@ export function DetectionAnnotationCanvas({
         <div
           className="absolute inset-0 pointer-events-none z-20"
           style={{
-            transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-            transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+            transform,
             transition: isDragging ? 'none' : 'transform 0.1s ease-out',
             opacity: overlaysVisible ? 1 : 0,
           }}
@@ -240,7 +241,6 @@ export function DetectionAnnotationCanvas({
             imageInfo={imageInfo}
             zoomLevel={zoomLevel}
             panOffset={panOffset}
-            transformOrigin={transformOrigin}
             isDragging={isDragging}
             normalizedToImage={normalizedToImage}
             boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}

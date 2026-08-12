@@ -15,13 +15,7 @@ export {
   normalizedToPixelBox,
 } from './coordinateUtils';
 
-export type {
-  ImageContainConfig,
-  ImageBounds,
-  Point,
-  TransformConfig,
-  ImageInfo,
-} from './coordinateUtils';
+export type { ImageContainConfig, ImageBounds, Point, ImageInfo } from './coordinateUtils';
 
 // Drawing utilities
 export {

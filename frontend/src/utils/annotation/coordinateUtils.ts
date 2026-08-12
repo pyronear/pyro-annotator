@@ -6,6 +6,8 @@
  * - Normalized coordinates (0-1 range for storage)
  */
 
+import type { StageView } from './stageViewUtils';
+
 /**
  * Configuration for image display within a container using object-contain behavior.
  */
@@ -32,15 +34,6 @@ export interface ImageBounds {
 export interface Point {
   x: number;
   y: number;
-}
-
-/**
- * Transform configuration for zoom and pan operations.
- */
-export interface TransformConfig {
-  zoomLevel: number;
-  panOffset: Point;
-  transformOrigin: Point; // Percentages (0-100)
 }
 
 /**
@@ -93,7 +86,7 @@ export const calculateImageBounds = (config: ImageContainConfig): ImageBounds =>
  * @param screenPoint - Point in screen/viewport coordinates
  * @param containerOffset - Container's position relative to viewport
  * @param imageBounds - Calculated image bounds within container
- * @param transform - Current zoom and pan transform state
+ * @param view - Current stage view: scale, plus pan as a fraction of the image
  * @returns Point in image coordinate space
  *
  * @example
@@ -102,7 +95,7 @@ export const calculateImageBounds = (config: ImageContainConfig): ImageBounds =>
  *   { x: 400, y: 300 },
  *   { x: 100, y: 50 },
  *   { width: 800, height: 600, x: 0, y: 0 },
- *   { zoomLevel: 2.0, panOffset: { x: 10, y: 20 }, transformOrigin: { x: 50, y: 50 } }
+ *   { scale: 2.0, pan: { x: 0.1, y: 0.05 } }
  * );
  * ```
  */
@@ -110,35 +103,25 @@ export const screenToImageCoordinates = (
   screenPoint: Point,
   containerOffset: Point,
   imageBounds: ImageBounds,
-  transform: TransformConfig
+  view: StageView
 ): Point => {
-  const { zoomLevel, panOffset, transformOrigin } = transform;
+  const { scale, pan } = view;
 
   // Get mouse position relative to container
   const relativeX = screenPoint.x - containerOffset.x;
   const relativeY = screenPoint.y - containerOffset.y;
 
-  // Calculate transform origin in original image pixel coordinates
-  const originX = (transformOrigin.x / 100) * imageBounds.width;
-  const originY = (transformOrigin.y / 100) * imageBounds.height;
+  // The transform origin is the image's centre, always — the stage keeps all
+  // its framing in the pan, which is a fraction of the image's rendered size
+  // and applies INSIDE the scale. Inverting s(p) = O + z*((p - O) + t*W):
+  //   p = (X - O)/z + W/2 - t*W
+  const originContainerX = imageBounds.x + imageBounds.width / 2;
+  const originContainerY = imageBounds.y + imageBounds.height / 2;
 
-  // Transform origin in container coordinates
-  const originContainerX = imageBounds.x + originX;
-  const originContainerY = imageBounds.y + originY;
-
-  // Reverse the CSS transform: scale(zoomLevel) translate(panOffset.x, panOffset.y)
-  // Step 1: Reverse translation. The translate is applied INSIDE the scale, so
-  // its on-screen contribution is panOffset * zoomLevel.
-  const afterTranslateX = relativeX - panOffset.x * zoomLevel;
-  const afterTranslateY = relativeY - panOffset.y * zoomLevel;
-
-  // Step 2: Reverse scaling around transform origin
-  const imageX =
-    (afterTranslateX - originContainerX) / zoomLevel + originContainerX - imageBounds.x;
-  const imageY =
-    (afterTranslateY - originContainerY) / zoomLevel + originContainerY - imageBounds.y;
-
-  return { x: imageX, y: imageY };
+  return {
+    x: (relativeX - originContainerX) / scale + imageBounds.width / 2 - pan.x * imageBounds.width,
+    y: (relativeY - originContainerY) / scale + imageBounds.height / 2 - pan.y * imageBounds.height,
+  };
 };
 
 /**

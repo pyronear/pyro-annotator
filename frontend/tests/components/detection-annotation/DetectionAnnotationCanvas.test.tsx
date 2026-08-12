@@ -53,7 +53,6 @@ const defaultProps = {
   imageInfo,
   zoomLevel: 1,
   panOffset: { x: 0, y: 0 },
-  transformOrigin: { x: 50, y: 50 },
   isDragging: false,
   onMouseDown: noop,
   onMouseMove: noop,
