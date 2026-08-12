@@ -1,7 +1,15 @@
 /**
- * Adding an object the detector missed, on one screen in two phases.
+ * Adding an object the detector missed, on one screen in three steps: choose
+ * the frames, draw the box, create the object.
  *
- * Phase 1 sets the RANGE: click the first frame the object appears on, then
+ * The step prompt attaches to whichever region is actually actionable — the
+ * strip while the range is chosen, the stage while the box is drawn — because
+ * those sit at opposite edges and a caption floating over the image cannot say
+ * "act down there". The highlight moving IS the instruction about where to
+ * look. Create lives in the prompt too: at step 3 it is the thing the sentence
+ * beside it is telling you to press.
+ *
+ * Step 1 sets the RANGE: click the first frame the object appears on, then
  * the last. The stage above shows whichever frame you are pointing at, full
  * size and carrying the other objects' boxes — so it answers both "has the
  * plume started yet?" and "is that already someone else's object?". The stage
@@ -9,7 +17,7 @@
  * hover preview was removed for occluding exactly the neighbouring frames a
  * boundary decision compares against.
  *
- * Phase 2 draws ONE box, on the first frame of the range, and every other
+ * Step 2 draws ONE box, on the first frame of the range, and every other
  * frame in the range gets a copy. That is deliberately a first draft: smoke
  * grows and drifts, so the copy is too small at the end of a long range, and
  * refining frame by frame in the object editor is the second half of the job.
@@ -20,9 +28,8 @@
  * Stepping to any other in-range frame shows the copy so it can be checked
  * before creating, but only the first frame is drawable.
  *
- * Every control lives in the top bar — smoke type, restart range, create — so
- * one task is not spread across two edges of the screen. The strip at the
- * bottom is purely the frames.
+ * The top bar carries identity and what applies throughout — smoke type, and
+ * restarting the range. The strip at the bottom is purely the frames.
  *
  * Nothing autosaves. The object does not exist until Create, which is the
  * whole reason this is a separate surface from the editor rather than a mode
@@ -204,23 +211,28 @@ export function AddObjectOverlay({
   const currentEntry = entries.find(e => e.recordedAt === currentRecordedAt);
   const shownDetection = currentEntry ? detectionsById.get(currentEntry.detectionId) : undefined;
 
+  // Three steps, because creating is a step: the object does not exist until
+  // the button is pressed, and stopping the count at "draw the box" left the
+  // flow looking finished one action early.
+  const stepNumber: 1 | 2 | 3 = phase === 'range' ? 1 : box === null ? 2 : 3;
+
   const instruction =
-    phase === 'range'
+    stepNumber === 1
       ? pendingFirst === null
         ? 'Click the first frame this object appears on'
         : 'Now click the last frame'
-      : isDrawFrame
-        ? box === null
-          ? 'Drag a box around the object — every frame in the range gets a copy'
-          : 'Drag to redraw the box'
-        : 'A copy of the box on the first frame — refine each frame after creating';
+      : stepNumber === 2
+        ? 'Drag a box around the object — every frame in the range gets a copy'
+        : 'Every frame in the range has the box — create the object';
 
   const hint =
-    phase === 'range'
+    stepNumber === 1
       ? '← → preview a frame · Enter picks it'
-      : isDrawFrame
+      : stepNumber === 2
         ? '← → step through the range'
-        : '← → back to the first frame to redraw';
+        : isDrawFrame
+          ? 'Drag to redraw · ← → check the range'
+          : '← → back to the first frame to redraw';
 
   /**
    * The prompt renders attached to whichever region is actually actionable —
@@ -233,13 +245,33 @@ export function AddObjectOverlay({
   const prompt = (
     <div
       data-testid="add-object-instruction"
-      className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-y-2 border-pine bg-pine-soft px-4 py-2.5"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y-2 border-pine bg-pine-soft px-4 py-2"
     >
       <span className="whitespace-nowrap rounded-full bg-pine px-2 py-0.5 font-data text-eyebrow font-semibold uppercase tracking-eyebrow text-white">
-        Step {phase === 'range' ? '1' : '2'} of 2
+        Step {stepNumber} of 3
       </span>
       <span className="font-body text-sm font-medium text-pine">{instruction}</span>
       <span className="ml-auto whitespace-nowrap font-body text-detail text-pine/70">{hint}</span>
+      {/* The button lives IN the prompt rather than in the top bar: at step 3
+          it is the thing the prompt is telling you to press, and a control
+          named by the sentence beside it needs no hunting. Rendered at every
+          step, disabled until there is a box — so the goal is visible from the
+          start and the control never moves. */}
+      <button
+        type="button"
+        onClick={submit}
+        disabled={box === null || isCreating}
+        data-testid="create-object"
+        // Stable accessible name: the visible label becomes "Creating…"
+        // mid-flight, and a control should not change identity while it is
+        // working.
+        aria-label="Create object"
+        className={`inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40${
+          box !== null && !isCreating ? ' animate-pine-glow motion-reduce:animate-none' : ''
+        }`}
+      >
+        {isCreating ? 'Creating…' : 'Create object'}
+      </button>
     </div>
   );
 
@@ -254,10 +286,9 @@ export function AddObjectOverlay({
       aria-label="Add object"
       data-testid="add-object-overlay"
     >
-      {/* Every control lives here, in the order the job is done: what the
-          object is, undo the range, then create it. They used to be split
-          between this bar and the strip's footer, which meant hunting in two
-          places for one task. The strip below is now purely the frames. */}
+      {/* Identity and the controls that apply throughout: what the object is,
+          and starting the range over. Create is deliberately NOT here — it
+          belongs to step 3, so it lives in the step prompt that names it. */}
       <div className="relative z-40 flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
         <span className="font-body text-sm font-semibold text-char">{objectLabel}</span>
         <span className="font-data text-detail text-haze">
@@ -310,27 +341,6 @@ export function AddObjectOverlay({
               Restart range
             </button>
           )}
-
-          {/* Once the box is drawn there is exactly one thing left to do, and
-              it is at the far end of the bar from where the drawing happened —
-              so the button pulses to claim the eye. A halo, not `animate-pulse`:
-              flashing opacity would make its own label unreadable. It stops the
-              moment the create is in flight. */}
-          <button
-            type="button"
-            onClick={submit}
-            disabled={box === null || isCreating}
-            data-testid="create-object"
-            // Stable accessible name: the visible label becomes "Creating…"
-            // mid-flight, and a control should not change identity while it
-            // is working.
-            aria-label="Create object"
-            className={`inline-flex items-center rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50${
-              box !== null && !isCreating ? ' animate-pine-glow motion-reduce:animate-none' : ''
-            }`}
-          >
-            {isCreating ? 'Creating…' : 'Create object'}
-          </button>
 
           <span aria-hidden className="mx-0.5 h-5 w-px self-center bg-line" />
 

@@ -287,7 +287,7 @@ describe('AddObjectOverlay guidance', () => {
     const prompt = screen.getByTestId('add-object-instruction');
     const strip = cell(TIMES[0]).closest('div')?.parentElement as HTMLElement;
     expect(strip.contains(prompt)).toBe(true);
-    expect(prompt).toHaveTextContent(/step 1 of 2/i);
+    expect(prompt).toHaveTextContent(/step 1 of 3/i);
     expect(prompt).toHaveTextContent(/click the first frame/i);
   });
 
@@ -299,8 +299,30 @@ describe('AddObjectOverlay guidance', () => {
     const prompt = screen.getByTestId('add-object-instruction');
     const strip = cell(TIMES[0]).closest('div')?.parentElement as HTMLElement;
     expect(strip.contains(prompt)).toBe(false);
-    expect(prompt).toHaveTextContent(/step 2 of 2/i);
+    expect(prompt).toHaveTextContent(/step 2 of 3/i);
     expect(prompt).toHaveTextContent(/drag a box/i);
+  });
+
+  it('advances to step 3 once the box is drawn, and carries the button', () => {
+    // Creating IS a step: the object does not exist until the button is
+    // pressed, and the button that presses it lives in the prompt naming it.
+    renderOverlay();
+    setRangeAndBox();
+
+    const prompt = screen.getByTestId('add-object-instruction');
+    expect(prompt).toHaveTextContent(/step 3 of 3/i);
+    expect(prompt).toHaveTextContent(/create the object/i);
+    expect(prompt.contains(createButton())).toBe(true);
+  });
+
+  it('keeps exactly one Create button, in the prompt', () => {
+    renderOverlay();
+    expect(screen.getAllByTestId('create-object')).toHaveLength(1);
+    setRangeAndBox();
+    expect(screen.getAllByTestId('create-object')).toHaveLength(1);
+    expect(
+      screen.getByTestId('add-object-instruction').contains(screen.getByTestId('create-object'))
+    ).toBe(true);
   });
 
   it('tracks progress through the range selection', () => {
