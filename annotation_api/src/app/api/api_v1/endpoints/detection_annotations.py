@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
@@ -26,6 +26,9 @@ from app.models import (
     Sequence,
 )
 from app.schemas.detection_annotations import (
+    DetectionAnnotationBulkRequest,
+    DetectionAnnotationBulkResponse,
+    DetectionAnnotationBulkResult,
     DetectionAnnotationCreate,
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
@@ -100,6 +103,108 @@ async def create_detection_annotation(
     ]
 
     return DetectionAnnotationRead(**annotation_dict)
+
+
+@router.post("/bulk")
+async def bulk_upsert_detection_annotations(
+    payload: DetectionAnnotationBulkRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: User = Depends(get_current_localizer),
+) -> DetectionAnnotationBulkResponse:
+    """Upsert every frame of one object atomically.
+
+    Replaces a client-side loop that issued one POST/PATCH per frame, each
+    its own commit: a failure partway left the object half-annotated, and
+    the retry collided with uq_detection_annotation_detection_id. Every
+    check below runs before the first write, so a rejection leaves the
+    database untouched.
+    """
+    detection_ids = [item.detection_id for item in payload.items]
+
+    seen: set[int] = set()
+    duplicates = sorted({d for d in detection_ids if d in seen or seen.add(d)})
+    if duplicates:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Duplicate detection_id in items: {duplicates}",
+        )
+
+    owned = set(
+        (
+            await session.execute(
+                select(Detection.id).where(
+                    Detection.sequence_id == payload.sequence_id,
+                    Detection.id.in_(detection_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    foreign = sorted(set(detection_ids) - owned)
+    if foreign:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Detections do not belong to sequence {payload.sequence_id}: {foreign}"
+            ),
+        )
+
+    existing = {
+        row.detection_id: row
+        for row in (
+            await session.execute(
+                select(DetectionAnnotation).where(
+                    DetectionAnnotation.detection_id.in_(detection_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+
+    written = []
+    for item in payload.items:
+        row = existing.get(item.detection_id)
+        # Contribution rule mirrors CRUD.update: attribute the write when the
+        # row lands at ANNOTATED, or when it already was.
+        was_annotated = (
+            row is not None
+            and row.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED
+        )
+        if row is None:
+            row = DetectionAnnotation(
+                detection_id=item.detection_id,
+                annotation=item.annotation.model_dump(),
+                processing_stage=item.processing_stage,
+                created_at=datetime.now(UTC),
+            )
+        else:
+            row.annotation = item.annotation.model_dump()
+            row.processing_stage = item.processing_stage
+        session.add(row)
+        written.append((row, item, was_annotated))
+
+    await session.flush()  # assign ids for the contribution rows
+
+    results = []
+    for row, item, was_annotated in written:
+        if (
+            item.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED
+            or was_annotated
+        ):
+            await annotations.record_contribution(row.id, current_user.id, commit=False)
+        results.append(
+            DetectionAnnotationBulkResult(
+                annotation_id=row.id,
+                detection_id=row.detection_id,
+                processing_stage=row.processing_stage,
+            )
+        )
+
+    await session.commit()
+    return DetectionAnnotationBulkResponse(results=results)
 
 
 @router.get("/")
