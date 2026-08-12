@@ -134,9 +134,13 @@ submit has no keyboard shortcut here — the only call sites are the rail button
 
 ## Testing
 
-New `tests/pages/LocalizeAlertPage.autoAdvance.test.tsx`, modelled on
-`ClassifyAlertPage.autoAdvance.test.tsx` (real timers, real routes and an
-unmocked `useNavigate`, as that suite does):
+A new `post-submit auto-advance` describe inside the existing
+`tests/pages/LocalizeAlertPage.test.tsx`, not a separate file. Classify needed
+its own `ClassifyAlertPage.autoAdvance.test.tsx` because its main suite mocks
+`useNavigate`; this one already renders through a real `MemoryRouter` with an
+unmocked `useNavigate` and real landing routes (`:212-262`), and owns the
+fixtures a submit test needs (`mockAllFramesAccepted`, `renderAndSettle`).
+Cases:
 
 1. Successful submit navigates to the next queue alert's object route.
 2. The queue call receives the URL's `order_by` / `order_direction` / `skipped`
@@ -149,11 +153,14 @@ unmocked `useNavigate`, as that suite does):
 
 Changed existing tests:
 
-- `tests/pages/LocalizeAlertPage.test.tsx:1303` ("navigates back to the queue"
-  after submit) gets an empty-queue mock so it keeps asserting the fallback
-  rather than accidentally testing the advance.
-- `tests/components/dashboard/DetectionAnnotatePage.test.tsx` gains a case that
-  a row click carries the active sort (and the Skipped flag) into the URL.
+- `tests/pages/LocalizeAlertPage.test.tsx` mocks `getLocalizationQueue` with an
+  empty page in its top-level `beforeEach`, so every pre-existing submit and
+  skip test — `:1303` ("navigates back to the queue"), `:1524` (Done list),
+  `:3549` (skip confirm) — keeps asserting the fallback rather than
+  accidentally exercising the advance.
+- `tests/components/dashboard/DetectionAnnotatePage.test.tsx:165` (row click)
+  now expects the queue params on the URL, and gains cases for a re-sorted
+  queue and for the Skipped backlog.
 
 ## Out of scope
 
