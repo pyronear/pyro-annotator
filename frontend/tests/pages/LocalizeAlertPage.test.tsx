@@ -2371,6 +2371,26 @@ describe('LocalizeAlertPage', () => {
       expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
     });
 
+    it('offers no Accept button when the lane\'s only frame was cleared', async () => {
+      // A cleared frame keeps its `availableSource` — the predictions are
+      // untouched, since re-picking one is the undo — so counting it as
+      // acceptable leaves a button whose accept has nothing to write:
+      // buildQuickSubmitPlan skips annotated frames, so it would toast
+      // success and never clear the count.
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        if (filters?.sequence_id !== 101) return emptyAnnotationsPage;
+        const items = [{ ...makeDetectionAnnotation(1001), annotation: { annotation: [] } }];
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      await waitFor(() => {
+        expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      });
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+    });
+
     // Key presses need the arrival auto-select to have landed first — the
     // bare URL replace-redirects to the first workable object, and Enter
     // before that has no active object to accept for.

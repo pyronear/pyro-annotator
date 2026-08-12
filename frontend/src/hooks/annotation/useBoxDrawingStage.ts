@@ -73,6 +73,14 @@ export interface UseBoxDrawingStageParams {
    * Panning is unaffected — moving the view is not editing.
    */
   canDraw?: boolean;
+  /**
+   * Changes whenever the <img> element may have appeared or been replaced —
+   * the image URL, or the id of the frame on show. The canvas renders the
+   * <img> only once its URL resolves, so on a cold open `imgRef` is still null
+   * when the resize observer first tries to attach; this is what brings the
+   * effect back to attach it.
+   */
+  imageKey?: string | number | null;
 }
 
 export interface BoxDrawingStage {
@@ -110,6 +118,7 @@ export function useBoxDrawingStage({
   onBoxSelectedChange,
   onDrawn,
   canDraw = true,
+  imageKey,
 }: UseBoxDrawingStageParams): BoxDrawingStage {
   const [imageInfo, setImageInfo] = useState<ImageGeometry | null>(null);
 
@@ -218,7 +227,7 @@ export function useBoxDrawingStage({
 
   // --- Coordinates --------------------------------------------------------
 
-  const handleImageLoad = () => {
+  const handleImageLoad = useCallback(() => {
     const img = imgRef.current;
     if (!img || !containerRef.current) return;
     // LAYOUT metrics, not getBoundingClientRect(): the rect is already scaled
@@ -233,7 +242,25 @@ export function useBoxDrawingStage({
       offsetX: img.offsetLeft,
       offsetY: img.offsetTop,
     });
-  };
+  }, [imgRef, containerRef]);
+
+  // Re-measure when the image's rendered size changes without a reload —
+  // browser zoom (ctrl +/-) and window resizes both do that, and `load` does
+  // not fire again. Every overlay is positioned from `imageInfo`, so a stale
+  // measurement leaves the boxes drawn away from the smoke they mark. Same
+  // reasoning, same pattern as `DetectionImageCard`.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (imgRef.current?.complete) handleImageLoad();
+    });
+    observer.observe(img);
+    return () => observer.disconnect();
+    // The canvas renders the <img> only once the URL resolves, so on a cold
+    // open the ref is still null on the first pass — `imageKey` changing is
+    // what brings us back to attach it then.
+  }, [handleImageLoad, imgRef, imageKey]);
 
   const getImageInfo = (): {
     containerOffset: Point;

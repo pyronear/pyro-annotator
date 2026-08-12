@@ -25,8 +25,16 @@
  * rather than after.
  *
  * Below the loop, a bare single-object status strip shows the object's frames
- * as they stand NOW — committed solid, acceptable faded, gaps outlined — so
- * the faded segments are exactly what the button will fill. The frame counter
+ * as they stand NOW — committed solid, cleared hatched, acceptable faded,
+ * gaps outlined — so the faded segments are exactly what the button will
+ * fill. A cleared frame is settled and untouched by the sweep, but hatched
+ * rather than solid: a solid segment would show a box on a frame the
+ * annotator emptied.
+ *
+ * A cleared frame still plays in the loop — dropping it punched a hole the
+ * track jumped over — but with no box drawn on it, which is exactly the
+ * answer the annotator recorded. The accept never touches those frames;
+ * `buildQuickSubmitPlan` skips them. The frame counter
  * and the strip's playhead follow the loop's reported position; the loop only
  * plays frames that have boxes, so the counter visibly skips gap frames and
  * the playhead never lands on an outlined segment.
@@ -35,20 +43,25 @@
 import { useState, type CSSProperties } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import { clearedHatch } from '@/components/annotation/clearedEncoding';
 import {
   ObjectStatusStrip,
   UNDETECTED_OUTLINE,
   type ObjectStatusStripStatus,
 } from '@/components/sequence-annotation/ObjectStatusStrip';
 import type { FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
-import type { BoundingBox } from '@/types/api';
+import type { LaneBox } from '@/utils/annotation/quickSubmitUtils';
 
 export interface AcceptRemainingPopoverProps {
   objectLabel: string;
   objectColor: string;
   sequenceId: number;
-  /** The lane's boxes as they would stand after accepting. */
-  previewBoxes: BoundingBox[];
+  /**
+   * The lane's boxes as they would stand after accepting. `LaneBox`, not
+   * `BoundingBox`: the `cleared` flag has to survive the trip to the loop,
+   * and under the wider type any normalization here would drop it silently.
+   */
+  previewBoxes: LaneBox[];
   /** One entry per alert frame (chronological) — drives the status strip, the frame counter and the playhead. */
   entries: FilmstripEntry[];
   /** Frames that will gain a box. */
@@ -69,7 +82,13 @@ export interface AcceptRemainingPopoverProps {
  */
 function entryStatus(entry: FilmstripEntry): ObjectStatusStripStatus {
   if (!entry.inObject) return entry.run === 'object' ? 'undetected' : 'absent';
+  // A cleared frame is settled — the annotator answered "not visible here",
+  // and the sweep passes over it exactly as it passes over a committed box.
+  // Its own status rather than `confirmed`, whose solid fill would show a
+  // box on a frame the annotator emptied. It keeps an `availableSource`, so
+  // it must be tested before `pending`.
   if (entry.committedSource) return 'confirmed';
+  if (entry.cleared) return 'cleared';
   if (entry.availableSource) return 'pending';
   return 'empty';
 }
@@ -104,6 +123,15 @@ export function AcceptRemainingPopover({
   const legendItems: { label: string; swatchStyle: CSSProperties }[] = [];
   if (present.has('confirmed')) {
     legendItems.push({ label: 'committed', swatchStyle: { backgroundColor: objectColor } });
+  }
+  if (present.has('cleared')) {
+    legendItems.push({
+      // `LocalizeTimelineLegend` copies this file's labels verbatim so both
+      // surfaces teach the same words; its cleared chip already says
+      // "cleared", so this one must too.
+      label: 'cleared',
+      swatchStyle: clearedHatch(objectColor),
+    });
   }
   if (present.has('pending')) {
     legendItems.push({

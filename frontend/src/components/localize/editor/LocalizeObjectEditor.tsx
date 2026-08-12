@@ -33,6 +33,7 @@ import {
   candidateToBbox,
   committedBox,
   hasModelEvidence,
+  isCleared,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -242,10 +243,9 @@ export function LocalizeObjectEditor({
   const { data: imageData } = useDetectionImage(detection.id);
   const queryClient = useQueryClient();
 
-  // Read by the keyboard handler; kept in refs so a save (which changes the
-  // committed box) doesn't re-bind the window listener.
+  // Read by the keyboard handler; kept in a ref so a save (which rebuilds
+  // `clear`) doesn't re-bind the window listener.
   const clearRef = useRef<() => void>(() => undefined);
-  const committedRef = useRef<BoxCandidate | null>(null);
 
   // --- The object's box on this frame -------------------------------------
 
@@ -254,6 +254,9 @@ export function LocalizeObjectEditor({
     [detection, existingAnnotation]
   );
   const committed = useMemo(() => committedBox(existingAnnotation), [existingAnnotation]);
+  // The annotator's "not visible here" for this frame — a decision, not the
+  // absence of one, and the difference the stage and the rail have to show.
+  const cleared = isCleared(existingAnnotation);
 
   // Image geometry, zoom/pan and the modeless pointer handling, shared with
   // the add-object flow. `commitDrawn` is defined below and reaches the hook
@@ -269,6 +272,7 @@ export function LocalizeObjectEditor({
     boxSelected,
     onBoxSelectedChange: setBoxSelected,
     onDrawn: xyxyn => commitDrawnRef.current(xyxyn),
+    imageKey: imageData?.url,
   });
   // Destructured because effects depend on them: these are useCallback-stable,
   // so a plain identifier keeps the dependency arrays honest where `stage.x`
@@ -307,12 +311,11 @@ export function LocalizeObjectEditor({
       ? []
       : boxVisibility === 'all'
         ? losers
-        : shownCommitted
+        : shownCommitted || cleared
           ? []
           : pick
             ? [pick]
             : [];
-  committedRef.current = committed;
 
   const entries = useMemo(
     () => buildFilmstripEntries(alertFrames, laneSequenceId, laneDetections, laneAnnotations),
@@ -364,11 +367,14 @@ export function LocalizeObjectEditor({
 
   const clear = useCallback(() => {
     setPreviewed(null);
+    // Already settled empty. Nothing to write — and on an evidence-free
+    // frame a second press must not remove a frame the annotator kept.
+    if (cleared) return;
     // A frame with no model evidence exists only because a human boxed it;
     // clearing removes the frame itself (issue #287's un-materialize).
     if (hasModelEvidence(detection)) onCommit(detection, []);
     else onUnmaterialize(detection);
-  }, [detection, onCommit, onUnmaterialize]);
+  }, [cleared, detection, onCommit, onUnmaterialize]);
 
   clearRef.current = clear;
 
@@ -405,11 +411,19 @@ export function LocalizeObjectEditor({
 
   const acceptAndNext = useCallback(() => {
     if (!editable) return;
+    // A cleared frame is already settled, so Enter only moves on. Committing
+    // the pick here would silently reinstate the box the annotator just
+    // rejected — and Enter is the habitual advance key, so they would be on
+    // the next frame before it happened.
+    if (cleared) {
+      step(1);
+      return;
+    }
     const pick = priorityPick(candidates);
     if (!pick) return;
     commitCandidate(pick);
     step(1);
-  }, [editable, candidates, commitCandidate, step]);
+  }, [editable, cleared, candidates, commitCandidate, step]);
 
   // --- Zoom ---------------------------------------------------------------
 
@@ -569,10 +583,19 @@ export function LocalizeObjectEditor({
           break;
         case 'Delete':
         case 'Backspace':
-          // Removes whatever is committed, not only a hand-drawn box — for a
-          // model box this is the review's "reject". A no-op on a frame with
-          // nothing committed or one outside the object's range.
-          if (!editable || !committedRef.current) return;
+          // "This object is not visible on this frame" — the one answer the
+          // editor had no way to say. Works whether or not a box is
+          // committed: on an undecided frame it rejects the model's
+          // proposal, on a committed one it takes the box back. A no-op
+          // outside the object's range, and on an already-cleared frame.
+          //
+          // Auto-repeat is dropped: the write is async, so a held key would
+          // fire before `existingAnnotation` refetches. On a frame with no
+          // annotation yet that means N creates against a detection_id
+          // unique constraint — a burst of failure toasts on a save that
+          // succeeded — and on an evidence-free frame, N deletes of a row
+          // the first one already removed.
+          if (!editable || e.repeat) return;
           clearRef.current();
           break;
         case 'g':
@@ -632,19 +655,26 @@ export function LocalizeObjectEditor({
 
   // Frames of this object that a bulk accept would fill, and frames it
   // cannot — no source offers a box there, so they stay empty and keep the
-  // alert off the submit gate.
+  // alert off the submit gate. A cleared frame is neither: the annotator
+  // already settled it, and re-filling it would undo their answer.
   const acceptRemainingCount = entries.filter(
-    e => e.inObject && !e.committedSource && e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && e.availableSource
   ).length;
   const gapCount = entries.filter(
-    e => e.inObject && !e.committedSource && !e.availableSource
+    e => e.inObject && !e.cleared && !e.committedSource && !e.availableSource
   ).length;
 
   // Exactly what the lane's track would be after accepting: committed boxes
   // where the annotator decided, winning boxes everywhere else. Only built
   // while the dialog is open — it walks every frame of the lane.
   const previewBoxes = acceptOpen
-    ? collectLaneBoxes(laneDetections, new Map(laneAnnotations.map(a => [a.detection_id, a])))
+    ? collectLaneBoxes(laneDetections, new Map(laneAnnotations.map(a => [a.detection_id, a])), {
+        // Cleared frames still play, marked — a hole in the loop made the
+        // object's track jump. The editor only ever opens on a workable
+        // lane, so an annotated-empty frame here is a clear, never an FP
+        // lane's empty-by-construction annotation.
+        markCleared: true,
+      })
     : [];
 
   /**
@@ -845,14 +875,48 @@ export function LocalizeObjectEditor({
               </span>
             </div>
           )}
+
+          {/* A cleared frame is the one state with nothing to draw, so the
+              stage has to say so in words — otherwise it is indistinguishable
+              from a frame nobody has looked at. Ash, not signal: this is a
+              recorded answer, not a problem. */}
+          {!peeked && cleared && (
+            <div
+              data-testid="cleared-frame-chip"
+              className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-line bg-ash px-4 py-2"
+            >
+              <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                No box on this frame
+              </span>
+              {/* Stated impersonally: `isCleared` only sees "committed with
+                  no box", which a boxless annotated frame reaches without
+                  anyone deciding it (issue #346), and the editor opens on
+                  already-annotated lanes. "You marked" would credit the
+                  viewer with a decision they may never have made.
+
+                  The undo depends on there being something to go back TO. A
+                  cleared frame no model boxed has every rail row disabled
+                  and Delete guarded, so pointing at the rail would be a lie
+                  — drawing is the only way back. Reachable through the
+                  un-materialize 409 fallback (LocalizeAlertPage). */}
+              <span className="font-body text-detail text-haze">
+                {objectLabel} is recorded as not visible on this frame.{' '}
+                {candidates.length > 0
+                  ? 'Pick a box on the right to change that.'
+                  : 'Draw a box to change that.'}
+              </span>
+            </div>
+          )}
         </div>
 
         <BoxSourceRail
           candidates={editable ? candidates : []}
           committed={editable ? committed : null}
+          cleared={editable && cleared}
           imageUrl={editable ? (imageData?.url ?? null) : null}
           disabled={!editable}
           onCommit={commitCandidate}
+          onClear={clear}
           onPreview={setPreviewed}
         />
       </div>

@@ -77,6 +77,29 @@ export function committedBox(
 }
 
 /**
+ * Whether this frame carries a committed "no box for this object here" —
+ * the annotator's clear, as opposed to a frame nobody has decided yet.
+ *
+ * Committed stage, no box for this object — the same question
+ * `alertLocalizeUtils.ts` asks for its `cleared` timeline status and
+ * `collectLaneBoxes` for its preview; the editor needs its own read because
+ * it works from a single annotation rather than from the alert model.
+ *
+ * Those two count boxes as `false_positive_type == null` while `committedBox`
+ * counts them as `smoke_type != null`. The two agree on every item the API
+ * documents (`DetectionAnnotationBbox` sets exactly one of the pair), and
+ * disagree only on a malformed item carrying neither — which would make this
+ * report "cleared" while the preview drew a box. Excluded explicitly rather
+ * than left to the invariant, so the surfaces cannot drift apart on data no
+ * one is validating.
+ */
+export function isCleared(annotation: DetectionAnnotation | null | undefined): boolean {
+  if (annotation?.processing_stage !== 'annotated') return false;
+  const items = annotation.annotation?.annotation ?? [];
+  return items.every(item => item.false_positive_type != null);
+}
+
+/**
  * Every box on offer for this object on this frame, in priority order
  * (manual, then auto, then engine). A manual candidate exists only once one
  * has been drawn and saved — drawing commits immediately, so the committed

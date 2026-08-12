@@ -31,9 +31,11 @@ const engine: BoxCandidate = {
 const props = {
   candidates: [auto, engine],
   committed: auto,
+  cleared: false,
   imageUrl: 'blob:image',
   disabled: false,
   onCommit: vi.fn(),
+  onClear: vi.fn(),
   onPreview: vi.fn(),
 };
 
@@ -143,5 +145,44 @@ describe('BoxSourceRail', () => {
     fireEvent.click(screen.getByTestId('source-row-engine'));
     expect(onPreview).toHaveBeenLastCalledWith(null);
     expect(onCommit).toHaveBeenCalledWith(engine);
+  });
+
+  it('offers a None row so "not visible here" is sayable with the mouse', () => {
+    const onClear = vi.fn();
+    render(<BoxSourceRail {...props} onClear={onClear} />);
+    const none = screen.getByTestId('source-row-none');
+    expect(none).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(none);
+    expect(onClear).toHaveBeenCalled();
+  });
+
+  it('presses the None row on a cleared frame, and disables it like a committed source row', () => {
+    render(<BoxSourceRail {...props} committed={null} cleared />);
+    const none = screen.getByTestId('source-row-none');
+    expect(none).toHaveAttribute('aria-pressed', 'true');
+    // Pressing again is a no-op, so it must not offer itself as one.
+    expect(none).toBeDisabled();
+  });
+
+  it('keeps the source rows live on a cleared frame — re-picking one is the undo', () => {
+    const onCommit = vi.fn();
+    render(<BoxSourceRail {...props} committed={null} cleared onCommit={onCommit} />);
+    fireEvent.click(screen.getByTestId('source-row-auto'));
+    expect(onCommit).toHaveBeenCalledWith(auto);
+  });
+
+  it('disables the None row with the rest of the rail on an out-of-range frame', () => {
+    render(<BoxSourceRail {...props} disabled />);
+    expect(screen.getByTestId('source-row-none')).toBeDisabled();
+  });
+
+  it('explains the None row on hover, as the source rows explain themselves', () => {
+    render(<BoxSourceRail {...props} />);
+    const none = screen.getByTestId('source-row-none');
+    const tip = none.getAttribute('aria-describedby');
+    expect(tip).toBeTruthy();
+    expect(document.getElementById(tip as string)).toHaveTextContent(
+      /not visible on this frame.*picking one above undoes it/i
+    );
   });
 });

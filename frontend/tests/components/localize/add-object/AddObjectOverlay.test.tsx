@@ -456,7 +456,7 @@ describe('AddObjectOverlay read-only frames', () => {
     // silently discard it, which reads as broken rather than unavailable.
     renderOverlay();
     startDrag();
-    expect(screen.queryByTestId('current-drawing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('drawing-rubber-band')).not.toBeInTheDocument();
     fireEvent.mouseUp(stubGeometry());
     expect(createButton()).toBeDisabled();
   });
@@ -469,7 +469,7 @@ describe('AddObjectOverlay read-only frames', () => {
     fireEvent.click(cell(TIMES[2]));
     fireEvent.load(stubGeometry());
     startDrag();
-    expect(screen.getByTestId('current-drawing')).toBeInTheDocument();
+    expect(screen.getByTestId('drawing-rubber-band')).toBeInTheDocument();
   });
 
   it('offers the crosshair on the frame that takes the box', () => {
@@ -491,7 +491,7 @@ describe('AddObjectOverlay read-only frames', () => {
 
     // And a drag there leaves the box that was already drawn untouched.
     startDrag();
-    expect(screen.queryByTestId('current-drawing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('drawing-rubber-band')).not.toBeInTheDocument();
     fireEvent.mouseUp(stubGeometry());
     expect(createButton()).toBeEnabled();
   });

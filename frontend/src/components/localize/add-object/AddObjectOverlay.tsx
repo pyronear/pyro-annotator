@@ -129,6 +129,9 @@ export function AddObjectOverlay({
     // picture to look at — so it must not offer a drawing gesture it will
     // refuse.
     canDraw: isDrawFrame,
+    // The stage swaps image as you step or hover frames, so the resize
+    // observer has to re-attach to whatever <img> is on screen now.
+    imageKey: currentRecordedAt,
   });
   const { resetTransient } = stage;
 

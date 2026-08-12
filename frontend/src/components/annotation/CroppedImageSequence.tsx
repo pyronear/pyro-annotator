@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
-import { BoundingBox } from '@/types/api';
+import type { LaneBox } from '@/utils/annotation/quickSubmitUtils';
 import { apiClient } from '@/services/api';
 import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
 
@@ -15,7 +15,12 @@ const CANVAS_RES = 840;
 const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
 
 interface CroppedImageSequenceProps {
-  bboxes: BoundingBox[];
+  /**
+   * One entry per box; frames absent from this list are not played. A box
+   * marked `cleared` puts its frame in the loop but draws nothing on it —
+   * the annotator's "no box here". It still steers the crop window.
+   */
+  bboxes: LaneBox[];
   sequenceId: number;
   /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
   accentColor?: string;
@@ -77,10 +82,16 @@ export default function CroppedImageSequence({
   });
 
   // Calculate average bounding box from all xyxyn coordinates (port from backend)
-  const calculateAverageBbox = (bboxes: BoundingBox[]): [number, number, number, number] => {
-    if (!bboxes.length) return [0, 0, 1, 1];
+  const calculateAverageBbox = (bboxes: LaneBox[]): [number, number, number, number] => {
+    // Cleared boxes are excluded: the annotator rejected them, and the usual
+    // reason is that the model boxed something that is NOT the object — a
+    // cloud on the far side of the frame. Averaging one in drags the crop
+    // off the plume for the whole loop. Falls back to the full frame only if
+    // every box is cleared, which draws nothing anyway.
+    const framing = bboxes.filter(b => !b.cleared);
+    if (!framing.length) return [0, 0, 1, 1];
 
-    const xyxyns = bboxes.map(b => b.xyxyn);
+    const xyxyns = framing.map(b => b.xyxyn);
     const avgX1 = xyxyns.reduce((sum, bbox) => sum + bbox[0], 0) / xyxyns.length;
     const avgY1 = xyxyns.reduce((sum, bbox) => sum + bbox[1], 0) / xyxyns.length;
     const avgX2 = xyxyns.reduce((sum, bbox) => sum + bbox[2], 0) / xyxyns.length;
@@ -262,6 +273,11 @@ export default function CroppedImageSequence({
       ctx.lineWidth = 4;
       for (const box of bboxes) {
         if (box.detection_id !== detectionId) continue;
+        // A frame the annotator cleared plays like any other — dropping it
+        // would make the track jump a hole — but nothing is drawn on it.
+        // That IS the answer they recorded: no box here. Its geometry still
+        // steers the crop window, so the loop stays framed on the object.
+        if (box.cleared) continue;
         const [x1, y1, x2, y2] = box.xyxyn;
         ctx.strokeRect(
           ((x1 * img.naturalWidth - crop.x) / crop.size) * CANVAS_RES,

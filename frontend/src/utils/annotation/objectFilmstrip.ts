@@ -13,7 +13,13 @@
 
 import type { Detection, DetectionAnnotation } from '@/types/api';
 import type { AlertFrame } from './alertLocalizeUtils';
-import { boxCandidates, committedBox, priorityPick, type BoxSource } from './objectBoxCandidates';
+import {
+  boxCandidates,
+  committedBox,
+  isCleared,
+  priorityPick,
+  type BoxSource,
+} from './objectBoxCandidates';
 
 /** Where a frame sits relative to the object's own detected span. */
 export type FilmstripRun = 'before' | 'object' | 'after';
@@ -27,6 +33,12 @@ export interface FilmstripEntry {
   run: FilmstripRun;
   /** The source of the committed box, or null when nothing is committed. */
   committedSource: BoxSource | null;
+  /**
+   * True when the annotator committed "not visible here". Distinct from a
+   * frame nobody has decided: `availableSource` stays set on a cleared
+   * frame, because re-picking that candidate is how a clear is undone.
+   */
+  cleared: boolean;
   /** The source that WOULD be committed, when nothing is yet. Null if no candidate. */
   availableSource: BoxSource | null;
   /**
@@ -70,6 +82,7 @@ export function buildFilmstripEntries(
         inObject: false,
         run,
         committedSource: null,
+        cleared: false,
         availableSource: null,
         xyxyn: null,
       };
@@ -85,6 +98,10 @@ export function buildFilmstripEntries(
       inObject: true,
       run,
       committedSource: committed?.source ?? null,
+      // `committed` rather than a second `isCleared` scan of the same items:
+      // one pass, and the flag cannot drift out of step with the
+      // `committedSource` on its own entry.
+      cleared: committed === null && isCleared(annotation),
       availableSource: available?.source ?? null,
       xyxyn: (committed ?? available)?.xyxyn ?? null,
     };

@@ -43,6 +43,35 @@ describe('buildFilmstripEntries', () => {
     detection(27004, '2026-07-30T06:49:004Z'),
   ];
 
+  it('marks a committed-empty frame cleared, and keeps its candidate for the undo', () => {
+    const cleared = {
+      id: 5,
+      detection_id: 27003,
+      annotation: { annotation: [] },
+      processing_stage: 'annotated',
+    } as unknown as DetectionAnnotation;
+
+    const [, , entry] = buildFilmstripEntries(frames, LANE, detections, [cleared]);
+
+    expect(entry.cleared).toBe(true);
+    expect(entry.committedSource).toBeNull();
+    // The auto box stays on offer: clearing never touches the predictions,
+    // and picking one back up is the only way to undo a clear.
+    expect(entry.availableSource).toBe('auto');
+    expect(entry.xyxyn).toEqual([0.2, 0.2, 0.3, 0.3]);
+  });
+
+  it('leaves an undecided frame uncleared', () => {
+    const [, , entry] = buildFilmstripEntries(frames, LANE, detections, []);
+    expect(entry.cleared).toBe(false);
+  });
+
+  it('leaves a frame the object is absent from uncleared', () => {
+    const [entry] = buildFilmstripEntries(frames, LANE, detections, []);
+    expect(entry.inObject).toBe(false);
+    expect(entry.cleared).toBe(false);
+  });
+
   it('returns one entry per alert frame, not per object frame', () => {
     const entries = buildFilmstripEntries(frames, LANE, detections, []);
     expect(entries).toHaveLength(5);

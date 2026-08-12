@@ -17,6 +17,7 @@ import {
   validateBoundingBox,
   ImageInfo,
 } from '@/utils/annotation/coordinateUtils';
+import { hairlineStroke } from '@/utils/annotation/hairlineStroke';
 
 // Where each resize handle sits relative to the selected box, for a handle of
 // `size` px. Computed rather than fixed because the size varies with the
@@ -168,9 +169,19 @@ export interface ObjectOverlayItem {
 interface ObjectIdentityOverlayProps {
   objects: ObjectOverlayItem[];
   imageInfo: ImageInfo;
+  /**
+   * The zoom this overlay is rendered inside, as for `DrawingOverlay`. These
+   * boxes are context, not the thing being edited, so they stay hairline at
+   * every zoom instead of growing into the frame you are working on.
+   */
+  strokeScale?: number;
 }
 
-export function ObjectIdentityOverlay({ objects, imageInfo }: ObjectIdentityOverlayProps) {
+export function ObjectIdentityOverlay({
+  objects,
+  imageInfo,
+  strokeScale = 1,
+}: ObjectIdentityOverlayProps) {
   if (!objects || objects.length === 0) return null;
 
   return (
@@ -185,13 +196,14 @@ export function ObjectIdentityOverlay({ objects, imageInfo }: ObjectIdentityOver
             return (
               <div
                 key={`object-overlay-${objectIndex}-${boxIndex}`}
-                className="absolute border-2 border-dashed pointer-events-none opacity-90"
+                data-testid="object-overlay-box"
+                className="absolute pointer-events-none opacity-90"
                 style={{
                   left: `${left}px`,
                   top: `${top}px`,
                   width: `${width}px`,
                   height: `${height}px`,
-                  borderColor: object.color,
+                  ...hairlineStroke({ color: object.color, width: 1, scale: strokeScale }),
                 }}
               >
                 <div
@@ -364,14 +376,12 @@ interface DrawingOverlayProps {
    * so smoke type says nothing that varies here, while the source does.
    */
   boxColor?: string;
-  /** Border width in px, when `boxColor` is driving the stroke. */
+  /** Stroke width in screen px, when `boxColor` is driving the stroke. */
   boxWidth?: number;
-  /** Dark ring hugging the stroke so it survives a bright background. */
-  boxShadow?: string;
   /**
    * The zoom this overlay is rendered inside. Stroke widths and handle sizes
    * are divided by it, so they stay the same thickness on screen however far
-   * the image is zoomed — otherwise a 4px border is drawn at 12px at 3x.
+   * the image is zoomed — otherwise a 4px stroke is drawn at 12px at 3x.
    */
   strokeScale?: number;
 }
@@ -390,7 +400,6 @@ export function DrawingOverlay({
   onHandlePointerDown,
   boxColor,
   boxWidth,
-  boxShadow,
   strokeScale = 1,
 }: DrawingOverlayProps) {
   // Handles are squares in screen pixels; at 3x an unscaled 10px handle would
@@ -461,14 +470,18 @@ export function DrawingOverlay({
               width: `${width}px`,
               height: `${height}px`,
               ...(boxColor
-                ? {
-                    borderColor: boxColor,
-                    borderStyle: 'solid',
+                ? // Painted, not laid out — a CSS border cannot go below
+                  // `strokeScale` device px. See `hairlineStroke`.
+                  hairlineStroke({
+                    color: boxColor,
                     // Selection thickens the stroke rather than recolouring
                     // it: the colour is carrying the box's source already.
-                    borderWidth: `${((boxWidth ?? 2) + (isSelected ? 2 : 0)) / strokeScale}px`,
-                    boxShadow,
-                  }
+                    // One px, not two — the resize handles are the loud part
+                    // of the selected state, and on a small box a heavier
+                    // bump swallows the thing being annotated.
+                    width: (boxWidth ?? 2) + (isSelected ? 1 : 0),
+                    scale: strokeScale,
+                  })
                 : {}),
             }}
           >
@@ -498,9 +511,14 @@ export function DrawingOverlay({
           const { left, top, width, height } = renderRectangle(currentDrawing, 'drawing');
           return (
             <div
-              data-testid="current-drawing"
-              className="absolute border-2 border-dashed border-blue-400 pointer-events-none"
+              data-testid="drawing-rubber-band"
+              className="absolute pointer-events-none"
               style={{
+                // Divided by the zoom like every other stroke in this layer.
+                // It was authored in flat CSS pixels, so it drew at 8px at 4x
+                // — thickest exactly when you are zoomed in to trace a small
+                // smoke, and covering the pixels you are aiming at.
+                ...hairlineStroke({ color: '#60A5FA', width: 1, scale: strokeScale }),
                 left: `${left}px`,
                 top: `${top}px`,
                 width: `${width}px`,

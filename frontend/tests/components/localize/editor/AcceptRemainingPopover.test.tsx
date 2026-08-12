@@ -31,6 +31,7 @@ const ENTRIES: FilmstripEntry[] = [
     inObject: true,
     run: 'object',
     committedSource: 'manual',
+    cleared: false,
     availableSource: null,
     xyxyn: [0.1, 0.1, 0.2, 0.2],
   },
@@ -40,6 +41,7 @@ const ENTRIES: FilmstripEntry[] = [
     inObject: true,
     run: 'object',
     committedSource: null,
+    cleared: false,
     availableSource: 'auto',
     xyxyn: [0.1, 0.1, 0.2, 0.2],
   },
@@ -49,6 +51,7 @@ const ENTRIES: FilmstripEntry[] = [
     inObject: true,
     run: 'object',
     committedSource: null,
+    cleared: false,
     availableSource: null,
     xyxyn: null,
   },
@@ -58,6 +61,7 @@ const ENTRIES: FilmstripEntry[] = [
     inObject: false,
     run: 'after',
     committedSource: null,
+    cleared: false,
     availableSource: null,
     xyxyn: null,
   },
@@ -73,6 +77,7 @@ const ENTRIES_WITH_HOLE: FilmstripEntry[] = [
     inObject: false,
     run: 'object',
     committedSource: null,
+    cleared: false,
     availableSource: null,
     xyxyn: null,
   },
@@ -223,5 +228,28 @@ describe('AcceptRemainingPopover frame context', () => {
 
     expect(screen.queryByTestId('accept-remaining-frame-counter')).not.toBeInTheDocument();
     expect(screen.getByTestId('status-segment-0-3')).not.toHaveAttribute('data-playhead');
+  });
+
+  it('gives a cleared frame its own status — settled, but with nothing on the frame', () => {
+    // Same frame as ENTRIES[1] — an auto box on offer — except the annotator
+    // already answered "not visible here". The sweep passes over it, so it
+    // must not read as pending; but a solid fill (what `confirmed` draws)
+    // would show a box the annotator deleted, which is what this guards.
+    const cleared: FilmstripEntry = { ...ENTRIES[1], cleared: true };
+    renderPopover([ENTRIES[0], cleared]);
+
+    expect(screen.getByTestId('status-segment-0-1')).toHaveAttribute(
+      'aria-label',
+      'Object 2, frame 2: cleared'
+    );
+    // Hatched, matching the localize rail's own cleared segment — and
+    // explicitly NOT the solid fill `confirmed` uses, which is the whole
+    // point: a solid segment shows a box that is not there.
+    const segment = screen.getByTestId('status-segment-0-1');
+    expect(segment.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(segment.style.backgroundColor).toBe('');
+    // The same word the rail's own legend uses — LocalizeTimelineLegend
+    // copies this file's labels verbatim.
+    expect(screen.getByTestId('accept-remaining-legend')).toHaveTextContent('cleared');
   });
 });
