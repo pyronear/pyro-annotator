@@ -352,6 +352,23 @@ describe('AddObjectOverlay guidance', () => {
     ).toBe(true);
   });
 
+  it('names the filmstrip and points at it in step 1', () => {
+    // Words alone left people looking at the photograph — the biggest thing on
+    // screen, and the one part of step 1 that is not clickable.
+    renderOverlay();
+    expect(screen.getByTestId('add-object-instruction')).toHaveTextContent(
+      /in the filmstrip below/i
+    );
+    expect(screen.getByTestId('add-object-strip')).toHaveAttribute('data-selecting', 'true');
+  });
+
+  it('stops singling out the filmstrip once the range is set', () => {
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    expect(screen.getByTestId('add-object-strip')).not.toHaveAttribute('data-selecting');
+  });
+
   it('tracks progress through the range selection', () => {
     renderOverlay();
     expect(screen.getByTestId('add-object-instruction')).toHaveTextContent(/first frame/i);

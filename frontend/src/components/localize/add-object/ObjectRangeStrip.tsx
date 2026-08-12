@@ -35,6 +35,12 @@ export interface ObjectRangeStripProps {
    * clickable on purpose: that is how the range gets widened.
    */
   onSelect: (entry: RangeStripEntry) => void;
+  /**
+   * True while the range is being chosen, when this strip is the thing the
+   * annotator has to act on. Cells then arm visibly on hover, so the row reads
+   * as a set of targets rather than a row of thumbnails.
+   */
+  selecting?: boolean;
 }
 
 export function ObjectRangeStrip({
@@ -42,6 +48,7 @@ export function ObjectRangeStrip({
   currentRecordedAt,
   objectColor,
   onSelect,
+  selecting = false,
 }: ObjectRangeStripProps) {
   return (
     <div className="flex items-end gap-1 overflow-x-auto px-2 py-2">
@@ -60,7 +67,13 @@ export function ObjectRangeStrip({
             onClick={() => onSelect(entry)}
             className={`relative aspect-square w-12 shrink-0 rounded-sm transition-transform focus:outline-none focus:ring-1 focus:ring-ember ${
               isCurrent ? 'z-10 scale-110 shadow-md' : ''
-            } ${entry.inRange ? '' : 'opacity-40 saturate-50'}`}
+            } ${entry.inRange ? '' : 'opacity-40 saturate-50'} ${
+              // Armed on hover while choosing: a thumbnail that lifts and rings
+              // under the cursor says "click me" in a way a tinted row does not.
+              selecting
+                ? 'cursor-pointer ring-pine hover:z-10 hover:scale-110 hover:opacity-100 hover:ring-2 hover:saturate-100'
+                : ''
+            }`}
             style={{
               outline: entry.inRange
                 ? `${entry.isAnchor ? 2.5 : 1.5}px solid ${objectColor}`

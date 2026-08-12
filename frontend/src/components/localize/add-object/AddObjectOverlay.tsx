@@ -39,7 +39,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RotateCcw, X } from 'lucide-react';
+import { ChevronDown, RotateCcw, X } from 'lucide-react';
 import type { Detection, SmokeType } from '@/types/api';
 import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
 import {
@@ -224,8 +224,8 @@ export function AddObjectOverlay({
   const instruction =
     stepNumber === 1
       ? pendingFirst === null
-        ? 'Click the first frame this object appears on'
-        : 'Now click the last frame'
+        ? 'In the filmstrip below, click the first frame this object appears on'
+        : 'Now click the last frame it appears on'
       : stepNumber === 2
         ? 'Drag a box around the object — every frame in the range gets a copy'
         : 'Box copied across the range — check the type, then create the object';
@@ -255,7 +255,18 @@ export function AddObjectOverlay({
       <span className="whitespace-nowrap rounded-full bg-pine px-2 py-0.5 font-data text-eyebrow font-semibold uppercase tracking-eyebrow text-white">
         Step {stepNumber} of 3
       </span>
-      <span className="font-body text-sm font-medium text-pine">{instruction}</span>
+      <span className="flex items-center gap-1.5 font-body text-sm font-medium text-pine">
+        {instruction}
+        {/* Points at the strip directly beneath. Words alone kept leaving
+            people looking at the photograph, which is the biggest thing on
+            screen and the one part of step 1 that is NOT clickable. */}
+        {stepNumber === 1 && (
+          <ChevronDown
+            aria-hidden
+            className="h-4 w-4 shrink-0 animate-bounce motion-reduce:animate-none"
+          />
+        )}
+      </span>
 
       {/* The smoke type sits in the ribbon rather than the top bar because it
           is a decision this flow has to make, not chrome — and it is wanted at
@@ -419,7 +430,13 @@ export function AddObjectOverlay({
           to its top edge and the thumbnails sit on pine-soft: the eye is
           pulled to the thing it has to click, rather than to the picture. */}
       <div
-        className={`flex-none border-t border-line ${phase === 'range' ? 'bg-pine-soft' : 'bg-paper'}`}
+        data-testid="add-object-strip"
+        data-selecting={phase === 'range' ? 'true' : undefined}
+        // Ringed, not merely tinted, while it is the thing to act on: a tint
+        // reads as decoration, a ring reads as a target.
+        className={`flex-none border-t border-line ${
+          phase === 'range' ? 'bg-pine-soft ring-2 ring-inset ring-pine' : 'bg-paper'
+        }`}
       >
         {phase === 'range' && prompt}
         <ObjectRangeStrip
@@ -427,6 +444,7 @@ export function AddObjectOverlay({
           currentRecordedAt={currentRecordedAt}
           objectColor={objectColor}
           onSelect={handleSelectFrame}
+          selecting={phase === 'range'}
         />
       </div>
     </div>
