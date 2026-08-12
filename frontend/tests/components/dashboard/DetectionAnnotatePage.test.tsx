@@ -162,7 +162,29 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     render(<DetectionAnnotatePage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     fireEvent.click(screen.getByText('CAM_01'));
-    expect(navigateMock).toHaveBeenCalledWith('/localize/11');
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/localize/11?order_by=temporal_model_score&order_direction=desc'
+    );
+  });
+
+  it('carries the active sort into the alert URL so the detail page advances in the same order', async () => {
+    render(<DetectionAnnotatePage />, { wrapper });
+    await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
+
+    // Re-sort by recorded time, the way an annotator working chronologically would.
+    fireEvent.click(screen.getByRole('button', { name: /Recorded/ }));
+    await waitFor(() =>
+      expect(apiClient.getLocalizationQueue).toHaveBeenCalledWith(
+        expect.objectContaining({ order_by: 'recorded_at', order_direction: 'desc' })
+      )
+    );
+
+    // Re-sorting swaps the query key, so the table reloads before the row is
+    // clickable again.
+    fireEvent.click(await screen.findByText('CAM_01'));
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/localize/11?order_by=recorded_at&order_direction=desc'
+    );
   });
 
   it('shows an all-caught-up empty state linking to the classify queue', async () => {

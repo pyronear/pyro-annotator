@@ -217,10 +217,9 @@ describe('pickNextLocalizeLane', () => {
 
 describe('localize queue view (the listing an alert was opened from)', () => {
   it('reads the queue listing out of a detail URL', () => {
-    expect(parseLocalizeQueueView('?order_by=recorded_at&order_direction=asc&skipped=1')).toEqual({
+    expect(parseLocalizeQueueView('?order_by=recorded_at&order_direction=asc')).toEqual({
       orderBy: 'recorded_at',
       orderDirection: 'asc',
-      skipped: true,
     });
   });
 
@@ -238,15 +237,12 @@ describe('localize queue view (the listing an alert was opened from)', () => {
     const view: LocalizeQueueView = {
       orderBy: 'recorded_at',
       orderDirection: 'asc',
-      skipped: true,
     };
-    expect(localizeQueueViewSearch(view)).toBe(
-      '?order_by=recorded_at&order_direction=asc&skipped=1'
-    );
+    expect(localizeQueueViewSearch(view)).toBe('?order_by=recorded_at&order_direction=asc');
     expect(parseLocalizeQueueView(localizeQueueViewSearch(view))).toEqual(view);
   });
 
-  it('omits the skipped flag for the main queue', () => {
+  it('spells out the default view rather than emitting an empty search', () => {
     expect(localizeQueueViewSearch(DEFAULT_LOCALIZE_QUEUE_VIEW)).toBe(
       '?order_by=temporal_model_score&order_direction=desc'
     );

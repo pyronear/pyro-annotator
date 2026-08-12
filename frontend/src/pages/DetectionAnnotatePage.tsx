@@ -7,7 +7,7 @@ import { LocalizationQueueItem } from '@/types/api';
 import { LocalizeQueueTable, TablePagination } from '@/components/sequences';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
-import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
+import { localizeQueueViewSearch, pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
 import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import type { QueueOrderBy } from '@/types/api';
@@ -82,7 +82,10 @@ export default function DetectionAnnotatePage() {
     // -1 never matches a sequence id: picks the alert's first unfinished lane.
     const first = pickNextLocalizeLane(item.lanes, -1);
     if (first !== null) {
-      navigate(localizeDetail(first));
+      // The ordering travels with the click. Without it the detail page's
+      // post-submit advance would walk score order while the annotator is
+      // working recency order.
+      navigate(`${localizeDetail(first)}${localizeQueueViewSearch({ orderBy, orderDirection })}`);
     }
   };
 

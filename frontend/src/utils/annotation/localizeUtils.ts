@@ -68,23 +68,23 @@ export function pickNextLocalizeLane(
 }
 
 /**
- * The queue listing an alert was opened from. It rides in the detail URL
- * (`?order_by=…&order_direction=…[&skipped=1]`) so the post-submit advance
- * re-runs the same listing the annotator is working, rather than silently
- * walking score order while they work by recency — or pulling them out of the
- * skipped backlog after one alert.
+ * The queue ordering an alert was opened under. It rides in the detail URL
+ * (`?order_by=…&order_direction=…`) so the post-submit advance re-runs the
+ * same listing the annotator is working, rather than silently walking score
+ * order while they work by recency.
+ *
+ * The skipped backlog is deliberately absent: its rows are not clickable
+ * (`LocalizeQueueTable.tsx`), so no alert is ever opened from it.
  */
 export interface LocalizeQueueView {
   orderBy: QueueOrderBy;
   orderDirection: 'asc' | 'desc';
-  skipped: boolean;
 }
 
-/** What /localize itself shows on arrival (DetectionAnnotatePage.tsx:21-26). */
+/** What /localize itself shows on arrival (DetectionAnnotatePage.tsx:25-26). */
 export const DEFAULT_LOCALIZE_QUEUE_VIEW: LocalizeQueueView = {
   orderBy: 'temporal_model_score',
   orderDirection: 'desc',
-  skipped: false,
 };
 
 const QUEUE_ORDER_BY_VALUES: QueueOrderBy[] = ['recorded_at', 'temporal_model_score'];
@@ -107,16 +107,13 @@ export function parseLocalizeQueueView(search: string): LocalizeQueueView {
       orderDirection === 'asc' || orderDirection === 'desc'
         ? orderDirection
         : DEFAULT_LOCALIZE_QUEUE_VIEW.orderDirection,
-    skipped: params.get('skipped') === '1',
   };
 }
 
 /** The search string to hang off a `/localize/:sequenceId` URL. */
 export function localizeQueueViewSearch(view: LocalizeQueueView): string {
-  const params = new URLSearchParams({
+  return `?${new URLSearchParams({
     order_by: view.orderBy,
     order_direction: view.orderDirection,
-  });
-  if (view.skipped) params.set('skipped', '1');
-  return `?${params.toString()}`;
+  }).toString()}`;
 }
