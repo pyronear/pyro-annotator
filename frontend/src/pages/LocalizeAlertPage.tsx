@@ -134,7 +134,12 @@ import {
 } from '@/utils/annotation/alertLocalizeUtils';
 import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
 import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
-import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
+import {
+  laneNeedsLocalization,
+  localizeQueueViewSearch,
+  parseLocalizeQueueView,
+  pickNextLocalizeLane,
+} from '@/utils/annotation/localizeUtils';
 import {
   buildQuickSubmitPlan,
   collectLaneBoxes,
@@ -168,6 +173,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ROUTES,
   classifyDetailWithReturn,
+  localizeDetail,
   localizeObject,
   localizeObjectRoute,
   localizeObjectSelect,
@@ -216,6 +222,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // the first cell click would silently move you onto the queue route.
   const listPath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
   const basePath = `${listPath}/${sequenceIdNum}`;
+
+  // The queue ordering this alert was opened under — /localize hangs it off
+  // the row click. Absent on a deep link, and then it is the queue page's own
+  // default view.
+  const queueView = useMemo(() => parseLocalizeQueueView(location.search), [location.search]);
+
+  // Post-submit auto-advance bookkeeping: the deferred navigation must not
+  // fire after unmount, and the queue lookup behind it must not yank someone
+  // who moved on while it was in flight.
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const advancingRef = useRef(false);
+  useEffect(
+    () => () => {
+      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+      advancingRef.current = false;
+    },
+    []
+  );
+  // A pending advance belongs to the alert it was started from.
+  useEffect(() => {
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+    advancingRef.current = false;
+  }, [sequenceIdNum]);
 
   // The active object IS the URL: the selection child route names it
   // directly, and while the editor is open the editor's own route carries
@@ -1202,6 +1232,54 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       } in Classify first.`
     : 'Spotted a mistake? This alert returns to the Localize queue with all its boxes intact, and stops being exported until it is submitted again.';
 
+  // Continuous flow: pull the next alert of the listing this one was opened
+  // under and open its first workable object. Falls back to the list when the
+  // queue is empty or the lookup fails — the list's "queue is clear" state is
+  // the end-of-queue message, so nothing extra is announced there.
+  const advanceToNextAlert = useCallback(
+    async (announce: boolean) => {
+      if (mode === 'done') {
+        navigate(listPath);
+        return;
+      }
+      try {
+        const queue = await apiClient.getLocalizationQueue({
+          page: 1,
+          size: 5,
+          order_by: queueView.orderBy,
+          order_direction: queueView.orderDirection,
+        });
+        // Navigated away while the lookup was in flight (unmount / alert
+        // switch clears the flag) — don't yank them into another alert.
+        if (!advancingRef.current) return;
+        for (const item of queue.items) {
+          // Alert identity, not sequence id: a queue row is a whole alert and
+          // carries no primary sequence id of its own.
+          if (
+            item.source_api === sequence?.source_api &&
+            item.platform_alert_id === sequence?.platform_alert_id
+          ) {
+            continue;
+          }
+          const lane = pickNextLocalizeLane(item.lanes, -1);
+          if (lane === null) continue;
+          if (announce) {
+            showToastNotification('Moving to the next alert in the queue', 'info');
+          }
+          // Only the ordering travels on; alert-scoped params (`frame`) mean
+          // nothing in the next alert.
+          navigate(`${localizeDetail(lane)}${localizeQueueViewSearch(queueView)}`);
+          return;
+        }
+      } catch {
+        // Queue lookup failed — fall through to the list.
+      }
+      if (!advancingRef.current) return;
+      navigate(listPath);
+    },
+    [mode, listPath, queueView, sequence, navigate, showToastNotification]
+  );
+
   // Submit: atomically ships the whole alert. No accept step of its own —
   // `allObjectsAccepted` gates the button, so every frame already carries a
   // committed box by the time this can fire.
@@ -1213,7 +1291,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       showToastNotification('Objects submitted', 'success');
-      setTimeout(() => navigate(listPath), 1000);
+      // Delayed: navigating unmounts this page and with it the
+      // NotificationSystem that owns the toast, so an immediate navigate
+      // would swallow the confirmation entirely.
+      advancingRef.current = true;
+      advanceTimerRef.current = setTimeout(() => {
+        advanceTimerRef.current = null;
+        void advanceToNextAlert(true);
+      }, 1000);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
@@ -1244,7 +1329,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         skipNote.trim() || undefined
       );
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setSkipConfirmOpen(false);
       setSkipNote('');
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
@@ -1253,7 +1338,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
       showToastNotification('Alert skipped', 'success');
-      navigate(listPath);
+      // Same continuous flow as the post-submit advance, but immediate: there
+      // is no success toast to protect from the unmount here.
+      advancingRef.current = true;
+      await advanceToNextAlert(false);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
@@ -1284,8 +1372,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       showToastNotification('Alert sent back to the queue', 'success');
       // Delayed like the submit path: navigating unmounts this page and with
       // it the NotificationSystem that owns the toast, so an immediate
-      // navigate would swallow the confirmation entirely.
-      setTimeout(() => navigate(listPath), 1000);
+      // navigate would swallow the confirmation entirely. Held in the shared
+      // ref so unmount cancels it. Done mode only, so it never advances.
+      advancingRef.current = true;
+      advanceTimerRef.current = setTimeout(() => {
+        advanceTimerRef.current = null;
+        navigate(listPath);
+      }, 1000);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';

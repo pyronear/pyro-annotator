@@ -1,4 +1,4 @@
-import { LocalizationQueueLane } from '@/types/api';
+import { LocalizationQueueLane, QueueOrderBy } from '@/types/api';
 
 /**
  * Stage to write at classify submit (spec: smoke-localization entry point;
@@ -65,4 +65,55 @@ export function pickNextLocalizeLane(
       l.processing_stage === 'seq_annotation_done'
   );
   return next ? next.sequence_id : null;
+}
+
+/**
+ * The queue ordering an alert was opened under. It rides in the detail URL
+ * (`?order_by=…&order_direction=…`) so the post-submit advance re-runs the
+ * same listing the annotator is working, rather than silently walking score
+ * order while they work by recency.
+ *
+ * The skipped backlog is deliberately absent: its rows are not clickable
+ * (`LocalizeQueueTable.tsx`), so no alert is ever opened from it.
+ */
+export interface LocalizeQueueView {
+  orderBy: QueueOrderBy;
+  orderDirection: 'asc' | 'desc';
+}
+
+/** What /localize itself shows on arrival (DetectionAnnotatePage.tsx:25-26). */
+export const DEFAULT_LOCALIZE_QUEUE_VIEW: LocalizeQueueView = {
+  orderBy: 'temporal_model_score',
+  orderDirection: 'desc',
+};
+
+const QUEUE_ORDER_BY_VALUES: QueueOrderBy[] = ['recorded_at', 'temporal_model_score'];
+
+/**
+ * Reads the view out of a location search string. Anything missing or
+ * unrecognised falls back to the defaults, so a deep link, a dashboard link or
+ * a hand-edited URL behaves like a plain queue entry instead of forwarding an
+ * order_by the API would reject.
+ */
+export function parseLocalizeQueueView(search: string): LocalizeQueueView {
+  const params = new URLSearchParams(search);
+  const orderBy = params.get('order_by');
+  const orderDirection = params.get('order_direction');
+  return {
+    orderBy: QUEUE_ORDER_BY_VALUES.includes(orderBy as QueueOrderBy)
+      ? (orderBy as QueueOrderBy)
+      : DEFAULT_LOCALIZE_QUEUE_VIEW.orderBy,
+    orderDirection:
+      orderDirection === 'asc' || orderDirection === 'desc'
+        ? orderDirection
+        : DEFAULT_LOCALIZE_QUEUE_VIEW.orderDirection,
+  };
+}
+
+/** The search string to hang off a `/localize/:sequenceId` URL. */
+export function localizeQueueViewSearch(view: LocalizeQueueView): string {
+  return `?${new URLSearchParams({
+    order_by: view.orderBy,
+    order_direction: view.orderDirection,
+  }).toString()}`;
 }
