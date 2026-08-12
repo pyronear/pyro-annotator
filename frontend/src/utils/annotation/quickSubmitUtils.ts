@@ -57,9 +57,15 @@ export function getIsAnnotated(
  * accept-remaining wrote boxes to the database that no surface had ever
  * shown, and that the export would then ship.
  *
- * The winner is the most confident box ANCHORED TO THIS FRAME, not simply
- * the most confident. The model emits predictions in descending confidence,
- * so the head of the list looks like the obvious pick — but the worker's
+ * The winner is the first box ANCHORED TO THIS FRAME — which for the auto
+ * layer means the most confident such box, since the model emits its
+ * predictions in descending confidence. (The engine layer carries no
+ * ordering guarantee: it arrives from the alert API. No detection in the
+ * data has ever had more than one engine box, so which one "first" means
+ * there has never mattered; if that changes, sort before slicing.)
+ *
+ * Anchoring is the point. The head of the list looks like the obvious pick
+ * on confidence alone — but the worker's
  * anchor is sequence-wide (`engine_seed_boxes` aggregates the engine boxes
  * of every detection in the lane), so a box survives by matching where the
  * object was on some OTHER frame. On 77 of the 255 multi-box detections in

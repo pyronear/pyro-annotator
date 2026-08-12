@@ -114,8 +114,16 @@ export function isCleared(annotation: DetectionAnnotation | null | undefined): b
  * same box `getWinningBoxes` draws in the grid and writes on accept-remaining.
  * The model orders its output by confidence, but the worker's anchor is
  * sequence-wide, so the most confident box is not always the one on this
- * frame's plume. The runners-up are kept, in their original order: the rail
- * exists so a deliberate choice is still possible.
+ * frame's plume.
+ *
+ * The runners-up are kept, in their original order, but note what that does
+ * and does not buy: `BoxSourceRail` renders one row per SOURCE, so only the
+ * head of each layer is clickable, and `G` ghosts the rest for comparison
+ * without offering them. On a frame whose engine anchor is stale, the more
+ * confident box is therefore visible but not selectable — the annotator has
+ * to draw it. Acceptable because the anchored box is the better default on
+ * the 30% of multi-box frames where the two differ, but it is a real
+ * trade, not a free one.
  */
 export function boxCandidates(
   detection: Detection,
