@@ -7,6 +7,7 @@ import { apiClient } from '@/services/api';
 import { BboxCrop } from '@/components/annotation/BboxCrop';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
+import { UNSURE_GROUP_TIP } from '@/utils/groupLabels';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
 import { TablePagination } from '@/components/sequences/TablePagination';
 import {
@@ -138,6 +139,7 @@ export default function SequenceGroupsListPage({
 
   const items = data?.items ?? [];
   const totalPages = data?.pages ?? 1;
+  const unsureCount = stats?.unsure ?? 0;
 
   return (
     <div className="space-y-6">
@@ -205,7 +207,10 @@ export default function SequenceGroupsListPage({
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             {filter === 'unlabeled' ? (
-              // Every group labeled - success
+              // Nothing left on this tab. Unsure objects carry no label
+              // either, so "every object is labeled" is only true when there
+              // are none of them — otherwise the success copy is a lie about
+              // the very objects the next tab is holding.
               <>
                 <span
                   aria-hidden="true"
@@ -214,11 +219,20 @@ export default function SequenceGroupsListPage({
                   <Check className="h-7 w-7 text-pine" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  All objects labeled
+                  {unsureCount > 0 ? 'Nothing left to label' : 'All objects labeled'}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Nice work — every object is labeled. New objects appear automatically a few
-                  minutes after each import.
+                  {unsureCount > 0 ? (
+                    <>
+                      {`${unsureCount} object${unsureCount === 1 ? ' is' : 's are'} marked unsure — an annotator judged them undecidable, so they carry no label.`}{' '}
+                      <Link to={classifyGroups('unsure')} className="text-ember underline">
+                        Review them
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    'Nice work — every object is labeled. New objects appear automatically a few minutes after each import.'
+                  )}
                 </p>
                 <Link
                   to={ROUTES.CLASSIFY}
@@ -404,11 +418,7 @@ export default function SequenceGroupsListPage({
                           <span className="inline-flex rounded-full bg-ash px-2 py-1 font-body text-xs font-semibold text-haze">
                             unsure
                           </span>
-                          {headerTip(
-                            'An annotator marked this object undecidable, so no label ' +
-                              'could be derived from its sightings. Settle them under ' +
-                              'Classify → Done, with the "Only Unsure" filter.'
-                          )}
+                          {headerTip(UNSURE_GROUP_TIP)}
                         </span>
                       ) : (
                         <span className="group relative inline-block">

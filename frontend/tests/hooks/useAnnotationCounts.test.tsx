@@ -32,6 +32,7 @@ describe('useAnnotationCounts', () => {
       validated: 20,
       unvalidated: 15,
       labeled: 28,
+      unsure: 0,
       unlabeled: 12,
     });
   });

@@ -139,6 +139,40 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
+  it('To label empty does not claim everything is labeled while unsure objects exist', async () => {
+    // Unsure objects carry no label either, so the success copy would be a
+    // lie — they just aren't work that lives on this tab.
+    vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
+      total: 4,
+      validated: 4,
+      unvalidated: 0,
+      labeled: 0,
+      unsure: 4,
+      unlabeled: 0,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('Nothing left to label')).toBeTruthy());
+    expect(screen.queryByText('All objects labeled')).toBeNull();
+    expect(screen.getByText(/4 objects are marked unsure/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Review them/ }).getAttribute('href')).toBe(
+      '/classify/groups/unsure'
+    );
+  });
+
+  it('To label empty keeps the success copy when nothing is unsure', async () => {
+    vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
+      total: 4,
+      validated: 4,
+      unvalidated: 0,
+      labeled: 4,
+      unsure: 0,
+      unlabeled: 0,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('All objects labeled')).toBeTruthy());
+    expect(screen.getByText(/every object is labeled/)).toBeTruthy();
+  });
+
   it('Labeled empty shows no-labeled-groups state with CTA to the To label tab', async () => {
     renderAt('/classify/groups/labeled');
     await waitFor(() => expect(screen.getByText('No labeled objects yet')).toBeTruthy());

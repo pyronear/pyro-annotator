@@ -19,6 +19,7 @@ import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
+import { UNSURE_GROUP_TIP } from '@/utils/groupLabels';
 import { formatDateTime } from '@/utils/datetime';
 
 // Minimum card width per size step; the auto-fill grid derives the column
@@ -302,8 +303,19 @@ export default function SequenceGroupAnnotatePage() {
                 false positive · {group.false_positive_type.replace(/_/g, ' ')}
               </span>
             ) : group.is_unsure ? (
-              <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-body text-xs font-semibold text-haze">
-                unsure
+              // The only header chip whose state isn't self-evident, and the
+              // landing point from the Unsure tab — so unlike its siblings it
+              // carries its own explanation, in the page's tooltip idiom.
+              <span tabIndex={0} className="group relative flex-none">
+                <span className="rounded-full bg-ash px-2.5 py-0.5 font-body text-xs font-semibold text-haze">
+                  unsure
+                </span>
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute left-0 top-full z-40 mt-1 hidden w-max max-w-[20rem] whitespace-normal rounded bg-char px-2.5 py-2 font-body text-xs font-normal text-white group-hover:block group-focus-within:block"
+                >
+                  {UNSURE_GROUP_TIP}
+                </span>
               </span>
             ) : (
               <span className="flex-none rounded-full bg-ember-soft px-2.5 py-0.5 font-body text-xs font-semibold text-ember">

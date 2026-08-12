@@ -41,6 +41,7 @@ describe('queue totals shared by the sidebar badges and the dashboard', () => {
       validated: 20,
       unvalidated: 15,
       labeled: 28,
+      unsure: 0,
       unlabeled: 12,
     });
   });
