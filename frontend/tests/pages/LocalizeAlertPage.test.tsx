@@ -30,6 +30,8 @@ import type {
   SequenceAnnotation,
   Detection,
   DetectionAnnotation,
+  LocalizationQueueItem,
+  PaginatedResponse,
 } from '@/types/api';
 
 vi.mock('@/services/api', () => ({
@@ -45,6 +47,7 @@ vi.mock('@/services/api', () => ({
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
     localizeRevert: vi.fn(),
+    getLocalizationQueue: vi.fn(),
     deleteSequence: vi.fn(),
     addObject: vi.fn(),
     skipAlert: vi.fn(),
@@ -422,6 +425,16 @@ describe('LocalizeAlertPage', () => {
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeTwoLaneAlertDetail());
+    // Default: the queue is empty, so every test that submits or skips keeps
+    // asserting the fall-back-to-the-list behaviour it was written for. The
+    // auto-advance block below opts in by returning a next alert.
+    vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue({
+      items: [],
+      page: 1,
+      pages: 0,
+      size: 5,
+      total: 0,
+    });
     vi.mocked(apiClient.getDetectionAnnotations).mockResolvedValue(emptyAnnotationsPage);
     vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
       if (id === 101) return [makeDetection(1001, T1)];
@@ -3840,5 +3853,170 @@ describe('LocalizeAlertPage', () => {
     expect(within(legend).getByText('committed')).toBeInTheDocument();
     expect(within(legend).getByText('model box to accept')).toBeInTheDocument();
     expect(within(legend).getByText('no box')).toBeInTheDocument();
+  });
+
+  /**
+   * Continuous flow (spec: 2026-08-12-localize-auto-advance): submitting the
+   * alert pulls the next one out of the queue listing this alert was opened
+   * under, instead of dropping the annotator back on the table.
+   */
+  describe('post-submit auto-advance', () => {
+    // A queue alert that is NOT the one under test (sequence 101, platform
+    // alert 500). Its first workable lane is 303.
+    const nextQueueItem: LocalizationQueueItem = {
+      source_api: 'pyronear_french',
+      platform_alert_id: 777,
+      camera_name: 'CAM-9',
+      organisation_name: 'Org',
+      azimuth: 12,
+      recorded_at: '2026-01-02T10:00:00Z',
+      temporal_model_score: 0.9,
+      lanes: [
+        {
+          sequence_id: 303,
+          alert_api_id: 9777,
+          has_smoke: true,
+          has_missed_smoke: false,
+          is_unsure: false,
+          processing_stage: 'seq_annotation_done',
+          smoke_types: ['wildfire'],
+          total_detections: 3,
+          annotated_detections: 0,
+          auto_annotated_at: '2026-01-02T11:00:00Z',
+        },
+      ],
+    };
+
+    const queuePage = (
+      items: LocalizationQueueItem[]
+    ): PaginatedResponse<LocalizationQueueItem> => ({
+      items,
+      page: 1,
+      pages: items.length ? 1 : 0,
+      size: 5,
+      total: items.length,
+    });
+
+    const submitAndSettle = async () => {
+      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
+      await waitFor(() => expect(apiClient.localizeSubmit).toHaveBeenCalled());
+    };
+
+    beforeEach(() => {
+      mockAllFramesAccepted();
+    });
+
+    it('opens the next queue alert, carrying the queue ordering forward', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101?order_by=recorded_at&order_direction=asc'),
+      });
+      await submitAndSettle();
+
+      await waitFor(
+        () =>
+          expect(screen.getByTestId('location')).toHaveTextContent(
+            '/localize/303?order_by=recorded_at&order_direction=asc'
+          ),
+        { timeout: 3000 }
+      );
+      // The lookup runs the annotator's own listing, not the default one.
+      expect(apiClient.getLocalizationQueue).toHaveBeenCalledWith({
+        page: 1,
+        size: 5,
+        order_by: 'recorded_at',
+        order_direction: 'asc',
+      });
+    });
+
+    it('defaults to score order when the URL carries no ordering (deep link)', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await submitAndSettle();
+
+      await waitFor(
+        () =>
+          expect(apiClient.getLocalizationQueue).toHaveBeenCalledWith(
+            expect.objectContaining({
+              order_by: 'temporal_model_score',
+              order_direction: 'desc',
+            })
+          ),
+        { timeout: 3000 }
+      );
+    });
+
+    it('never re-opens the alert just submitted', async () => {
+      // The queue still lists this very alert (a stale read); the next usable
+      // one has to win.
+      const staleSelf: LocalizationQueueItem = {
+        ...nextQueueItem,
+        platform_alert_id: 500,
+        lanes: [{ ...nextQueueItem.lanes[0], sequence_id: 101 }],
+      };
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(
+        queuePage([staleSelf, nextQueueItem])
+      );
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await submitAndSettle();
+
+      await waitFor(
+        () => expect(screen.getByTestId('location')).toHaveTextContent('/localize/303'),
+        { timeout: 3000 }
+      );
+    });
+
+    it('falls back to the queue list when nothing is left', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([]));
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await submitAndSettle();
+
+      await waitFor(() => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument(), {
+        timeout: 3000,
+      });
+    });
+
+    it('falls back to the queue list when the lookup fails', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockRejectedValue(new Error('network'));
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await submitAndSettle();
+
+      await waitFor(() => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument(), {
+        timeout: 3000,
+      });
+    });
+
+    it('does not advance from the Done list', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+      await submitAndSettle();
+
+      await waitFor(() => expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument(), {
+        timeout: 3000,
+      });
+      expect(apiClient.getLocalizationQueue).not.toHaveBeenCalled();
+    });
+
+    it('does not navigate after the page unmounts inside the delay window', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
+
+      const view = render(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getAllByTestId(/^frame-segment-/).length).toBeGreaterThan(0)
+      );
+      await submitAndSettle();
+      view.unmount();
+
+      // Past the 1 s window: the cleared timer means no queue lookup ever ran.
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      expect(apiClient.getLocalizationQueue).not.toHaveBeenCalled();
+    });
   });
 });
