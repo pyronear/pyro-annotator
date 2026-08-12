@@ -47,15 +47,28 @@ export default {
         card: '10px',
       },
       keyframes: {
+        // One halo per lane colour rather than one parameterised keyframe:
+        // keyframe colours cannot be varied per element, and a halo that
+        // does not match the button it surrounds reads as a different
+        // action. Ember for attention/escape (Skip alert), pine for work
+        // moving forward (Create object).
         'skip-glow': {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(217, 88, 30, 0)' },
           '50%': { boxShadow: '0 0 0 5px rgba(217, 88, 30, 0.30)' },
+        },
+        'pine-glow': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(22, 106, 93, 0)' },
+          // Slightly stronger than the ember halo: this one rings a SOLID
+          // pine button rather than an outlined one, so it has less contrast
+          // against what it surrounds.
+          '50%': { boxShadow: '0 0 0 5px rgba(22, 106, 93, 0.38)' },
         },
       },
       animation: {
         // Halo pulse, not `animate-pulse`: opacity flashing would make the
         // button's own label unreadable.
         'skip-glow': 'skip-glow 2s ease-in-out infinite',
+        'pine-glow': 'pine-glow 2s ease-in-out infinite',
       },
     },
   },

@@ -16,6 +16,7 @@ from fastapi import (
     Response,
     status,
 )
+from pydantic import ValidationError
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import (
@@ -59,7 +60,13 @@ from app.models import (
     User,
     AnnotationType,
 )
-from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
+from app.schemas.annotation_validation import (
+    AnnotationOrigin,
+    DetectionAnnotationData,
+    DetectionAnnotationItem,
+    SequenceAnnotationData,
+    SequenceBBox,
+)
 from app.schemas.detection import DetectionRead
 from app.schemas.sequence import (
     AddObjectRequest,
@@ -793,27 +800,68 @@ async def add_object(
     # Richest lane: the sibling with the most detections is the frame source
     # (the missed object is presumably visible wherever the tracked object
     # is, and this maximizes frame coverage).
+    requested = {frame.recorded_at: list(frame.xyxyn) for frame in payload.frames}
+
+    # Validate every box BEFORE anything is written. The invariants (0 <= v <=
+    # 1, x1 < x2, y1 < y2, non-zero area) live in DetectionAnnotationItem;
+    # AddObjectFrame.xyxyn on its own is just four floats, so without this a
+    # non-UI client could persist an inverted or out-of-range box that breaks
+    # the crop maths and then fails validation on any later PATCH of the same
+    # annotation. Done up front rather than at write time so a bad box costs a
+    # clean 422 with no half-built transaction to unwind.
+    try:
+        annotation_json = {
+            recorded_at: DetectionAnnotationData(
+                annotation=[
+                    DetectionAnnotationItem(
+                        xyxyn=xyxyn,
+                        class_name="smoke",
+                        smoke_type=payload.smoke_type,
+                        origin=AnnotationOrigin.HUMAN,
+                    )
+                ]
+            ).model_dump(mode="json")
+            for recorded_at, xyxyn in requested.items()
+        }
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid box: {exc.errors()[0]['msg']}",
+        ) from exc
+
+    # Any sibling lane's detection at a given timestamp is the same
+    # photograph, so the clone source is whichever lane happens to have that
+    # frame — mirroring materialize_frame. Ordered by alert_api_id so the
+    # choice is deterministic (the primary lane wins when several qualify).
     lane_ids = [lane.id for lane in lanes]
-    counts = (
-        await session.execute(
-            select(Detection.sequence_id, func.count(Detection.id))
-            .where(Detection.sequence_id.in_(lane_ids))
-            .group_by(Detection.sequence_id)
-        )
-    ).all()
-    counts_by_id = dict(counts)
-    richest_id = max(lane_ids, key=lambda sid: counts_by_id.get(sid, 0))
     source_detections = (
         (
             await session.execute(
                 select(Detection)
-                .where(Detection.sequence_id == richest_id)
-                .order_by(asc(Detection.recorded_at))
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Detection.sequence_id.in_(lane_ids),
+                    Detection.recorded_at.in_(list(requested)),
+                )
+                .order_by(asc(Detection.recorded_at), asc(Sequence.alert_api_id))
             )
         )
         .scalars()
         .all()
     )
+    source_by_time: dict[datetime, Detection] = {}
+    for det in source_detections:
+        source_by_time.setdefault(det.recorded_at, det)
+
+    missing = sorted(t for t in requested if t not in source_by_time)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "No sibling lane has a detection at these recorded_at values: "
+                f"{[t.isoformat() for t in missing]}"
+            ),
+        )
 
     now = datetime.now(UTC)
     new_seq = Sequence(
@@ -832,19 +880,20 @@ async def add_object(
         organisation_id=primary.organisation_id,
         auto_annotate_enqueued_at=now,
         auto_annotated_at=now,
+        is_manual=True,
     )
     session.add(new_seq)
     await session.flush()
 
     new_detections = [
         Detection(
-            recorded_at=det.recorded_at,
-            alert_api_id=det.alert_api_id,
+            recorded_at=recorded_at,
+            alert_api_id=source_by_time[recorded_at].alert_api_id,
             sequence_id=new_seq.id,
-            bucket_key=det.bucket_key,
+            bucket_key=source_by_time[recorded_at].bucket_key,
             algo_predictions={"predictions": []},
         )
-        for det in source_detections
+        for recorded_at in sorted(source_by_time)
     ]
     session.add_all(new_detections)
     await session.flush()
@@ -879,15 +928,32 @@ async def add_object(
         )
     )
 
-    # Every frame starts pending bbox annotation: this object has no
-    # AI-proposed box to confirm, so the annotator draws each one. (These rows
-    # are seeded here rather than by auto_create_detection_annotations, which
-    # no longer seeds anything for a lane needing localization — issue #346.)
+    # Every frame arrives already boxed: the human drew the two ends of the
+    # range and the client interpolated the rest, so these are committed
+    # answers rather than pending work. There is no AI-proposed box to accept
+    # on this lane — its detections carry empty algo_predictions by
+    # construction — so the human's box IS the annotation, and the frames
+    # would otherwise be permanently stuck at bbox_annotation with nothing
+    # able to fill them. (Seeded here rather than by
+    # auto_create_detection_annotations, which no longer seeds anything for a
+    # lane needing localization — issue #346.)
+    #
+    # Shape matches what the editor's own per-frame save writes
+    # (saveDetectionReview), so these frames are indistinguishable downstream
+    # from any other human-annotated frame.
+    # Built through DetectionAnnotationData rather than as a hand-written dict:
+    # that is where the box invariants live (0 <= v <= 1, x1 < x2, y1 < y2,
+    # non-zero area, exactly one of smoke_type/false_positive_type), and
+    # AddObjectFrame.xyxyn on its own accepts any four floats. Without this a
+    # non-UI client could persist an inverted or out-of-range box that then
+    # breaks the crop maths and fails validation on any later PATCH of the same
+    # annotation. `origin` is set explicitly so these rows are indistinguishable
+    # from what the editor's own per-frame save writes.
     session.add_all(
         DetectionAnnotation(
             detection_id=det.id,
-            annotation={"annotation": []},
-            processing_stage=DetectionAnnotationProcessingStage.BBOX_ANNOTATION,
+            annotation=annotation_json[det.recorded_at],
+            processing_stage=DetectionAnnotationProcessingStage.ANNOTATED,
         )
         for det in new_detections
     )
@@ -1862,7 +1928,47 @@ async def get_sequence(
 @router.delete("/{sequence_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sequence(
     sequence_id: int = Path(..., ge=0),
+    force: bool = Query(
+        False,
+        description=(
+            "Delete an imported sequence too. For trusted tooling only — the "
+            "importer's own rollback and the cleanup scripts, which exist to "
+            "remove imported rows. The annotation UI never sends it."
+        ),
+    ),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    """Only a lane a human added may be removed, unless `force` is set.
+
+    An imported lane is part of the import record; retiring one is a
+    reclassification (mark it a false positive, which drops it out of the
+    localize queue and the submit gate), not a deletion.
+
+    The cascade is safe precisely because of that guard: everything reachable
+    from an is_manual lane was created by add_object — cloned Detection rows
+    with no model output, the lane's own SequenceAnnotation, and the boxes the
+    annotator drew. Nothing imported and nothing belonging to another lane is
+    reachable.
+
+    No S3 call happens here, which matters: those cloned detections share
+    bucket_key with the sibling they came from, so deleting the objects (as
+    DELETE /detections/{id} does) would destroy the sibling lanes' images too.
+
+    `force` exists because deleting imported rows is exactly what some trusted
+    callers are FOR: `annotation_management._rollback_sequence` undoes a
+    half-imported lane (leaving it in place would strand debris that 409s on
+    every later run), and cleanup_sequences.py / cleanup_duplicate_images.py
+    remove partial and duplicate imports. Those pass it; the annotation UI
+    never does, so an annotator still cannot remove an imported object.
+    """
+    sequence = await sequences.get(sequence_id, strict=True)
+    if not sequence.is_manual and not force:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only manually added objects can be removed. To retire an "
+                "imported object, reclassify it as a false positive."
+            ),
+        )
     await sequences.delete(sequence_id)

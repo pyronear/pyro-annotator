@@ -220,14 +220,26 @@ class ApiClient {
 
   // Missed smoke: spawn a new sibling lane (Object N+1) for a plume the AI
   // missed entirely — replaces the retired ⚑ carrier-lane flow.
+  //
+  // `frames` IS the range: the new lane gets Detection rows only for these
+  // timestamps, and each carries the box that frame will receive, already
+  // interpolated client-side between the two anchors the annotator drew. One
+  // request, one server transaction — a half-written object is not a state
+  // the screen can end up in.
   async addObject(
     sourceApi: string,
     platformAlertId: number,
-    smokeType: SmokeType
+    smokeType: SmokeType,
+    frames: { recordedAt: string; xyxyn: [number, number, number, number] }[]
   ): Promise<AlertLane> {
     const response: AxiosResponse<AlertLane> = await this.client.post(
       `${API_ENDPOINTS.SEQUENCES}alert/add-object`,
-      { source_api: sourceApi, platform_alert_id: platformAlertId, smoke_type: smokeType }
+      {
+        source_api: sourceApi,
+        platform_alert_id: platformAlertId,
+        smoke_type: smokeType,
+        frames: frames.map(f => ({ recorded_at: f.recordedAt, xyxyn: f.xyxyn })),
+      }
     );
     return response.data;
   }

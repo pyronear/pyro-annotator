@@ -25,6 +25,13 @@ export interface LocalizeObjectActionsProps {
   isAccepting?: boolean;
   /** Opens this object's classification for correction (classify's done mode). */
   onReclassify?: () => void;
+  /**
+   * Removes an object a human added, with its boxes. Withheld on imported
+   * objects — those are part of the import record and are retired by
+   * reclassifying them as false positives, which the API enforces too.
+   */
+  onRemoveObject?: () => void;
+  isRemoving?: boolean;
   /** Passed through to the tooltips — `above` where the panel edge is below the buttons. */
   tooltipPlacement?: 'below' | 'above';
   /** Anchor for the popover's outside-click detection — wraps the Accept button. */
@@ -53,6 +60,8 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   onAcceptBoxes,
   isAccepting = false,
   onReclassify,
+  onRemoveObject,
+  isRemoving = false,
   tooltipPlacement = 'below',
   acceptAnchorRef,
   acceptPopover,
@@ -106,6 +115,23 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
           <kbd className="rounded border border-line bg-ash px-1 py-0.5 font-data text-[11px] font-medium leading-none">
             R
           </kbd>
+        </button>
+      </Tooltip>
+    )}
+    {onRemoveObject && (
+      <Tooltip
+        placement={tooltipPlacement}
+        tip={`Removes ${label} and every box drawn on it. Only objects added by hand can be removed — an imported object is retired by reclassifying it as a false positive.`}
+      >
+        <button
+          type="button"
+          aria-label={`Remove ${label}`}
+          onClick={onRemoveObject}
+          disabled={isRemoving}
+          data-testid="remove-object-button"
+          className={`${SECONDARY} border-signal/40 text-signal hover:bg-signal-soft disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          {isRemoving ? 'Removing…' : 'Remove object'}
         </button>
       </Tooltip>
     )}

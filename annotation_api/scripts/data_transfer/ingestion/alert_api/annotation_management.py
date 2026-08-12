@@ -247,9 +247,15 @@ def create_annotation_from_data(
 def _rollback_sequence(
     sequence_id: int, annotation_api_url: str, auth_token: str
 ) -> None:
-    """Delete a sequence as part of the `annotate_split_sequence` rollback path."""
+    """Delete a sequence as part of the `annotate_split_sequence` rollback path.
+
+    `force` because the lane being rolled back is an IMPORTED one, which the
+    API otherwise refuses to delete so annotators cannot remove objects from
+    the import record. Leaving it would strand exactly the half-imported,
+    annotation-less sequence this rollback exists to prevent.
+    """
     try:
-        delete_sequence(annotation_api_url, auth_token, sequence_id)
+        delete_sequence(annotation_api_url, auth_token, sequence_id, force=True)
     except Exception as exc:
         logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
 

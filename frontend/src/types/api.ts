@@ -26,6 +26,10 @@ export interface Sequence {
   // Membership in a SequenceGroup; null until the periodic assignment
   // sweep runs or when the sequence has been excluded from grouping manually.
   sequence_group_id?: number | null;
+  // True only for lanes a human added on the localize page. Gates the
+  // "Remove object" action and the submit soft-confirm; imported lanes are
+  // retired by reclassifying them as false positives instead.
+  is_manual?: boolean;
   detection_annotation_stats?: DetectionAnnotationStats;
 }
 

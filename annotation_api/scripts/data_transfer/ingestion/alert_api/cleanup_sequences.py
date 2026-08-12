@@ -125,7 +125,13 @@ def main() -> None:
         seq_id = seq["id"]
         alert_id = seq.get("alert_api_id")
         try:
-            annotation_api.delete_sequence(args.url_api_annotation, token, seq_id)
+            # force: these ARE imported sequences — removing partial and
+            # duplicate imports is this script's entire purpose, and the API
+            # otherwise refuses so annotators cannot delete from the import
+            # record.
+            annotation_api.delete_sequence(
+                args.url_api_annotation, token, seq_id, force=True
+            )
             logging.info(f"Deleted sequence id={seq_id} alert_api_id={alert_id}")
         except Exception as exc:
             logging.error(

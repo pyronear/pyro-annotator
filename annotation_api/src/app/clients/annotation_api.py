@@ -431,7 +431,9 @@ def list_sequences(base_url: str, auth_token: str, **params) -> Dict:
     return _handle_response(response, operation=operation)
 
 
-def delete_sequence(base_url: str, auth_token: str, sequence_id: int) -> None:
+def delete_sequence(
+    base_url: str, auth_token: str, sequence_id: int, force: bool = False
+) -> None:
     """
     Delete a sequence by ID.
 
@@ -439,12 +441,19 @@ def delete_sequence(base_url: str, auth_token: str, sequence_id: int) -> None:
         base_url: Base URL of the annotation API
         auth_token: JWT authentication token
         sequence_id: ID of the sequence to delete
+        force: Also allow deleting an IMPORTED sequence. The API otherwise
+            refuses one with 409, so that annotators cannot remove objects
+            that are part of the import record. Scripts whose job is to remove
+            imported rows — the import rollback, the cleanup utilities — must
+            pass this.
 
     Raises:
         NotFoundError: If sequence not found
-        AnnotationAPIError: For other API errors
+        AnnotationAPIError: For other API errors, including 409 when the
+            sequence was imported and `force` was not set
     """
-    url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
+    query = "?force=true" if force else ""
+    url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}{query}"
     operation = f"delete sequence {sequence_id}"
     response = _make_request("DELETE", url, auth_token, operation=operation)
     _handle_response(response, operation=operation)

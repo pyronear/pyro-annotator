@@ -67,13 +67,23 @@ async def test_list_sequences(authenticated_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_delete_sequence(authenticated_client: AsyncClient, sequence_session):
+async def test_delete_sequence_refuses_an_imported_one(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Imported sequences are part of the import record and are not deletable.
+
+    Only lanes a human added (is_manual) may be removed — see
+    test_delete_sequence_guard.py for both sides of that rule. Retiring an
+    imported object is a reclassification, not a deletion.
+    """
     sequence_id = 1
     delete_response = await authenticated_client.delete(f"/sequences/{sequence_id}")
-    assert delete_response.status_code in (204, 404)
+    assert delete_response.status_code in (409, 404)
 
-    get_response = await authenticated_client.get(f"/sequences/{sequence_id}")
-    assert get_response.status_code == 404
+    if delete_response.status_code == 409:
+        # Refused, so it is still there.
+        get_response = await authenticated_client.get(f"/sequences/{sequence_id}")
+        assert get_response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -2477,3 +2487,34 @@ async def test_patch_temporal_score_is_scoped_to_source_api(
         },
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sequence_read_exposes_is_manual_defaulting_false(
+    authenticated_client: AsyncClient,
+):
+    """An imported sequence is never manual, and the flag must reach clients.
+
+    SequenceRead enumerates its fields rather than deriving them from the
+    model, so a new column is invisible without explicit plumbing — and both
+    the delete guard and the localize UI key off this one.
+    """
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "99100",
+        "camera_name": "test_cam",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "is_wildfire_alertapi": "wildfire_smoke",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    assert response.json()["is_manual"] is False

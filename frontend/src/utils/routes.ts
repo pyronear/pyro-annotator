@@ -93,6 +93,31 @@ export function localizeObjectSelect(
 }
 
 /**
+ * Route pattern for the add-object screen. Queue prefix only: adding a missed
+ * object to an alert that has already been submitted would change a finished
+ * record, so the done page does not offer it — and a pasted
+ * `/localize/done/…/add-object` therefore matches nothing and simply leaves
+ * the cockpit as it is.
+ *
+ * Mounted as an absolute CHILD of the alert page's route for the same reason
+ * the editor is: a sibling would remount the page on every open and close,
+ * losing scroll, crop mode, focus mode and the active object.
+ *
+ * Only the fact that the screen is OPEN lives in the URL. The range, the box
+ * and the smoke type stay local, exactly as the editor keeps its peeked frame
+ * and zoom local: they are a gesture in progress, not a place — nothing about
+ * a half-drawn box survives being pasted to a colleague.
+ */
+export function localizeAddObjectRoute(): string {
+  return `${ROUTES.LOCALIZE}/:sequenceId/add-object`;
+}
+
+/** Concrete add-object path for one alert. */
+export function localizeAddObject(sequenceId: number | string): string {
+  return `${ROUTES.LOCALIZE}/${sequenceId}/add-object`;
+}
+
+/**
  * Route pattern for the per-frame editor, under whichever provenance prefix
  * the page was entered from. Declared once so App.tsx's route and
  * LocalizeAlertPage's `useMatch` can't drift apart: if they did, the failure
