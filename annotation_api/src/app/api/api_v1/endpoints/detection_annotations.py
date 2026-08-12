@@ -11,6 +11,7 @@ from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_detection_annotation_crud
@@ -118,7 +119,8 @@ async def bulk_upsert_detection_annotations(
     its own commit: a failure partway left the object half-annotated, and
     the retry collided with uq_detection_annotation_detection_id. Every
     check below runs before the first write, so a rejection leaves the
-    database untouched.
+    database untouched, and the writes themselves upsert on that constraint
+    rather than racing against it.
     """
     detection_ids = [item.detection_id for item in payload.items]
 
@@ -151,55 +153,50 @@ async def bulk_upsert_detection_annotations(
             ),
         )
 
-    existing = {
-        row.detection_id: row
-        for row in (
-            await session.execute(
-                select(DetectionAnnotation).where(
-                    DetectionAnnotation.detection_id.in_(detection_ids)
-                )
-            )
-        )
-        .scalars()
-        .all()
-    }
-
-    written = []
-    for item in payload.items:
-        row = existing.get(item.detection_id)
-        # Contribution rule mirrors CRUD.update: attribute the write when the
-        # row lands at ANNOTATED, or when it already was.
-        was_annotated = (
-            row is not None
-            and row.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED
-        )
-        if row is None:
-            row = DetectionAnnotation(
-                detection_id=item.detection_id,
-                annotation=item.annotation.model_dump(),
-                processing_stage=item.processing_stage,
-                created_at=datetime.now(UTC),
-            )
-        else:
-            row.annotation = item.annotation.model_dump()
-            row.processing_stage = item.processing_stage
-        session.add(row)
-        written.append((row, item, was_annotated))
-
-    await session.flush()  # assign ids for the contribution rows
-
+    now = datetime.now(UTC)
     results = []
-    for row, item, was_annotated in written:
-        if (
-            item.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED
-            or was_annotated
-        ):
-            await annotations.record_contribution(row.id, current_user.id, commit=False)
+    for item in payload.items:
+        annotation_json = item.annotation.model_dump()
+        # INSERT ... ON CONFLICT rather than read-then-write: two accepts of
+        # the same lane racing (a double-fired mutation, or two annotators on
+        # one alert) would otherwise both see no row, both insert, and the
+        # loser would trip uq_detection_annotation_detection_id for a 500.
+        # updated_at is stamped here because the column's `onupdate` only
+        # fires for ORM-emitted UPDATEs, and stays NULL on the insert branch
+        # so a freshly created row is still distinguishable (#216).
+        statement = (
+            pg_insert(DetectionAnnotation)
+            .values(
+                detection_id=item.detection_id,
+                annotation=annotation_json,
+                processing_stage=item.processing_stage,
+                created_at=now,
+            )
+            .on_conflict_do_update(
+                index_elements=[DetectionAnnotation.detection_id],
+                set_={
+                    "annotation": annotation_json,
+                    "processing_stage": item.processing_stage,
+                    "updated_at": now,
+                },
+            )
+            .returning(DetectionAnnotation.id)
+        )
+        annotation_id = (await session.execute(statement)).scalar_one()
+
+        # Attribute only writes that LAND at ANNOTATED — the same rule as
+        # CRUD.update, which tests the post-update stage (it applies the
+        # payload before the check, making its second operand redundant).
+        if item.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED:
+            await annotations.record_contribution(
+                annotation_id, current_user.id, commit=False
+            )
+
         results.append(
             DetectionAnnotationBulkResult(
-                annotation_id=row.id,
-                detection_id=row.detection_id,
-                processing_stage=row.processing_stage,
+                annotation_id=annotation_id,
+                detection_id=item.detection_id,
+                processing_stage=item.processing_stage,
             )
         )
 

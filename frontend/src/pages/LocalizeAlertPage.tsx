@@ -870,13 +870,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     });
   };
 
-  // Shared step: accept the winning model boxes for every pending frame of
-  // one lane, in ONE request the server upserts atomically — this used to be
-  // a POST/PATCH per frame, each its own commit, so a failure partway left
-  // the object half-annotated with nothing to reconcile it. Does not submit
-  // the lane. Used both by the per-object quick-accept button and by "Accept
-  // all & submit alert", which runs this for every workable lane before the
-  // atomic localize-submit call.
+  // Accept the winning model boxes for every pending frame of one lane, in
+  // ONE request the server upserts atomically — this used to be a POST/PATCH
+  // per frame, each its own commit, so a failure partway left the object
+  // half-annotated with nothing to reconcile it. Does not submit the lane:
+  // that stays with the alert-wide localize-submit call.
   const runLaneQuickAccept = useCallback(
     async (laneSequenceId: number) => {
       const lane = alertDetail?.lanes.find(l => l.sequence.id === laneSequenceId);

@@ -49,9 +49,10 @@ modal's **Accept boxes** (`LocalizeObjectEditor.tsx:740` →
 `LocalizeAlertPage.tsx:2189`), and Enter to confirm the popover
 (`LocalizeAlertPage.tsx:1709`). All three are fixed by fixing the loop.
 
-`runLaneQuickAccept` is additionally what **Accept all & submit alert** runs
-per workable lane, so that path drops from N×M requests to N without any
-extra work.
+`runLaneQuickAccept` has exactly one caller, the `quickAcceptLane` mutation
+those three affordances share. (Its comment claimed a second caller, "Accept
+all & submit alert", running it per workable lane — that control no longer
+exists outside Guide copy, so there is no N×M path to fix.)
 
 Out of scope: the editor's per-frame saves (`saveDetection` /
 `acceptAndNext`, `LocalizeObjectEditor.tsx:412`). Those are already one
@@ -100,11 +101,15 @@ Pydantic rejects a malformed box with 422 before the handler body runs.
 
 ### Semantics
 
-**Upsert by `detection_id`.** The handler loads existing `DetectionAnnotation`
-rows for the requested detections in one query and, per item, updates the
-existing row or inserts a new one. The client no longer routes between POST
-and PATCH, and a retry after a failure updates rather than colliding with the
-unique constraint.
+**Upsert by `detection_id`.** Each item is written with
+`INSERT ... ON CONFLICT (detection_id) DO UPDATE`, so the client no longer
+routes between POST and PATCH, and a retry after a failure updates rather
+than colliding with the unique constraint. A read-then-write would leave that
+collision reachable whenever two accepts of the same lane overlap — a
+double-fired mutation, or two annotators on one alert — with the loser
+raising an uncaught `IntegrityError` (500). `updated_at` is stamped in the
+`DO UPDATE` branch, since the column's `onupdate` only fires for ORM-emitted
+UPDATEs; it stays NULL on insert, matching the single-item path (#216).
 
 **Validate everything before writing anything:**
 
@@ -119,16 +124,18 @@ rolls back. This mirrors `localize-submit`
 multi-lane write atomically.
 
 Contributions follow the same rule as `CRUD.update`
-(`crud_detection_annotation.py:70-80`): record a contribution when the row
-lands at `ANNOTATED`, or when it was already `ANNOTATED`. They are staged with
-the existing `record_contribution(..., commit=False)`
+(`crud_detection_annotation.py:70-80`): record a contribution when the write
+**lands** at `ANNOTATED`. (`CRUD.update` reads as "lands at ANNOTATED, or was
+already" only on the surface — it applies the payload before the check, so
+both operands describe the post-update stage and the second is redundant.
+Testing the pre-update stage here instead would attribute a demotion to the
+caller, listing them as a contributor to work they removed.) Contributions
+are staged with the existing `record_contribution(..., commit=False)`
 (`crud_detection_annotation.py:88`), whose docstring was written for exactly
 this case — a partial commit would leave `ANNOTATED` rows unattributed, and
 nothing backfills them.
 
 `created_at` is set explicitly on inserts, matching the single-item CRUD.
-`updated_at` is left alone — it is server-owned, stamped by the column's
-`onupdate` (`models.py:446-449`).
 
 ### Response
 

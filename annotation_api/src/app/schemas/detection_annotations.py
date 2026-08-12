@@ -97,6 +97,12 @@ class DetectionAnnotationBulkRequest(BaseModel):
     Accepting an object used to be one request per frame, each its own
     commit, so a failure partway left it half-annotated with nothing to
     reconcile it.
+
+    The 500-item ceiling is a server guard, not a chunk size: a lane holds
+    one frame per detection (~30 at the import window's widest), so it is
+    unreachable in practice. Splitting an oversized object across requests
+    would reintroduce exactly the partial write this endpoint exists to
+    remove, so raise the ceiling before reaching for chunking.
     """
 
     sequence_id: int

@@ -233,6 +233,88 @@ async def test_resending_the_same_batch_is_a_clean_update(
 
 
 @pytest.mark.asyncio
+async def test_updated_at_is_null_on_create_and_stamped_on_upsert(
+    authenticated_client: AsyncClient, async_session
+):
+    """The column's `onupdate` only fires for ORM-emitted UPDATEs, so the
+    ON CONFLICT branch has to stamp updated_at itself (#216)."""
+    seq, dets = await _lane(async_session, alert_api_id=914, frames=1)
+    body = {
+        "sequence_id": seq.id,
+        "items": [
+            {
+                "detection_id": dets[0].id,
+                "annotation": annotation(BOX),
+                "processing_stage": "annotated",
+            }
+        ],
+    }
+
+    first = await authenticated_client.post("/annotations/detections/bulk", json=body)
+    assert first.status_code == 200
+    annotation_id = first.json()["results"][0]["annotation_id"]
+
+    created = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
+    assert created.json()["updated_at"] is None
+
+    second = await authenticated_client.post("/annotations/detections/bulk", json=body)
+    assert second.status_code == 200
+
+    upserted = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert upserted.json()["updated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_demotion_is_not_attributed_to_the_caller(
+    authenticated_client: AsyncClient, async_session, test_user
+):
+    """Only writes that LAND at annotated are contributions. Attributing a
+    demotion would list the caller as a contributor to work they removed."""
+    seq, dets = await _lane(async_session, alert_api_id=915, frames=1)
+    annotated = DetectionAnnotation(
+        detection_id=dets[0].id,
+        annotation=annotation(BOX),
+        processing_stage=DetectionAnnotationProcessingStage.ANNOTATED,
+        created_at=NOW,
+    )
+    async_session.add(annotated)
+    await async_session.commit()
+    await async_session.refresh(annotated)
+    annotation_id = annotated.id
+
+    response = await authenticated_client.post(
+        "/annotations/detections/bulk",
+        json={
+            "sequence_id": seq.id,
+            "items": [
+                {
+                    "detection_id": dets[0].id,
+                    "annotation": annotation(BOX),
+                    "processing_stage": "bbox_annotation",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    contributions = (
+        (
+            await async_session.execute(
+                select(DetectionAnnotationContribution).where(
+                    DetectionAnnotationContribution.detection_annotation_id
+                    == annotation_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert contributions == []
+
+
+@pytest.mark.asyncio
 async def test_a_detection_from_another_sequence_is_rejected_before_any_write(
     authenticated_client: AsyncClient, async_session
 ):
