@@ -104,10 +104,12 @@ Backend (`src/tests/endpoints/test_sequence_groups.py`):
 - A group whose members mix real scores and NULLs reports the max of the
   non-NULL ones.
 - A group whose members are all unscored reports `null`.
-- Sorting by `temporal_model_score` desc places all-NULL groups last.
-  Assert white-box on the compiled ORDER BY containing `NULLS LAST`, not only
-  on row order: without `nullslast` the order is *undefined*, not reliably
-  wrong, so a behavioural test can pass by luck.
+- Sorting by `temporal_model_score` places all-NULL groups last in **both**
+  directions. Assert row order, not the compiled clause: with distinct scores
+  the ordering is fully determined by the column, and Postgres's NULL default
+  is specified (FIRST on DESC), so dropping `nullslast` fails the DESC case
+  deterministically rather than by luck. Asserting ASC too is what catches a
+  `nullslast` applied to only one branch.
 
 Frontend (`tests/pages/SequenceGroupsListPage.test.tsx`):
 
