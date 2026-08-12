@@ -39,14 +39,36 @@ export function getIsAnnotated(
   return annotation?.processing_stage === 'annotated';
 }
 
-/** The winning model layer's boxes for a detection (auto if ≥1 box, else engine). */
+/**
+ * The winning model layer's box for a detection (auto if ≥1 box, else
+ * engine), as a list of AT MOST ONE.
+ *
+ * The layer itself can hold several: the sensitive model runs at a 0.01
+ * confidence floor and the worker keeps every prediction overlapping the
+ * lane's engine anchor, so a frame's auto layer routinely carries two or
+ * three boxes, the runners-up being sub-0.1-confidence noise. But an object
+ * has at most one box per frame (`objectBoxCandidates.ts`), and everything
+ * downstream of here either DRAWS this box (the grid cell, the preview loop)
+ * or COMMITS it (`buildQuickSubmitPlan`). Returning the whole layer meant
+ * accept-remaining wrote boxes to the database that no surface had ever
+ * shown, and that the export would then ship.
+ *
+ * The first is the winner: the model emits its predictions in descending
+ * confidence, and the editor's `priorityPick` takes the first of the same
+ * list — so capping here is what keeps accept-remaining agreeing with the
+ * per-frame accept the annotator would otherwise have pressed.
+ *
+ * `boxCandidates` deliberately does NOT go through this function: the
+ * editor's rail offers every candidate, which is where a runner-up can still
+ * be chosen deliberately.
+ */
 export function getWinningBoxes(detection: Detection) {
   const layer = getWinningModelLayer(detection);
   const boxes =
     layer === 'auto'
       ? (detection.auto_predictions?.predictions ?? [])
       : (detection.algo_predictions?.predictions ?? []);
-  return { layer, boxes };
+  return { layer, boxes: boxes.slice(0, 1) };
 }
 
 /**

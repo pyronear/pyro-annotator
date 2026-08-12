@@ -181,24 +181,16 @@ export function buildAlertFrameModel(
       // timeline row stuck at 'empty'. Its engine track is what the
       // read-only context view is for.
       //
-      // Capped at ONE box: an object has at most one box per frame — the
-      // invariant the editor's box model states
-      // (`objectBoxCandidates.ts`) and the only thing this lane can ever
-      // commit. Nothing upstream enforces it. The worker keeps every
-      // sensitive-model prediction overlapping the lane's engine anchor
-      // (`worker.py`), and that model runs at a 0.01 confidence floor, so a
-      // pending frame's auto layer regularly holds two or three boxes — the
-      // extras being noise the annotator is not being asked about. Drawing
-      // the whole layer stacked them all in one cell and read as "this
-      // object is in three places at once", while the editor, three clicks
-      // away, drew one.
+      // Capped at ONE box, because an object has at most one box per frame
+      // (`objectBoxCandidates.ts`) and nothing upstream enforces it. The
+      // model layers are capped at source in `getWinningBoxes`; this cap
+      // covers the two paths that don't go through it — a committed
+      // annotation, which no constraint stops from holding several items,
+      // and an FP lane's engine track.
       //
-      // So both surfaces have to choose, and they have to choose alike. The
-      // editor draws `priorityPick` / `committedBox`, each the FIRST of its
-      // list; the cap here is the same rule, which is why it is applied
-      // BEFORE `focusOnMainObject` below — that filter has no counterpart in
-      // the editor, and letting it run first could leave the grid showing a
-      // different box from the one Enter would commit.
+      // Applied BEFORE `focusOnMainObject` below: that filter has no
+      // counterpart in the editor, so letting it choose could leave the grid
+      // showing a different box from the one the editor would commit.
       const rawBoxes = (
         falsePositive
           ? falsePositiveContextBoxes(detection)
