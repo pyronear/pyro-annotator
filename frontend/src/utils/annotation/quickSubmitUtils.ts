@@ -1,8 +1,9 @@
 /**
  * Localize quick submit: per-frame cell state for the grid glance-check and
- * the batch payloads for one-click lane submit. Reuses the modal's exact
- * submit semantics (getWinningModelLayer + materializeReviewAnnotation with
- * every box accepted) so what the grid shows is what submit records.
+ * the batch payloads for one-click lane submit. Both read the frame's box
+ * through `getWinningBoxes`, so what the grid shows is what submit records —
+ * the property this module exists to hold, and the reason that function caps
+ * the layer rather than each caller doing it.
  */
 
 import {
