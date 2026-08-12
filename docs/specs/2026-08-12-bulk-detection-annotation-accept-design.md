@@ -126,8 +126,9 @@ the existing `record_contribution(..., commit=False)`
 this case — a partial commit would leave `ANNOTATED` rows unattributed, and
 nothing backfills them.
 
-`created_at` is set explicitly on inserts and `updated_at` on updates, matching
-the single-item CRUD.
+`created_at` is set explicitly on inserts, matching the single-item CRUD.
+`updated_at` is left alone — it is server-owned, stamped by the column's
+`onupdate` (`models.py:446-449`).
 
 ### Response
 
