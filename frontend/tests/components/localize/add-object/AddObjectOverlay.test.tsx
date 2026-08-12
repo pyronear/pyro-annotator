@@ -327,6 +327,21 @@ describe('AddObjectOverlay guidance', () => {
     expect(buttonIndex).toBeLessThan(hintIndex);
   });
 
+  it('keeps the smoke type in the step ribbon, beside Create', () => {
+    // It is a decision the flow has to make, not chrome, and it is wanted at
+    // the same moment as Create.
+    renderOverlay();
+    const prompt = screen.getByTestId('add-object-instruction');
+    expect(prompt.contains(screen.getByRole('radio', { name: /wildfire/i }))).toBe(true);
+    expect(screen.getAllByRole('radio', { name: /wildfire/i })).toHaveLength(1);
+  });
+
+  it('names the type check in the step 3 copy', () => {
+    renderOverlay();
+    setRangeAndBox();
+    expect(screen.getByTestId('add-object-instruction')).toHaveTextContent(/check the type/i);
+  });
+
   it('keeps exactly one Create button, in the prompt', () => {
     renderOverlay();
     expect(screen.getAllByTestId('create-object')).toHaveLength(1);

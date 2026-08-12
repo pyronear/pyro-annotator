@@ -228,7 +228,7 @@ export function AddObjectOverlay({
         : 'Now click the last frame'
       : stepNumber === 2
         ? 'Drag a box around the object — every frame in the range gets a copy'
-        : 'Every frame in the range has the box — create the object';
+        : 'Box copied across the range — check the type, then create the object';
 
   const hint =
     stepNumber === 1
@@ -256,6 +256,34 @@ export function AddObjectOverlay({
         Step {stepNumber} of 3
       </span>
       <span className="font-body text-sm font-medium text-pine">{instruction}</span>
+
+      {/* The smoke type sits in the ribbon rather than the top bar because it
+          is a decision this flow has to make, not chrome — and it is wanted at
+          the same moment as Create, so the two remaining choices are side by
+          side under the sentence naming them. Present at every step (it can be
+          set whenever you notice) so nothing shifts position as the step
+          changes. */}
+      <span
+        role="radiogroup"
+        aria-label="Smoke type"
+        className="inline-flex items-center rounded-lg bg-paper p-0.5"
+      >
+        {SMOKE_TYPES.map(type => (
+          <button
+            key={type}
+            type="button"
+            role="radio"
+            aria-checked={smokeType === type}
+            onClick={() => setSmokeType(type)}
+            className={`rounded-md px-2.5 py-1 font-body text-xs capitalize transition-colors ${
+              smokeType === type ? 'bg-pine font-medium text-white' : 'text-haze hover:text-char'
+            }`}
+          >
+            {type}
+          </button>
+        ))}
+      </span>
+
       {/* The button lives IN the prompt rather than in the top bar: at step 3
           it is the thing the prompt is telling you to press, and a control
           named by the sentence beside it needs no hunting. It sits directly
@@ -295,9 +323,9 @@ export function AddObjectOverlay({
       aria-label="Add object"
       data-testid="add-object-overlay"
     >
-      {/* Identity and the controls that apply throughout: what the object is,
-          and starting the range over. Create is deliberately NOT here — it
-          belongs to step 3, so it lives in the step prompt that names it. */}
+      {/* Identity and the ways out: restart the range, or close. The decisions
+          the flow actually makes — the smoke type and creating — live in the
+          step ribbon, beside the sentence that names them. */}
       <div className="relative z-40 flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
         <span className="font-body text-sm font-semibold text-char">{objectLabel}</span>
         <span className="font-data text-detail text-haze">
@@ -312,33 +340,6 @@ export function AddObjectOverlay({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span
-            role="radiogroup"
-            aria-label="Smoke type"
-            className="inline-flex items-center rounded-lg bg-ash p-0.5"
-          >
-            {SMOKE_TYPES.map(type => (
-              <button
-                key={type}
-                type="button"
-                role="radio"
-                aria-checked={smokeType === type}
-                onClick={() => setSmokeType(type)}
-                // Pine for the selected class — the Localize lane's own
-                // colour, so what the object IS reads in the same hue as the
-                // work being done. It sits inside the ash track, which keeps
-                // it from merging with the pine Create button beside it.
-                className={`rounded-md px-2.5 py-1 font-body text-xs capitalize transition-colors ${
-                  smokeType === type
-                    ? 'bg-pine font-medium text-white'
-                    : 'text-haze hover:text-char'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </span>
-
           {hasSelection && (
             <button
               type="button"
