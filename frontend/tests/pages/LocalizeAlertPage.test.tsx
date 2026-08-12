@@ -1275,6 +1275,28 @@ describe('LocalizeAlertPage', () => {
       expect(tip).toHaveTextContent('Submits every object still awaiting localization');
     });
 
+    // The halo nudges: the gate opening is easy to miss, because Submit sits
+    // in the rail footer below every object row and the last accept usually
+    // happens up in the editor. Same `animate-pine-glow` the add-object flow
+    // puts on its solid-pine CTA, so "done — move forward" reads the same way
+    // everywhere rather than inventing a second signal.
+    it('halos the submit button once the gate opens', async () => {
+      mockAllFramesAccepted();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      await waitFor(() => expect(submit).toBeEnabled());
+      expect(submit).toHaveClass('animate-pine-glow');
+    });
+
+    it('leaves submit un-haloed while an object still has a pending frame', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      expect(submit).toBeDisabled();
+      expect(submit).not.toHaveClass('animate-pine-glow');
+    });
+
     it('blocks submit and explains why while a sibling object is still undecided', async () => {
       // The queue hides such an alert; this covers a deep link or a stale
       // tab, and mirrors the server guard on localize-submit (spec:
@@ -1311,6 +1333,11 @@ describe('LocalizeAlertPage', () => {
       expect(submit).toBeDisabled();
       fireEvent.click(submit);
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+
+      // And no halo either: every box is drawn, so a nudge keyed on the boxes
+      // alone would pulse a button that cannot be clicked. The halo follows
+      // the whole gate, undecided sibling included.
+      expect(submit).not.toHaveClass('animate-pine-glow');
     });
 
     it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {

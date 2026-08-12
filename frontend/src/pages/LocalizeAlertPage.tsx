@@ -2184,7 +2184,19 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                           handleSubmitClick();
                         }}
                         disabled={submitBlocked || submitAlert.isPending}
-                        className="flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        // Haloed once the gate opens, because the last accept
+                        // usually happens up in the editor while Submit sits
+                        // down in the rail footer under every object row —
+                        // enabling it quietly is easy to miss. Keyed on the
+                        // whole gate rather than on the boxes alone, so an
+                        // undecided sibling never pulses an unclickable
+                        // button, and dropped the moment the click lands so
+                        // the halo and the spinner never run together.
+                        className={`flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50${
+                          !submitBlocked && !submitAlert.isPending
+                            ? ' animate-pine-glow motion-reduce:animate-none'
+                            : ''
+                        }`}
                       >
                         {submitAlert.isPending ? (
                           <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
