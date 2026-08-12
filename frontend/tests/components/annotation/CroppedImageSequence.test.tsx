@@ -66,6 +66,17 @@ describe('CroppedImageSequence', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
+  it('isolates the viewport so its overlays cannot outrank the host page', async () => {
+    // jsdom computes no stacking order, so the class is as far as this can go
+    // — but the class IS the whole fix. Without `isolate` the viewport keeps
+    // `z-index: auto`, the zoom pill's z-20 lands in the root stacking
+    // context, and on the Localize alert page it tied with (and, being later
+    // in the DOM, painted over) the accept-boxes popover dropping onto the
+    // loop from the action bar above it.
+    await renderLoaded();
+    expect(screen.getByTestId('cropped-viewport').className).toContain('isolate');
+  });
+
   it('wheel-zooms over the viewport even though it mounts after loading', async () => {
     // The viewport div does not exist during the loading state — the wheel
     // listener must bind when it appears (callback-ref state), not on mount.

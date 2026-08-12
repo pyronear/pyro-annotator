@@ -356,10 +356,19 @@ export default function CroppedImageSequence({
     <div className={`w-full ${className}`}>
       {/* Fixed square viewport — the element never resizes; zoom changes the
           drawn source rect instead (see squareCropUtils). */}
+      {/* `isolate` is load-bearing: `relative` alone leaves `z-index: auto`, so
+          the overlays below (the zoom pill at z-20) compete in the ROOT
+          stacking context against whatever the host page positions. On the
+          Localize alert page the accept-boxes popover is also z-20 and drops
+          from the action bar above the loop — equal z-index, so tree order
+          wins and the pill, being later in the DOM, painted on top of the
+          popover. Isolating confines these z-indices to the square, which is
+          all they were ever meant to order (the viewport is `overflow-hidden`,
+          so nothing inside escapes anyway). */}
       <div
         ref={setViewportEl}
         data-testid="cropped-viewport"
-        className={`relative mx-auto w-full aspect-square overflow-hidden bg-gray-900 ${
+        className={`relative isolate mx-auto w-full aspect-square overflow-hidden bg-gray-900 ${
           accentColor ? 'border-2' : ''
         }`}
         style={{
