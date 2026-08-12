@@ -107,9 +107,12 @@ async def _seed_group_with_members(
     azimuth: int = 0,
     smoke_type: str | None = None,
     is_unsure: bool = False,
+    scores: list[float | None] | None = None,
 ) -> int:
     """Insert a SequenceGroup with `n_members` member sequences (each with a
-    distinct alert_api_id) and return its id."""
+    distinct alert_api_id) and return its id. `scores` sets each member's
+    temporal_model_score positionally; None (or a shorter list) leaves the
+    remaining members unscored, mirroring sibling object-lanes."""
     group_id = (
         await session.exec(
             text(
@@ -151,6 +154,9 @@ async def _seed_group_with_members(
                 lon=0.0,
                 organisation_id=1,
                 sequence_group_id=group_id,
+                temporal_model_score=(
+                    scores[i] if scores is not None and i < len(scores) else None
+                ),
             )
         )
     await session.commit()
@@ -1572,3 +1578,104 @@ async def test_label_outranks_is_unsure_in_the_partition(
     assert resp.status_code == 200, resp.text
     stats = resp.json()
     assert (stats["labeled"], stats["unsure"], stats["unlabeled"]) == (1, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_list_groups_report_max_temporal_score_ignoring_nulls(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """A group's score is the max over its scored members. Unscored sibling
+    lanes are skipped, not treated as zero; an all-unscored group is null."""
+    mixed = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        alert_api_id_start=700,
+        scores=[0.48, None, 0.0],
+    )
+    unscored = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 2, 2, tzinfo=timezone.utc),
+        alert_api_id_start=800,
+        scores=None,
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200, resp.text
+    by_id = {i["id"]: i for i in resp.json()["items"]}
+    assert by_id[mixed]["temporal_model_score"] == pytest.approx(0.48)
+    assert by_id[unscored]["temporal_model_score"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_groups_zero_score_is_not_null(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """A group whose only scored member scored exactly 0.0 reports 0.0."""
+    zeroed = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 2, 3, tzinfo=timezone.utc),
+        alert_api_id_start=900,
+        scores=[0.0, None, None],
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200, resp.text
+    by_id = {i["id"]: i for i in resp.json()["items"]}
+    assert by_id[zeroed]["temporal_model_score"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_list_groups_orderable_by_temporal_score_nulls_last(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """Sorting by score ranks high scores first and parks unscored groups at
+    the end in BOTH directions.
+
+    The DESC half is the real guard: without nullslast Postgres puts NULLs
+    FIRST there, filling the top of the list with objects nothing ever
+    scored. The ASC half only pins Postgres's own default (NULLS LAST on
+    ASC) — it passes with or without nullslast, so it would not catch a
+    DESC-only implementation."""
+    high = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        alert_api_id_start=1000,
+        scores=[0.58, None, None],
+    )
+    low = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 3, 2, tzinfo=timezone.utc),
+        alert_api_id_start=1100,
+        scores=[0.05, None, None],
+    )
+    unscored = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 3, 3, tzinfo=timezone.utc),
+        alert_api_id_start=1200,
+        scores=None,
+    )
+
+    async def ids(params: str) -> list[int]:
+        resp = await authenticated_client.get(f"/sequence_groups/{params}")
+        assert resp.status_code == 200, resp.text
+        return [i["id"] for i in resp.json()["items"]]
+
+    assert await ids("?order_by=temporal_model_score&order_direction=desc") == [
+        high,
+        low,
+        unscored,
+    ]
+    assert await ids("?order_by=temporal_model_score&order_direction=asc") == [
+        low,
+        high,
+        unscored,
+    ]

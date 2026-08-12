@@ -45,6 +45,7 @@ class SequenceGroupOrderByField(str, Enum):
     camera_name = "camera_name"
     azimuth = "azimuth"
     created_at = "created_at"
+    temporal_model_score = "temporal_model_score"
 
 
 class GroupLabelState(str, Enum):
@@ -230,6 +231,10 @@ async def list_sequence_groups(
             # All members share one camera; min() just picks that value.
             func.min(Sequence.camera_name).label("camera_name"),
             func.min(Sequence.organisation_name).label("organisation_name"),
+            # Only the alert's primary lane carries a score; siblings are
+            # NULL. MAX skips NULLs, so this is the max over the object's
+            # scored sightings without needing to join to find the primary.
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
@@ -241,9 +246,16 @@ async def list_sequence_groups(
         SequenceGroupOrderByField.camera_name: member_count_subq.c.camera_name,
         SequenceGroupOrderByField.azimuth: SequenceGroup.azimuth,
         SequenceGroupOrderByField.created_at: SequenceGroup.created_at,
+        SequenceGroupOrderByField.temporal_model_score: (
+            member_count_subq.c.temporal_model_score
+        ),
     }
     primary = order_columns[order_by]
     primary = desc(primary) if order_direction == OrderDirection.desc else asc(primary)
+    # Postgres orders NULLs FIRST on DESC. Unscored groups must sink to the
+    # bottom either way, or a "most likely fires first" sort opens with the
+    # objects nothing ever scored.
+    primary = primary.nullslast()
     query = (
         select(
             SequenceGroup.id,
@@ -261,6 +273,7 @@ async def list_sequence_groups(
             member_count_subq.c.member_count,
             member_count_subq.c.camera_name,
             member_count_subq.c.organisation_name,
+            member_count_subq.c.temporal_model_score,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)

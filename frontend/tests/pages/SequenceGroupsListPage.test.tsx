@@ -46,6 +46,7 @@ const group = {
   organisation_name: 'SDIS 07',
   azimuth: 120,
   member_count: 5,
+  temporal_model_score: 0.48,
   smoke_type: null,
   false_positive_type: null,
   is_validated: false,
@@ -240,6 +241,7 @@ describe('SequenceGroupsListPage', () => {
       'Organisation',
       'Created',
       'Azimuth',
+      'Score',
       'Sightings',
       'Label',
       'Annotators',
@@ -273,6 +275,69 @@ describe('SequenceGroupsListPage', () => {
     await waitFor(() =>
       expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
         expect.objectContaining({ order_by: 'camera_name', order_direction: 'asc' })
+      )
+    );
+  });
+
+  it('renders the max temporal score as a percentage', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+    expect(screen.getByText('48%')).toBeTruthy();
+  });
+
+  it('renders a dash for a group no sighting of which was ever scored', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [{ ...group, temporal_model_score: null }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.queryByText('0%')).toBeNull();
+  });
+
+  it('renders a zero score as 0%, not as unscored', async () => {
+    // 0 is falsy in JS and is a real verdict in production data.
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [{ ...group, temporal_model_score: 0 }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+    expect(screen.getByText('0%')).toBeTruthy();
+  });
+
+  it('clicking the Score header sorts by score descending', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /score/i }));
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order_by: 'temporal_model_score',
+          order_direction: 'desc',
+        })
       )
     );
   });
@@ -350,10 +415,11 @@ describe('SequenceGroupsListPage', () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
     // One tooltip per labeled column (Preview, Camera, Organisation, Created,
-    // Azimuth, Sightings, Label, Annotators) plus one on the row's "to label"
-    // badge.
-    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(9);
+    // Azimuth, Score, Sightings, Label, Annotators) plus one on the row's
+    // "to label" badge.
+    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(10);
     expect(screen.getByText('Times this object was seen')).toBeTruthy();
+    expect(screen.getByText(/Highest Alert API temporal-model score/)).toBeTruthy();
     expect(screen.getByText(/propagates to every sighting/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
     expect(screen.getByText('Organisation operating the camera')).toBeTruthy();
@@ -376,8 +442,9 @@ describe('SequenceGroupsListPage', () => {
     // headers while every getByText still passes.
     const row = screen.getByText('CAM_07').closest('tr')!;
     expect(row.cells[2].textContent).toBe('SDIS 07');
-    expect(row.cells[5].textContent).toBe('5');
-    expect(row.cells[7].textContent).toBe('alice, bob');
+    expect(row.cells[5].textContent).toBe('48%');
+    expect(row.cells[6].textContent).toBe('5');
+    expect(row.cells[8].textContent).toBe('alice, bob');
     // Nobody has annotated the second object yet.
     const untouched = screen.getByText('CAM_08').closest('tr')!;
     expect(within(untouched).getByText('—')).toBeTruthy();

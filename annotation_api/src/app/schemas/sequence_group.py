@@ -108,6 +108,12 @@ class SequenceGroupListItem(BaseModel):
     labeled_at: Optional[datetime]
     created_at: datetime
     member_count: int
+    # Highest temporal-model score among the group's members. Only the
+    # primary lane of an alert carries a score (siblings are NULL by
+    # construction), so MAX ignoring NULLs is exact, not a heuristic — it is
+    # the max over the sightings where this object was the alert's scored
+    # object. None when no member was ever scored.
+    temporal_model_score: Optional[float] = None
     # Distinct humans who contributed to any member sequence's annotation,
     # ordered by first contribution. Hydrated after pagination, not in SQL.
     annotators: List[str] = []
