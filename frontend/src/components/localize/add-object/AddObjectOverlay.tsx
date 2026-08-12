@@ -311,11 +311,23 @@ export function AddObjectOverlay({
             </button>
           )}
 
+          {/* Once the box is drawn there is exactly one thing left to do, and
+              it is at the far end of the bar from where the drawing happened —
+              so the button pulses to claim the eye. A halo, not `animate-pulse`:
+              flashing opacity would make its own label unreadable. It stops the
+              moment the create is in flight. */}
           <button
             type="button"
             onClick={submit}
             disabled={box === null || isCreating}
-            className="inline-flex items-center rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="create-object"
+            // Stable accessible name: the visible label becomes "Creating…"
+            // mid-flight, and a control should not change identity while it
+            // is working.
+            aria-label="Create object"
+            className={`inline-flex items-center rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50${
+              box !== null && !isCreating ? ' animate-pine-glow motion-reduce:animate-none' : ''
+            }`}
           >
             {isCreating ? 'Creating…' : 'Create object'}
           </button>

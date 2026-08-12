@@ -319,6 +319,57 @@ describe('AddObjectOverlay guidance', () => {
   });
 });
 
+describe('AddObjectOverlay create affordance', () => {
+  it('glows only once the box is drawn', () => {
+    // The drawing happens at the far end of the bar from the button, so the
+    // one remaining action has to claim the eye.
+    renderOverlay();
+    expect(createButton().className).not.toContain('animate-pine-glow');
+
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    expect(createButton().className).not.toContain('animate-pine-glow');
+
+    drag([80, 80], [240, 200]);
+    expect(createButton().className).toContain('animate-pine-glow');
+  });
+
+  it('respects reduced motion', () => {
+    renderOverlay();
+    setRangeAndBox();
+    expect(createButton().className).toContain('motion-reduce:animate-none');
+  });
+
+  it('stops glowing while the create is in flight', () => {
+    const { rerender } = renderOverlay();
+    setRangeAndBox();
+    expect(createButton().className).toContain('animate-pine-glow');
+
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <AddObjectOverlay
+          alertFrames={alertFrames}
+          detectionsById={detectionsById}
+          objectColor="#1baf7a"
+          objectLabel="Object 3"
+          objectOverlaysByRecordedAt={{}}
+          isCreating
+          onCreate={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    expect(createButton().className).not.toContain('animate-pine-glow');
+  });
+
+  it('stops glowing when the range is restarted', () => {
+    renderOverlay();
+    setRangeAndBox();
+    fireEvent.click(screen.getByTestId('restart-range'));
+    expect(createButton().className).not.toContain('animate-pine-glow');
+  });
+});
+
 describe('AddObjectOverlay stage geometry', () => {
   it('centres the stage, which the coordinate maths depends on', () => {
     // `calculateImageBounds` locates an object-contain image by assuming it is
