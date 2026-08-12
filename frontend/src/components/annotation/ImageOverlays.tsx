@@ -498,6 +498,7 @@ export function DrawingOverlay({
           const { left, top, width, height } = renderRectangle(currentDrawing, 'drawing');
           return (
             <div
+              data-testid="current-drawing"
               className="absolute border-2 border-dashed border-blue-400 pointer-events-none"
               style={{
                 left: `${left}px`,

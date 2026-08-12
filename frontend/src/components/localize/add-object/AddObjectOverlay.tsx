@@ -124,6 +124,11 @@ export function AddObjectOverlay({
     boxSelected,
     onBoxSelectedChange: setBoxSelected,
     onDrawn: handleDrawn,
+    // Only the first frame of a settled range takes a box. While the range is
+    // still being chosen, and on every other frame afterwards, the stage is a
+    // picture to look at — so it must not offer a drawing gesture it will
+    // refuse.
+    canDraw: isDrawFrame,
   });
   const { resetTransient } = stage;
 

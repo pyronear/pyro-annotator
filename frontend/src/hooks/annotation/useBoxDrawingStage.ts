@@ -60,6 +60,19 @@ export interface UseBoxDrawingStageParams {
   onBoxSelectedChange: (selected: boolean) => void;
   /** A finished drag, move or resize: the human's box, normalized. */
   onDrawn: (xyxyn: Xyxyn) => void;
+  /**
+   * Whether this frame accepts a new box. Default true — the editor always
+   * does, including on a peeked gap frame, where drawing is what materializes
+   * it.
+   *
+   * When false the surface is read-only: a press starts no rubber band and the
+   * cursor stops offering one. Refusing only at mouse-up would let the drag
+   * play out in full and then silently discard it, which reads as the drawing
+   * being broken rather than unavailable.
+   *
+   * Panning is unaffected — moving the view is not editing.
+   */
+  canDraw?: boolean;
 }
 
 export interface BoxDrawingStage {
@@ -96,6 +109,7 @@ export function useBoxDrawingStage({
   boxSelected,
   onBoxSelectedChange,
   onDrawn,
+  canDraw = true,
 }: UseBoxDrawingStageParams): BoxDrawingStage {
   const [imageInfo, setImageInfo] = useState<ImageGeometry | null>(null);
 
@@ -321,7 +335,9 @@ export function useBoxDrawingStage({
       return;
     }
 
-    if (e.button !== 0) return;
+    // No rubber band on a frame that cannot take a box: the drag must not
+    // start at all, rather than start and be discarded on release.
+    if (e.button !== 0 || !canDraw) return;
     const coords = screenToImageCoords(e.clientX, e.clientY);
     setCurrentDrawing({
       startX: coords.x,
@@ -388,7 +404,9 @@ export function useBoxDrawingStage({
 
   const getCursorStyle = () => {
     if (spaceHeld) return isDragging ? 'grabbing' : 'grab';
-    return 'crosshair';
+    // A crosshair on a frame that cannot take a box promises a drawing
+    // gesture that will not happen.
+    return canDraw ? 'crosshair' : 'default';
   };
 
   return {

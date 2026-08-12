@@ -341,6 +341,71 @@ describe('AddObjectOverlay guidance', () => {
   });
 });
 
+describe('AddObjectOverlay read-only frames', () => {
+  const stageContainer = () => screen.getByAltText(/^Detection /).parentElement as HTMLElement;
+
+  const startDrag = () => {
+    const image = stubGeometry();
+    // The drawing overlay only renders once the image has reported its
+    // geometry, so without this the "no rubber band" assertions would pass
+    // whether or not the drag was refused.
+    fireEvent.load(image);
+    fireEvent.mouseDown(image, { button: 0, clientX: 80, clientY: 80 });
+    fireEvent.mouseMove(image, { clientX: 240, clientY: 200 });
+  };
+
+  it('offers no crosshair while the range is still being chosen', () => {
+    renderOverlay();
+    stubGeometry();
+    expect(stageContainer().style.cursor).toBe('default');
+  });
+
+  it('starts no rubber band while the range is still being chosen', () => {
+    // Refusing only at mouse-up would let the drag play out in full and then
+    // silently discard it, which reads as broken rather than unavailable.
+    renderOverlay();
+    startDrag();
+    expect(screen.queryByTestId('current-drawing')).not.toBeInTheDocument();
+    fireEvent.mouseUp(stubGeometry());
+    expect(createButton()).toBeDisabled();
+  });
+
+  it('DOES show a rubber band on the frame that takes the box', () => {
+    // Guards the two negative assertions above from passing vacuously: the
+    // drawing overlay only renders once the image has reported its geometry.
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    fireEvent.load(stubGeometry());
+    startDrag();
+    expect(screen.getByTestId('current-drawing')).toBeInTheDocument();
+  });
+
+  it('offers the crosshair on the frame that takes the box', () => {
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    stubGeometry();
+    expect(stageContainer().style.cursor).toBe('crosshair');
+  });
+
+  it('goes read-only again on the other frames of the range', () => {
+    renderOverlay();
+    setRangeAndBox();
+    expect(createButton()).toBeEnabled();
+
+    fireEvent.click(cell(TIMES[1]));
+    stubGeometry();
+    expect(stageContainer().style.cursor).toBe('default');
+
+    // And a drag there leaves the box that was already drawn untouched.
+    startDrag();
+    expect(screen.queryByTestId('current-drawing')).not.toBeInTheDocument();
+    fireEvent.mouseUp(stubGeometry());
+    expect(createButton()).toBeEnabled();
+  });
+});
+
 describe('AddObjectOverlay create affordance', () => {
   it('glows only once the box is drawn', () => {
     // The drawing happens at the far end of the bar from the button, so the
