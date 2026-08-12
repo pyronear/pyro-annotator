@@ -1329,7 +1329,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         skipNote.trim() || undefined
       );
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setSkipConfirmOpen(false);
       setSkipNote('');
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
@@ -1338,7 +1338,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
       showToastNotification('Alert skipped', 'success');
-      navigate(listPath);
+      // Same continuous flow as the post-submit advance, but immediate: there
+      // is no success toast to protect from the unmount here.
+      advancingRef.current = true;
+      await advanceToNextAlert(false);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
@@ -1369,8 +1372,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       showToastNotification('Alert sent back to the queue', 'success');
       // Delayed like the submit path: navigating unmounts this page and with
       // it the NotificationSystem that owns the toast, so an immediate
-      // navigate would swallow the confirmation entirely.
-      setTimeout(() => navigate(listPath), 1000);
+      // navigate would swallow the confirmation entirely. Held in the shared
+      // ref so unmount cancels it. Done mode only, so it never advances.
+      advancingRef.current = true;
+      advanceTimerRef.current = setTimeout(() => {
+        advanceTimerRef.current = null;
+        navigate(listPath);
+      }, 1000);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';

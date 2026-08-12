@@ -4004,6 +4004,44 @@ describe('LocalizeAlertPage', () => {
       expect(apiClient.getLocalizationQueue).not.toHaveBeenCalled();
     });
 
+    const skipAndConfirm = () => {
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', {
+          name: /Skip alert/,
+        })
+      );
+    };
+
+    const skipResponse = {
+      skipped_at: '2026-08-05T10:00:00Z',
+      skipped_by: 'annotator',
+      note: null,
+    };
+
+    it('advances immediately after a skip, with no delay of its own', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
+      vi.mocked(apiClient.skipAlert).mockResolvedValue(skipResponse);
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      skipAndConfirm();
+
+      await waitFor(() => expect(apiClient.skipAlert).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/localize/303'));
+      // Skip says nothing extra on the way out — 'Alert skipped' is the message.
+      expect(screen.queryByText('Moving to the next alert in the queue')).toBeNull();
+    });
+
+    it('falls back to the queue list when a skip empties the queue', async () => {
+      vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([]));
+      vi.mocked(apiClient.skipAlert).mockResolvedValue(skipResponse);
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      skipAndConfirm();
+
+      await waitFor(() => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument());
+    });
+
     it('does not navigate after the page unmounts inside the delay window', async () => {
       vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(queuePage([nextQueueItem]));
 
