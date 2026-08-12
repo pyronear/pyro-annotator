@@ -266,6 +266,41 @@ describe('buildQuickSubmitPlan', () => {
     ]);
   });
 
+  it('prefers the box anchored to this frame over a higher-confidence stray', () => {
+    // The worker anchors sequence-wide: `engine_seed_boxes` aggregates the
+    // engine boxes of EVERY detection in the lane, so an auto box survives
+    // by matching where the object was on some OTHER frame. On 77 of the 255
+    // multi-box detections in the 2026-08-12 data, the top-confidence box
+    // does not overlap its own frame's engine box while a runner-up does.
+    // Picking by confidence alone would commit a box sitting where the plume
+    // isn't.
+    const anchor = box(0.37, 0.29, 0.49, 0.41);
+    const stray = box(0.05, 0.05, 0.12, 0.12, 0.52);
+    const anchored = box(0.4, 0.3, 0.47, 0.4, 0.15);
+    const detection = makeDetection(1, { engine: [anchor], auto: [stray, anchored] });
+
+    const plan = buildQuickSubmitPlan([detection], new Map(), 'wildfire');
+
+    expect(plan.payloads[0].body.annotation.annotation).toEqual([
+      { xyxyn: anchored.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+    ]);
+  });
+
+  it('falls back to the top-confidence box when none is anchored to this frame', () => {
+    const top = box(0.05, 0.05, 0.12, 0.12, 0.52);
+    const other = box(0.6, 0.6, 0.7, 0.7, 0.15);
+    const detection = makeDetection(1, {
+      engine: [box(0.37, 0.29, 0.49, 0.41)],
+      auto: [top, other],
+    });
+
+    const plan = buildQuickSubmitPlan([detection], new Map(), 'wildfire');
+
+    expect(plan.payloads[0].body.annotation.annotation).toEqual([
+      { xyxyn: top.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+    ]);
+  });
+
   it('shows one box per frame in the preview loop when the layer holds several', () => {
     const best = box(0.4, 0.3, 0.49, 0.4, 0.52);
     const runnerUp = box(0.43, 0.38, 0.45, 0.4, 0.15);

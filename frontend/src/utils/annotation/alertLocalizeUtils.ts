@@ -56,10 +56,9 @@ export interface AlertFrameCell {
   /** The lane's object color — tints markers that don't ride on a box (the cleared chip). */
   color: string;
   /**
-   * The object's box on this frame. At most one — see the cap in
-   * `buildAlertFrameModel`. Kept as a list because the crop helpers take
-   * one, and because an empty cell is a real state (cleared, or no model
-   * evidence yet).
+   * The object's boxes on this frame. One on a pending frame (the model
+   * layer is capped at its winning box); whatever is committed on a settled
+   * one; empty is a real state (cleared, or no model evidence yet).
    */
   boxes: AlertFrameBox[];
   /** Read-only false-positive context (opt-in) — visible, never openable in the editor. */
@@ -181,27 +180,23 @@ export function buildAlertFrameModel(
       // timeline row stuck at 'empty'. Its engine track is what the
       // read-only context view is for.
       //
-      // Capped at ONE box, because an object has at most one box per frame
-      // (`objectBoxCandidates.ts`) and nothing upstream enforces it. The
-      // model layers are capped at source in `getWinningBoxes`; this cap
-      // covers the two paths that don't go through it — a committed
-      // annotation, which no constraint stops from holding several items,
-      // and an FP lane's engine track.
-      //
-      // Applied BEFORE `focusOnMainObject` below: that filter has no
-      // counterpart in the editor, so letting it choose could leave the grid
-      // showing a different box from the one the editor would commit.
-      const rawBoxes = (
-        falsePositive
-          ? falsePositiveContextBoxes(detection)
-          : cellState === 'done'
-            ? (annotation?.annotation?.annotation ?? [])
-                .filter(item => item.false_positive_type == null)
-                .map(item => ({ xyxyn: item.xyxyn }))
-            : cellState === 'auto'
-              ? getWinningBoxes(detection).boxes.map(b => ({ xyxyn: b.xyxyn }))
-              : []
-      ).slice(0, 1);
+      // A pending frame draws ONE box, because `getWinningBoxes` caps the
+      // model layer at the box it would also commit — the model regularly
+      // proposes two or three and the extras are noise nobody is being asked
+      // about. The committed and false-positive paths are deliberately NOT
+      // capped: those boxes are already in the database and the export ships
+      // every one of them, so a surface that quietly drew fewer would
+      // under-report what is stored — the same class of mismatch, pointed
+      // the other way.
+      const rawBoxes = falsePositive
+        ? falsePositiveContextBoxes(detection)
+        : cellState === 'done'
+          ? (annotation?.annotation?.annotation ?? [])
+              .filter(item => item.false_positive_type == null)
+              .map(item => ({ xyxyn: item.xyxyn }))
+          : cellState === 'auto'
+            ? getWinningBoxes(detection).boxes.map(b => ({ xyxyn: b.xyxyn }))
+            : [];
 
       // All three cell states stay distinct on the strip. Collapsing 'auto'
       // and 'no-box' into one "pending" fill made a frame with nothing on it

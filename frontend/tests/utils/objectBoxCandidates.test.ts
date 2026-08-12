@@ -50,6 +50,32 @@ describe('boxCandidates', () => {
     expect(result.map(c => c.source)).toEqual(['manual', 'auto', 'engine']);
   });
 
+  it('offers the auto box anchored to this frame first, keeping the rest', () => {
+    // What Enter commits must be the box the grid drew and accept-remaining
+    // would write (`getWinningBoxes`), and that is the most confident box
+    // overlapping THIS frame's engine box — the worker's anchor is
+    // sequence-wide, so the top-confidence box can sit where the object was
+    // on another frame. The runners-up stay on the rail: the annotator can
+    // still pick one deliberately.
+    const stray = { xyxyn: [0.05, 0.05, 0.12, 0.12], confidence: 0.52, class_name: 'smoke' };
+    const anchored = { xyxyn: [0.4, 0.3, 0.47, 0.4], confidence: 0.15, class_name: 'smoke' };
+
+    const result = boxCandidates(
+      detection({
+        auto_predictions: { predictions: [stray, anchored] },
+        algo_predictions: {
+          predictions: [{ xyxyn: [0.37, 0.29, 0.49, 0.41], confidence: 0.5, class_name: 'smoke' }],
+        },
+      }),
+      null
+    );
+
+    expect(priorityPick(result)?.xyxyn).toEqual(anchored.xyxyn);
+    // Original positions travel with the candidates — `index` is identity,
+    // not display order.
+    expect(result.filter(c => c.source === 'auto').map(c => c.index)).toEqual([1, 0]);
+  });
+
   it('omits sources with no box', () => {
     const result = boxCandidates(
       detection({

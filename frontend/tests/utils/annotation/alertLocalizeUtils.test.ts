@@ -180,12 +180,14 @@ describe('buildAlertFrameModel', () => {
     expect(cell.boxes.map(b => b.xyxyn)).toEqual([best.xyxyn]);
   });
 
-  it('draws only the first committed box when an annotation holds several', () => {
-    // Same invariant on the committed side: nothing validates one box per
-    // object per frame in the database, and the editor's `committedBox`
-    // reads the first smoke item, so the grid must agree with it.
+  it('draws every committed box, so a settled frame never under-reports what is stored', () => {
+    // The cap belongs on the MODEL layer, where the extras are noise nobody
+    // was asked about. A committed box is already in the database and the
+    // export ships it, so drawing fewer than are stored would hide real data
+    // from the surface whose job is to review it.
     const t1 = '2026-01-01T10:00:00Z';
     const first: [number, number, number, number] = [0.2, 0.2, 0.4, 0.4];
+    const second: [number, number, number, number] = [0.15, 0.15, 0.25, 0.25];
 
     const { frames } = buildAlertFrameModel(
       [makeLane(1)],
@@ -194,9 +196,7 @@ describe('buildAlertFrameModel', () => {
         1: [
           makeDetAnnotation(1, 'annotated', [
             { xyxyn: first, class_name: 'smoke', smoke_type: 'wildfire' },
-            // Inside the engine anchor, so `focusOnMainObject` keeps it and
-            // the cap is what has to drop it.
-            { xyxyn: [0.15, 0.15, 0.25, 0.25], class_name: 'smoke', smoke_type: 'wildfire' },
+            { xyxyn: second, class_name: 'smoke', smoke_type: 'wildfire' },
           ]),
         ],
       }
@@ -204,7 +204,7 @@ describe('buildAlertFrameModel', () => {
 
     const cell = frames[0].cells[0];
     expect(cell.cellState).toBe('done');
-    expect(cell.boxes.map(b => b.xyxyn)).toEqual([first]);
+    expect(cell.boxes.map(b => b.xyxyn)).toEqual([first, second]);
   });
 
   it('maps a committed annotation with zero smoke boxes to cleared, not confirmed', () => {

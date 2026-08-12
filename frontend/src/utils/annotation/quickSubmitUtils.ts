@@ -1,9 +1,12 @@
 /**
  * Localize quick submit: per-frame cell state for the grid glance-check and
- * the batch payloads for one-click lane submit. Both read the frame's box
- * through `getWinningBoxes`, so what the grid shows is what submit records —
- * the property this module exists to hold, and the reason that function caps
- * the layer rather than each caller doing it.
+ * the batch payloads for one-click lane submit. Every model-layer read in
+ * here and in the grid goes through `getWinningBoxes`, so what the grid
+ * shows is what submit records — the property this module exists to hold,
+ * and the reason that function picks the frame's box itself rather than
+ * leaving each caller to choose. Committed boxes are a different matter:
+ * those are read straight from the annotation, all of them, because they are
+ * already stored and already exported.
  */
 
 import {
@@ -54,14 +57,22 @@ export function getIsAnnotated(
  * accept-remaining wrote boxes to the database that no surface had ever
  * shown, and that the export would then ship.
  *
- * The first is the winner: the model emits its predictions in descending
- * confidence, and the editor's `priorityPick` takes the first of the same
- * list — so capping here is what keeps accept-remaining agreeing with the
- * per-frame accept the annotator would otherwise have pressed.
+ * The winner is the most confident box ANCHORED TO THIS FRAME, not simply
+ * the most confident. The model emits predictions in descending confidence,
+ * so the head of the list looks like the obvious pick — but the worker's
+ * anchor is sequence-wide (`engine_seed_boxes` aggregates the engine boxes
+ * of every detection in the lane), so a box survives by matching where the
+ * object was on some OTHER frame. On 77 of the 255 multi-box detections in
+ * the 2026-08-12 data, the top-confidence box does not overlap its own
+ * frame's engine box while a runner-up does; taking the head there would
+ * draw and commit a box sitting where the plume isn't. `focusOnMainObject`
+ * falls back to the whole list when nothing is anchored, so a frame the
+ * engine never boxed still gets its most confident candidate.
  *
- * `boxCandidates` deliberately does NOT go through this function: the
+ * `boxCandidates` deliberately does NOT go through this function — the
  * editor's rail offers every candidate, which is where a runner-up can still
- * be chosen deliberately.
+ * be chosen deliberately — but it orders its own auto candidates the same
+ * way, so `priorityPick` and this agree on the default.
  */
 export function getWinningBoxes(detection: Detection) {
   const layer = getWinningModelLayer(detection);
@@ -69,7 +80,7 @@ export function getWinningBoxes(detection: Detection) {
     layer === 'auto'
       ? (detection.auto_predictions?.predictions ?? [])
       : (detection.algo_predictions?.predictions ?? []);
-  return { layer, boxes: boxes.slice(0, 1) };
+  return { layer, boxes: focusOnMainObject(detection, boxes).slice(0, 1) };
 }
 
 /**
