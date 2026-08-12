@@ -38,24 +38,29 @@ they keep returning to their list.
 
 ## Design
 
-### 1. The URL carries the queue view you came from
+### 1. The URL carries the queue ordering you came from
 
 `DetectionAnnotatePage` holds its sort in component-local state
-(`DetectionAnnotatePage.tsx:25-26`, default `temporal_model_score` / `desc`)
-and its Skipped toggle likewise (`:21`). None of it survives the navigation
-into the detail page today.
+(`DetectionAnnotatePage.tsx:25-26`, default `temporal_model_score` / `desc`).
+It does not survive the navigation into the detail page today.
 
-`handleAlertClick` appends that view to the target URL:
+`handleAlertClick` appends it to the target URL:
 
 ```
 /localize/1234?order_by=recorded_at&order_direction=asc
-/localize/1234?order_by=temporal_model_score&order_direction=desc&skipped=1
+/localize/1234?order_by=temporal_model_score&order_direction=desc
 ```
 
-- `order_by` / `order_direction` are always emitted, even at the defaults: one
-  code path, and the URL says what it is doing.
-- `skipped=1` only in the Skipped backlog view.
-- `page` is deliberately **not** carried — see §3.
+Always emitted, even at the defaults: one code path, and the URL says what it
+is doing. `page` is deliberately **not** carried — see §3.
+
+**The Skipped backlog is not part of this** (amended during implementation).
+The original design also carried `skipped=1` so that working the backlog kept
+you in the backlog — but backlog rows are not clickable in the first place
+(`LocalizeQueueTable.tsx:144`, `onClick={skippedView ? undefined : …}`): an
+alert is unskipped before it can be opened. No entry path, so the flag would
+have been dead weight in the URL, the helpers and the advance. Making the
+backlog directly workable is a separate feature.
 
 `LocalizeAlertPage` already threads `location.search` through every internal
 navigation (object selection `:1474`, editor `:1567`, back-out `:651`,
@@ -64,20 +69,16 @@ new plumbing.
 
 Reading them back: parse against the `QueueOrderBy` union, and treat anything
 missing or unrecognised as the queue page's own defaults
-(`temporal_model_score` / `desc`, `skipped=false`). A deep link, a dashboard
-link, or a hand-edited URL therefore behaves like a default-sorted queue entry
-rather than sending a junk `order_by` to the API.
-
-Framing: the params describe *which listing you were working*, and the advance
-re-runs that same listing. Working the Skipped backlog keeps you in the
-backlog.
+(`temporal_model_score` / `desc`). A deep link, a dashboard link, or a
+hand-edited URL therefore behaves like a default-sorted queue entry rather
+than sending a junk `order_by` to the API.
 
 ### 2. The advance
 
 One helper on `LocalizeAlertPage`, shared by both exits. Queue mode only —
 `mode === 'done'` returns to `listPath` as today.
 
-1. `apiClient.getLocalizationQueue({ page: 1, size: 5, skipped, order_by, order_direction })`
+1. `apiClient.getLocalizationQueue({ page: 1, size: 5, order_by, order_direction })`
    — a direct call, not a cache read, so it reflects what other annotators have
    finished in the meantime.
 2. Take the first item that is **not** the current alert and that yields a
@@ -142,25 +143,27 @@ unmocked `useNavigate` and real landing routes (`:212-262`), and owns the
 fixtures a submit test needs (`mockAllFramesAccepted`, `renderAndSettle`).
 Cases:
 
-1. Successful submit navigates to the next queue alert's object route.
-2. The queue call receives the URL's `order_by` / `order_direction` / `skipped`
-   — asserted on the mocked `getLocalizationQueue` arguments, not inferred from
-   the destination.
+1. Successful submit navigates to the next queue alert, carrying the ordering.
+2. The queue call receives the URL's `order_by` / `order_direction` — asserted
+   on the mocked `getLocalizationQueue` arguments, not inferred from the
+   destination.
 3. Missing or invalid params fall back to `temporal_model_score` / `desc`.
-4. Empty queue (and a rejected queue fetch) → `/localize`.
-5. Skip advances immediately.
-6. Unmounting inside the 1 s window navigates nowhere.
+4. A queue still listing the just-submitted alert (stale read) is stepped over.
+5. Empty queue, and a rejected queue fetch → `/localize`.
+6. Done mode never advances and never calls the queue.
+7. Skip advances immediately, with no advance toast; an empty queue after a
+   skip still lands on `/localize`.
+8. Unmounting inside the 1 s window navigates nowhere.
 
 Changed existing tests:
 
 - `tests/pages/LocalizeAlertPage.test.tsx` mocks `getLocalizationQueue` with an
   empty page in its top-level `beforeEach`, so every pre-existing submit and
-  skip test — `:1303` ("navigates back to the queue"), `:1524` (Done list),
-  `:3549` (skip confirm) — keeps asserting the fallback rather than
-  accidentally exercising the advance.
+  skip test — "navigates back to the queue", the Done-list submit, the skip
+  confirm — keeps asserting the fallback rather than accidentally exercising
+  the advance.
 - `tests/components/dashboard/DetectionAnnotatePage.test.tsx:165` (row click)
-  now expects the queue params on the URL, and gains cases for a re-sorted
-  queue and for the Skipped backlog.
+  now expects the ordering params on the URL, and gains a re-sorted-queue case.
 
 ## Out of scope
 
@@ -168,4 +171,5 @@ Changed existing tests:
 - Any table-position "workflow" store for localize (classify's
   `annotationWorkflow`). The fresh fetch replaces it.
 - Backend changes: `GET /sequences/localization-queue` already takes
-  `order_by` / `order_direction` / `skipped`.
+  `order_by` / `order_direction`.
+- Making the Skipped backlog directly workable (see §1).
