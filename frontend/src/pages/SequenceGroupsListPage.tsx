@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
-import { Loader2, AlertCircle, Check, Info, Layers, ChevronRight } from 'lucide-react';
+import { Loader2, AlertCircle, Check, HelpCircle, Info, Layers, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { BboxCrop } from '@/components/annotation/BboxCrop';
 import { SequenceGroupStats } from '@/types/api';
@@ -44,6 +44,12 @@ const FILTERS: {
     label: 'To label',
     countOf: 'unlabeled',
     tip: "Objects that don't have a label yet",
+  },
+  {
+    value: 'unsure',
+    label: 'Unsure',
+    countOf: 'unsure',
+    tip: 'Objects an annotator marked undecidable',
   },
   {
     value: 'labeled',
@@ -90,7 +96,7 @@ export default function SequenceGroupsListPage({
     queryKey: ['sequenceGroupsList', filter, page, size, orderBy, orderDirection],
     queryFn: () =>
       apiClient.getSequenceGroups({
-        labeled: filter === 'all' ? undefined : filter === 'labeled',
+        label_state: filter === 'all' ? undefined : filter,
         page,
         size,
         order_by: orderBy,
@@ -220,6 +226,22 @@ export default function SequenceGroupsListPage({
                 >
                   Start classifying
                 </Link>
+              </>
+            ) : filter === 'unsure' ? (
+              // Not a to-do: these carry a verdict, they just carry no label.
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-ash"
+                >
+                  <HelpCircle className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No unsure objects
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Objects whose sightings an annotator marked undecidable land here.
+                </p>
               </>
             ) : filter === 'labeled' ? (
               // Nothing labeled yet - work to do

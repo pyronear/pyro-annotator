@@ -27,6 +27,10 @@ function renderAt(path: string) {
             path="/classify/groups/labeled"
             element={<SequenceGroupsListPage filter="labeled" />}
           />
+          <Route
+            path="/classify/groups/unsure"
+            element={<SequenceGroupsListPage filter="unsure" />}
+          />
           <Route path="/classify/groups/all" element={<SequenceGroupsListPage filter="all" />} />
         </Routes>
       </MemoryRouter>
@@ -45,6 +49,7 @@ const group = {
   smoke_type: null,
   false_positive_type: null,
   is_validated: false,
+  is_unsure: false,
   created_at: '2026-08-01T10:00:00Z',
   annotators: ['alice', 'bob'],
   representative_bbox: { xyxyn: [0.1, 0.1, 0.4, 0.4], confidence: 0.9 },
@@ -57,23 +62,71 @@ describe('SequenceGroupsListPage', () => {
     vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
       total: 0,
       labeled: 0,
+      unsure: 0,
       unlabeled: 0,
     });
   });
 
-  it('selector tabs are links to the three filter routes with aria-current on the active one', async () => {
-    renderAt('/classify/groups/labeled');
+  it('selector tabs are links to the four filter routes with aria-current on the active one', async () => {
+    renderAt('/classify/groups/unsure');
     await waitFor(() => expect(screen.getByRole('link', { name: /To label/ })).toBeTruthy());
     expect(screen.getByRole('link', { name: /To label/ }).getAttribute('href')).toBe(
       '/classify/groups'
     );
-    const labeled = screen.getByRole('link', { name: /Labeled/ });
-    expect(labeled.getAttribute('href')).toBe('/classify/groups/labeled');
-    expect(labeled.getAttribute('aria-current')).toBe('page');
+    const unsure = screen.getByRole('link', { name: /Unsure/ });
+    expect(unsure.getAttribute('href')).toBe('/classify/groups/unsure');
+    expect(unsure.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: /Labeled/ }).getAttribute('href')).toBe(
+      '/classify/groups/labeled'
+    );
     expect(screen.getByRole('link', { name: /All/ }).getAttribute('href')).toBe(
       '/classify/groups/all'
     );
     expect(screen.getByRole('link', { name: /To label/ }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('each tab requests its own label_state partition', async () => {
+    renderAt('/classify/groups');
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ label_state: 'unlabeled' })
+      )
+    );
+
+    vi.mocked(apiClient.getSequenceGroups).mockClear();
+    renderAt('/classify/groups/unsure');
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ label_state: 'unsure' })
+      )
+    );
+
+    vi.mocked(apiClient.getSequenceGroups).mockClear();
+    renderAt('/classify/groups/labeled');
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ label_state: 'labeled' })
+      )
+    );
+
+    // 'All' must send no filter at all. `undefined` is dropped by the
+    // serializer; `null` would be dropped too but silently, so assert the
+    // key is absent rather than that it is falsy.
+    vi.mocked(apiClient.getSequenceGroups).mockClear();
+    renderAt('/classify/groups/all');
+    await waitFor(() => expect(apiClient.getSequenceGroups).toHaveBeenCalled());
+    const allCall = vi.mocked(apiClient.getSequenceGroups).mock.calls[0][0]!;
+    expect(allCall.label_state).toBeUndefined();
+  });
+
+  it('Unsure empty shows the no-unsure-objects state with no action', async () => {
+    renderAt('/classify/groups/unsure');
+    await waitFor(() => expect(screen.getByText('No unsure objects')).toBeTruthy());
+    // Not just /marked undecidable/: the Unsure tab's own tooltip matches
+    // that too, so anchor on the empty state's sentence.
+    expect(screen.getByText(/whose sightings an annotator marked undecidable/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Start classifying' })).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('To label empty shows all-groups-labeled state, CTA to classify, and no table', async () => {
@@ -208,11 +261,13 @@ describe('SequenceGroupsListPage', () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByRole('link', { name: /To label/ })).toBeTruthy());
     expect(screen.getByText("Objects that don't have a label yet")).toBeTruthy();
+    expect(screen.getByText('Objects an annotator marked undecidable')).toBeTruthy();
     expect(screen.getByText('Objects that already have a label')).toBeTruthy();
     expect(screen.getByText('Every object, labeled or not')).toBeTruthy();
     // Tooltip text must not leak into the tab links' accessible names
     // (exact names: label + mocked zero count).
     expect(screen.getByRole('link', { name: 'To label 0' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Unsure 0' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Labeled 0' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'All 0' })).toBeTruthy();
   });
