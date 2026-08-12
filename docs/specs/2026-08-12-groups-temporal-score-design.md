@@ -80,8 +80,12 @@ Groups whose every member is unscored yield NULL and sort last.
   `'desc'` (first click shows the highest scores, like `member_count`).
 - New `ColumnHeader label="Score"` between **Azimuth** and **Sightings**,
   mirroring the classify queue's azimuth → score → count order. Tip: "Highest
-  Alert API temporal-model score across this object's sightings. — means none
-  of its sightings were scored."
+  Alert API temporal-model score across this object's sightings. The platform
+  scores one object per alert, so — means this object was never the one it
+  scored." The tip must not say "none of its sightings were scored": an object
+  that is never its alert's primary lane shows — even though every one of
+  those alerts *was* scored, just for a different object. Wording it the
+  loose way would push annotators to deprioritize exactly those objects.
 - Cell renders the existing `<TemporalScoreCell score={g.temporal_model_score} />`
   unchanged, in a `${CELL_CLASSES} ${DATA_CELL_TEXT}` cell. Left-aligned like
   this table's other numeric cells — the queues right-align theirs, but
@@ -108,8 +112,11 @@ Backend (`src/tests/endpoints/test_sequence_groups.py`):
   directions. Assert row order, not the compiled clause: with distinct scores
   the ordering is fully determined by the column, and Postgres's NULL default
   is specified (FIRST on DESC), so dropping `nullslast` fails the DESC case
-  deterministically rather than by luck. Asserting ASC too is what catches a
-  `nullslast` applied to only one branch.
+  deterministically rather than by luck. **Only the DESC half has teeth** —
+  Postgres already defaults ASC to NULLS LAST, so that assertion passes with
+  or without `.nullslast()`. It is kept as a regression pin on the default,
+  not as a guard against a `nullslast` applied to only one branch; a
+  DESC-only implementation would still pass it.
 
 Frontend (`tests/pages/SequenceGroupsListPage.test.tsx`):
 

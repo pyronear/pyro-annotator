@@ -305,7 +305,7 @@ export default function SequenceGroupsListPage({
                   />
                   <ColumnHeader
                     label="Score"
-                    tip="Highest Alert API temporal-model score across this object's sightings. — means none of its sightings were scored."
+                    tip="Highest Alert API temporal-model score across this object's sightings. The platform scores one object per alert, so — means this object was never the one it scored."
                     sort={{
                       active: orderBy === 'temporal_model_score',
                       direction: orderDirection,

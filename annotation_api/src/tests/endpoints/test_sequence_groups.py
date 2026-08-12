@@ -1514,8 +1514,13 @@ async def test_list_groups_orderable_by_temporal_score_nulls_last(
     async_session: AsyncSession,
 ):
     """Sorting by score ranks high scores first and parks unscored groups at
-    the end in BOTH directions — Postgres would otherwise put NULLs first on
-    DESC and fill the top of the list with objects nothing ever scored."""
+    the end in BOTH directions.
+
+    The DESC half is the real guard: without nullslast Postgres puts NULLs
+    FIRST there, filling the top of the list with objects nothing ever
+    scored. The ASC half only pins Postgres's own default (NULLS LAST on
+    ASC) — it passes with or without nullslast, so it would not catch a
+    DESC-only implementation."""
     high = await _seed_group_with_members(
         async_session,
         n_members=3,
