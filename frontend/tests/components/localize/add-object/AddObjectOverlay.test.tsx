@@ -278,6 +278,47 @@ describe('AddObjectOverlay range restart', () => {
   });
 });
 
+describe('AddObjectOverlay guidance', () => {
+  it('puts the prompt on the strip while the range is being chosen', () => {
+    // The strip is what you have to click in step 1, and it is at the opposite
+    // edge from the stage — a caption floating over the image cannot say "act
+    // down there".
+    renderOverlay();
+    const prompt = screen.getByTestId('add-object-instruction');
+    const strip = cell(TIMES[0]).closest('div')?.parentElement as HTMLElement;
+    expect(strip.contains(prompt)).toBe(true);
+    expect(prompt).toHaveTextContent(/step 1 of 2/i);
+    expect(prompt).toHaveTextContent(/click the first frame/i);
+  });
+
+  it('moves the prompt onto the stage once drawing starts', () => {
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+
+    const prompt = screen.getByTestId('add-object-instruction');
+    const strip = cell(TIMES[0]).closest('div')?.parentElement as HTMLElement;
+    expect(strip.contains(prompt)).toBe(false);
+    expect(prompt).toHaveTextContent(/step 2 of 2/i);
+    expect(prompt).toHaveTextContent(/drag a box/i);
+  });
+
+  it('tracks progress through the range selection', () => {
+    renderOverlay();
+    expect(screen.getByTestId('add-object-instruction')).toHaveTextContent(/first frame/i);
+    fireEvent.click(cell(TIMES[0]));
+    expect(screen.getByTestId('add-object-instruction')).toHaveTextContent(/last frame/i);
+  });
+
+  it('shows only one prompt at a time', () => {
+    renderOverlay();
+    expect(screen.getAllByTestId('add-object-instruction')).toHaveLength(1);
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    expect(screen.getAllByTestId('add-object-instruction')).toHaveLength(1);
+  });
+});
+
 describe('AddObjectOverlay stage geometry', () => {
   it('centres the stage, which the coordinate maths depends on', () => {
     // `calculateImageBounds` locates an object-contain image by assuming it is

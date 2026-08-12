@@ -211,9 +211,37 @@ export function AddObjectOverlay({
         : 'Now click the last frame'
       : isDrawFrame
         ? box === null
-          ? 'Draw a box around the object — every frame in the range gets a copy'
+          ? 'Drag a box around the object — every frame in the range gets a copy'
           : 'Drag to redraw the box'
         : 'A copy of the box on the first frame — refine each frame after creating';
+
+  const hint =
+    phase === 'range'
+      ? '← → preview a frame · Enter picks it'
+      : isDrawFrame
+        ? '← → step through the range'
+        : '← → back to the first frame to redraw';
+
+  /**
+   * The prompt renders attached to whichever region is actually actionable —
+   * the strip while the range is being chosen, the stage while the box is
+   * being drawn — because the two are at opposite edges of the screen and a
+   * caption floating over the image cannot say "act down there". Pine banner,
+   * step counter, and the same treatment either side, so the highlight moving
+   * IS the instruction about where to look.
+   */
+  const prompt = (
+    <div
+      data-testid="add-object-instruction"
+      className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-y-2 border-pine bg-pine-soft px-4 py-2.5"
+    >
+      <span className="whitespace-nowrap rounded-full bg-pine px-2 py-0.5 font-data text-eyebrow font-semibold uppercase tracking-eyebrow text-white">
+        Step {phase === 'range' ? '1' : '2'} of 2
+      </span>
+      <span className="font-body text-sm font-medium text-pine">{instruction}</span>
+      <span className="ml-auto whitespace-nowrap font-body text-detail text-pine/70">{hint}</span>
+    </div>
+  );
 
   return (
     <div
@@ -348,19 +376,20 @@ export function AddObjectOverlay({
             overlaysVisible
           />
         )}
-        {/* Floated over the stage rather than stacked into the column, so the
-            photo never resizes as the instruction changes — the same treatment
-            the editor gives its out-of-range banner, and the same pine. */}
-        <p
-          data-testid="add-object-instruction"
-          className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-line bg-pine-soft px-4 py-2 font-body text-detail text-pine"
-        >
-          {instruction}
-        </p>
+        {/* Drawing happens here, so in phase 2 the prompt sits on the stage —
+            floated rather than stacked, so the photo never resizes as the
+            wording changes. In phase 1 it lives above the strip instead. */}
+        {phase === 'draw' && <div className="absolute inset-x-0 bottom-0">{prompt}</div>}
       </div>
 
-      {/* Frames only — every control moved to the bar above. */}
-      <div className="flex-none border-t border-line bg-paper">
+      {/* Frames only — every control moved to the bar above. While the range
+          is being chosen this is the region that acts, so the prompt attaches
+          to its top edge and the thumbnails sit on pine-soft: the eye is
+          pulled to the thing it has to click, rather than to the picture. */}
+      <div
+        className={`flex-none border-t border-line ${phase === 'range' ? 'bg-pine-soft' : 'bg-paper'}`}
+      >
+        {phase === 'range' && prompt}
         <ObjectRangeStrip
           entries={entries}
           currentRecordedAt={currentRecordedAt}
