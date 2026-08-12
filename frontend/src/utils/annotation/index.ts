@@ -63,6 +63,19 @@ export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubm
 export { computeCellCrop, focusOnMainObject } from './gridCropUtils';
 export type { CellCrop } from './gridCropUtils';
 
+// Box-drawing stage: scale plus a pan expressed as a fraction of the image
+export {
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampPan,
+  clampScale,
+  cropToPan,
+  stageTransform,
+  wheelZoomFactor,
+  zoomAtPoint,
+} from './stageViewUtils';
+export type { StageView } from './stageViewUtils';
+
 // Bounding box move/resize geometry
 export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';
 export type { ResizeHandle, Box } from './boxEditUtils';
