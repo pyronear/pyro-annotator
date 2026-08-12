@@ -41,6 +41,7 @@ vi.mock('@/services/api', () => ({
     getDetectionImageUrl: vi.fn(),
     createDetectionAnnotation: vi.fn(),
     updateDetectionAnnotation: vi.fn(),
+    bulkUpsertDetectionAnnotations: vi.fn(),
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
     localizeRevert: vi.fn(),
@@ -438,6 +439,14 @@ describe('LocalizeAlertPage', () => {
       created_at: '2026-01-01T00:00:00Z',
       updated_at: null,
     }));
+    vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mockImplementation(
+      async (_sequenceId, items) =>
+        items.map(item => ({
+          annotation_id: 9100 + item.detection_id,
+          detection_id: item.detection_id,
+          processing_stage: item.processing_stage,
+        }))
+    );
     vi.mocked(apiClient.localizeSubmit).mockResolvedValue({
       results: [
         { annotation_id: 201, sequence_id: 101, processing_stage: 'annotated' },
@@ -1307,6 +1316,7 @@ describe('LocalizeAlertPage', () => {
       });
       expect(apiClient.localizeSubmit).toHaveBeenCalledTimes(1);
       expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
 
       expect(screen.getByText('Objects submitted')).toBeInTheDocument();
       await waitFor(
@@ -2233,14 +2243,6 @@ describe('LocalizeAlertPage', () => {
     });
 
     it("accepts the active object's boxes from the header, then reports nothing left and drops the action", async () => {
-      vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => ({
-        id: 9100 + payload.detection_id,
-        detection_id: payload.detection_id,
-        annotation: payload.annotation,
-        processing_stage: payload.processing_stage,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: null,
-      }));
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByRole('button', { name: 'Object 1' }));
@@ -2256,18 +2258,107 @@ describe('LocalizeAlertPage', () => {
       // object, not on the alert. Object 2's frames (1002, 1003) must never
       // be touched by Object 1's quick-accept.
       await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-          expect.objectContaining({ detection_id: 1001 })
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledWith(
+          101,
+          [expect.objectContaining({ detection_id: 1001 })]
         );
       });
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1002 })
-      );
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1003 })
-      );
 
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
       expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it("sends the active object's pending frames as ONE bulk request, not one per frame", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      fireEvent.click(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: "Accept Object 2's boxes",
+        })
+      );
+      fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
+
+      // Object 2's two frames land in a single call — the half-accepted
+      // object was only reachable because this used to be one request each.
+      await waitFor(() => {
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledTimes(1);
+      });
+      const [sequenceId, items] = vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mock
+        .calls[0];
+      expect(sequenceId).toBe(102);
+      expect(items.map(i => i.detection_id).sort()).toEqual([1002, 1003]);
+      expect(items.every(i => i.processing_stage === 'annotated')).toBe(true);
+      // Object 1's frame belongs to another object and is never touched.
+      expect(items.map(i => i.detection_id)).not.toContain(1001);
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('carries existing false-positive items through into the bulk payload', async () => {
+      // An FP item is not an editable rectangle: accepting the model's boxes
+      // must not silently drop it (the rule buildQuickSubmitPlan encodes).
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        if (filters?.sequence_id !== 102) return emptyAnnotationsPage;
+        const items = [
+          {
+            ...makeDetectionAnnotation(1002),
+            processing_stage: 'bbox_annotation' as const,
+            annotation: {
+              annotation: [
+                {
+                  xyxyn: [0.4, 0.4, 0.5, 0.5] as [number, number, number, number],
+                  class_name: 'smoke',
+                  false_positive_type: 'antenna' as const,
+                },
+              ],
+            },
+          },
+        ];
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      fireEvent.click(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: "Accept Object 2's boxes",
+        })
+      );
+      fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
+
+      await waitFor(() => {
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledTimes(1);
+      });
+      const [, items] = vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mock.calls[0];
+      const frame = items.find(i => i.detection_id === 1002)!;
+      expect(frame.annotation.annotation).toContainEqual(
+        expect.objectContaining({ false_positive_type: 'antenna' })
+      );
+    });
+
+    it('toasts and leaves the Accept action in place when the bulk write fails', async () => {
+      vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mockRejectedValue(
+        new Error('boom')
+      );
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      fireEvent.click(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: "Accept Object 2's boxes",
+        })
+      );
+      fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
+
+      expect(await screen.findByText(/failed to accept boxes/i)).toBeInTheDocument();
+      // Nothing landed server-side, so there is nothing to reconcile: the
+      // object is still fully acceptable.
+      expect(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: "Accept Object 2's boxes",
+        })
+      ).toBeInTheDocument();
     });
 
     it('drops Accept once the object has every box, keeping Reclassify', async () => {
@@ -2306,6 +2397,7 @@ describe('LocalizeAlertPage', () => {
       expect(loop).toHaveAttribute('data-sequence-id', '101');
       expect(loop).toHaveAttribute('data-show-boxes', 'true');
       // Nothing was written by the click.
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
       expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
       expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
     });
@@ -2319,13 +2411,10 @@ describe('LocalizeAlertPage', () => {
       // Object 1's lane is detection 1001 only — the popover acts on the
       // active object, never on Object 2's frames.
       await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-          expect.objectContaining({ detection_id: 1001 })
-        );
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledWith(101, [
+          expect.objectContaining({ detection_id: 1001 }),
+        ]);
       });
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1002 })
-      );
       await waitFor(() => {
         expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
       });
@@ -2342,7 +2431,7 @@ describe('LocalizeAlertPage', () => {
       fireEvent.mouseDown(document.body);
       expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
 
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
     });
 
     it('offers no Accept button when the lane has nothing acceptable, even though it is not localized', async () => {
@@ -2409,13 +2498,13 @@ describe('LocalizeAlertPage', () => {
 
       fireEvent.keyDown(window, { key: 'Enter' });
       expect(await screen.findByTestId('accept-remaining-popover')).toBeInTheDocument();
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
 
       fireEvent.keyDown(window, { key: 'Enter' });
       await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-          expect.objectContaining({ detection_id: 1001 })
-        );
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledWith(101, [
+          expect.objectContaining({ detection_id: 1001 }),
+        ]);
       });
       await waitFor(() => {
         expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
@@ -2431,7 +2520,7 @@ describe('LocalizeAlertPage', () => {
       fireEvent.keyDown(window, { key: 'Escape' });
 
       expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
     });
 
     it('Enter on a focused control is left to the control — a rail row keeps its own Enter', async () => {
@@ -2459,9 +2548,9 @@ describe('LocalizeAlertPage', () => {
       fireEvent.keyDown(trigger, { key: 'Enter' });
 
       await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-          expect.objectContaining({ detection_id: 1001 })
-        );
+        expect(apiClient.bulkUpsertDetectionAnnotations).toHaveBeenCalledWith(101, [
+          expect.objectContaining({ detection_id: 1001 }),
+        ]);
       });
       await waitFor(() => {
         expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
@@ -2477,7 +2566,7 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
       });
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.bulkUpsertDetectionAnnotations).not.toHaveBeenCalled();
     });
 
     it('Enter is inert while the shortcuts sheet is up', async () => {

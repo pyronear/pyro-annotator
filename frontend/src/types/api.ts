@@ -290,6 +290,21 @@ export interface DetectionAnnotationData {
   bbox_xyxyn?: [number, number, number, number];
 }
 
+// One frame of a bulk accept. The whole object goes up in a single request,
+// upserted by detection_id — the per-frame loop this replaced could fail
+// partway and leave the object half-annotated.
+export interface DetectionAnnotationBulkItem {
+  detection_id: number;
+  annotation: { annotation: DetectionAnnotationBbox[] };
+  processing_stage: DetectionProcessingStage;
+}
+
+export interface DetectionAnnotationBulkResult {
+  annotation_id: number;
+  detection_id: number;
+  processing_stage: DetectionProcessingStage;
+}
+
 export interface SequenceGroupRepresentativeBbox {
   xyxyn: [number, number, number, number];
   confidence: number;

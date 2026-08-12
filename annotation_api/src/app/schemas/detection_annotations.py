@@ -14,6 +14,10 @@ from app.schemas.annotation_validation import DetectionAnnotationData
 from app.schemas.user import ContributorRead
 
 __all__ = [
+    "DetectionAnnotationBulkItem",
+    "DetectionAnnotationBulkRequest",
+    "DetectionAnnotationBulkResponse",
+    "DetectionAnnotationBulkResult",
     "DetectionAnnotationCreate",
     "DetectionAnnotationRead",
     "DetectionAnnotationUpdate",
@@ -79,3 +83,37 @@ class DetectionAnnotationUpdate(BaseModel):
         description="Updated processing stage in the detection annotation workflow. Use to advance or modify the current stage.",
         examples=["visual_check", "bbox_annotation", "annotated"],
     )
+
+
+class DetectionAnnotationBulkItem(BaseModel):
+    detection_id: int
+    annotation: DetectionAnnotationData
+    processing_stage: DetectionAnnotationProcessingStage
+
+
+class DetectionAnnotationBulkRequest(BaseModel):
+    """One object's frames, written in a single transaction.
+
+    Accepting an object used to be one request per frame, each its own
+    commit, so a failure partway left it half-annotated with nothing to
+    reconcile it.
+
+    The 500-item ceiling is a server guard, not a chunk size: a lane holds
+    one frame per detection (~30 at the import window's widest), so it is
+    unreachable in practice. Splitting an oversized object across requests
+    would reintroduce exactly the partial write this endpoint exists to
+    remove, so raise the ceiling before reaching for chunking.
+    """
+
+    sequence_id: int
+    items: List[DetectionAnnotationBulkItem] = Field(..., min_length=1, max_length=500)
+
+
+class DetectionAnnotationBulkResult(BaseModel):
+    annotation_id: int
+    detection_id: int
+    processing_stage: DetectionAnnotationProcessingStage
+
+
+class DetectionAnnotationBulkResponse(BaseModel):
+    results: List[DetectionAnnotationBulkResult]

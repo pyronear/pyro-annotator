@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
@@ -11,6 +11,7 @@ from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_detection_annotation_crud
@@ -26,6 +27,9 @@ from app.models import (
     Sequence,
 )
 from app.schemas.detection_annotations import (
+    DetectionAnnotationBulkRequest,
+    DetectionAnnotationBulkResponse,
+    DetectionAnnotationBulkResult,
     DetectionAnnotationCreate,
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
@@ -100,6 +104,104 @@ async def create_detection_annotation(
     ]
 
     return DetectionAnnotationRead(**annotation_dict)
+
+
+@router.post("/bulk")
+async def bulk_upsert_detection_annotations(
+    payload: DetectionAnnotationBulkRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: User = Depends(get_current_localizer),
+) -> DetectionAnnotationBulkResponse:
+    """Upsert every frame of one object atomically.
+
+    Replaces a client-side loop that issued one POST/PATCH per frame, each
+    its own commit: a failure partway left the object half-annotated, and
+    the retry collided with uq_detection_annotation_detection_id. Every
+    check below runs before the first write, so a rejection leaves the
+    database untouched, and the writes themselves upsert on that constraint
+    rather than racing against it.
+    """
+    detection_ids = [item.detection_id for item in payload.items]
+
+    seen: set[int] = set()
+    duplicates = sorted({d for d in detection_ids if d in seen or seen.add(d)})
+    if duplicates:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Duplicate detection_id in items: {duplicates}",
+        )
+
+    owned = set(
+        (
+            await session.execute(
+                select(Detection.id).where(
+                    Detection.sequence_id == payload.sequence_id,
+                    Detection.id.in_(detection_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    foreign = sorted(set(detection_ids) - owned)
+    if foreign:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Detections do not belong to sequence {payload.sequence_id}: {foreign}"
+            ),
+        )
+
+    now = datetime.now(UTC)
+    results = []
+    for item in payload.items:
+        annotation_json = item.annotation.model_dump()
+        # INSERT ... ON CONFLICT rather than read-then-write: two accepts of
+        # the same lane racing (a double-fired mutation, or two annotators on
+        # one alert) would otherwise both see no row, both insert, and the
+        # loser would trip uq_detection_annotation_detection_id for a 500.
+        # updated_at is stamped here because the column's `onupdate` only
+        # fires for ORM-emitted UPDATEs, and stays NULL on the insert branch
+        # so a freshly created row is still distinguishable (#216).
+        statement = (
+            pg_insert(DetectionAnnotation)
+            .values(
+                detection_id=item.detection_id,
+                annotation=annotation_json,
+                processing_stage=item.processing_stage,
+                created_at=now,
+            )
+            .on_conflict_do_update(
+                index_elements=[DetectionAnnotation.detection_id],
+                set_={
+                    "annotation": annotation_json,
+                    "processing_stage": item.processing_stage,
+                    "updated_at": now,
+                },
+            )
+            .returning(DetectionAnnotation.id)
+        )
+        annotation_id = (await session.execute(statement)).scalar_one()
+
+        # Attribute only writes that LAND at ANNOTATED — the same rule as
+        # CRUD.update, which tests the post-update stage (it applies the
+        # payload before the check, making its second operand redundant).
+        if item.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED:
+            await annotations.record_contribution(
+                annotation_id, current_user.id, commit=False
+            )
+
+        results.append(
+            DetectionAnnotationBulkResult(
+                annotation_id=annotation_id,
+                detection_id=item.detection_id,
+                processing_stage=item.processing_stage,
+            )
+        )
+
+    await session.commit()
+    return DetectionAnnotationBulkResponse(results=results)
 
 
 @router.get("/")
