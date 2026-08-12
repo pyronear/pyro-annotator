@@ -154,7 +154,7 @@ import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
 import { AddObjectOverlay } from '@/components/localize/add-object';
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
-import type { RangeBox } from '@/utils/annotation/objectRangeInterpolation';
+import type { RangeBox } from '@/utils/annotation/objectRangeBoxes';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 // Imported from its file rather than the editor barrel: the page tests stub
 // the barrel down to LocalizeObjectEditor, and the popover must stay real.

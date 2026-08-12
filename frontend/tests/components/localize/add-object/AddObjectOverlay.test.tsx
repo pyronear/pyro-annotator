@@ -17,7 +17,7 @@ beforeAll(() => {
   })) as unknown as HTMLCanvasElement['getContext'];
 });
 
-// Evenly spaced 30s apart, so an interpolated midpoint is easy to reason about.
+// Evenly spaced 30s apart.
 const TIMES = [
   '2026-08-11T12:00:00Z',
   '2026-08-11T12:00:30Z',
@@ -112,13 +112,11 @@ const drag = (from: [number, number], to: [number, number]) => {
   fireEvent.mouseUp(image);
 };
 
-/** Sets the range to frames 0..2 and boxes both of its anchors. */
-const setRangeAndBoxBothAnchors = () => {
+/** Sets the range to frames 0..2 and draws the single box on its first frame. */
+const setRangeAndBox = () => {
   fireEvent.click(cell(TIMES[0]));
   fireEvent.click(cell(TIMES[2]));
-  drag([80, 80], [240, 200]); // first anchor — a small box
-  fireEvent.click(cell(TIMES[2]));
-  drag([80, 80], [480, 380]); // last anchor — a bigger one
+  drag([80, 80], [240, 200]);
 };
 
 describe('AddObjectOverlay range selection', () => {
@@ -163,19 +161,13 @@ describe('AddObjectOverlay range selection', () => {
 });
 
 describe('AddObjectOverlay drawing', () => {
-  it('keeps Create disabled until BOTH anchors are boxed', () => {
+  it('keeps Create disabled until the box is drawn', () => {
     renderOverlay();
     fireEvent.click(cell(TIMES[0]));
     fireEvent.click(cell(TIMES[2]));
     expect(createButton()).toBeDisabled();
 
     drag([80, 80], [240, 200]);
-    // One anchor down, one to go — copying this box across the range is
-    // exactly what interpolation exists to avoid.
-    expect(createButton()).toBeDisabled();
-
-    fireEvent.click(cell(TIMES[2]));
-    drag([80, 80], [480, 380]);
     expect(createButton()).toBeEnabled();
   });
 
@@ -187,9 +179,22 @@ describe('AddObjectOverlay drawing', () => {
     expect(createButton()).toBeEnabled();
   });
 
-  it('sends one entry per in-range frame, interpolated between the anchors', () => {
+  it('only the first frame of the range accepts a box', () => {
     const { onCreate } = renderOverlay();
-    setRangeAndBoxBothAnchors();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+
+    // There is one box and it belongs to the start of the range; the other
+    // in-range frames show the copy but are not drawable.
+    fireEvent.click(cell(TIMES[1]));
+    drag([80, 80], [240, 200]);
+    expect(createButton()).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('sends one entry per in-range frame, all carrying the same box', () => {
+    const { onCreate } = renderOverlay();
+    setRangeAndBox();
     fireEvent.click(createButton());
 
     expect(onCreate).toHaveBeenCalledTimes(1);
@@ -201,18 +206,16 @@ describe('AddObjectOverlay drawing', () => {
     ]);
     expect(smokeType).toBe('wildfire');
 
-    // The middle box lies strictly between the two anchors rather than
-    // repeating either of them.
-    const [w0, w1, w2] = frames.map(
-      (f: { xyxyn: [number, number, number, number] }) => f.xyxyn[2] - f.xyxyn[0]
-    );
-    expect(w1).toBeGreaterThan(w0);
-    expect(w1).toBeLessThan(w2);
+    // Every frame gets the identical box — a first draft to refine per frame
+    // in the editor afterwards, not a finished track.
+    const boxes = frames.map((f: { xyxyn: [number, number, number, number] }) => f.xyxyn);
+    expect(boxes[1]).toEqual(boxes[0]);
+    expect(boxes[2]).toEqual(boxes[0]);
   });
 
   it('sends the chosen smoke type', () => {
     const { onCreate } = renderOverlay();
-    setRangeAndBoxBothAnchors();
+    setRangeAndBox();
     // A radiogroup, like the missed-smoke row's own Yes/No: one choice, not
     // three independent buttons.
     fireEvent.click(screen.getByRole('radio', { name: /industrial/i }));
@@ -222,7 +225,7 @@ describe('AddObjectOverlay drawing', () => {
 
   it('drops the boxes when the range is restarted', () => {
     renderOverlay();
-    setRangeAndBoxBothAnchors();
+    setRangeAndBox();
     expect(createButton()).toBeEnabled();
 
     fireEvent.click(screen.getByTestId('restart-range'));
@@ -302,7 +305,7 @@ describe('AddObjectOverlay exit', () => {
 
   it('does not create anything until Create is pressed', () => {
     const { onCreate } = renderOverlay();
-    setRangeAndBoxBothAnchors();
+    setRangeAndBox();
     // Nothing autosaves here: the object does not exist until Create.
     expect(onCreate).not.toHaveBeenCalled();
   });

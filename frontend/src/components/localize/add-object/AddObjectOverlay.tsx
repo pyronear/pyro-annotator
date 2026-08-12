@@ -9,11 +9,20 @@
  * hover preview was removed for occluding exactly the neighbouring frames a
  * boundary decision compares against.
  *
- * Phase 2 draws TWO boxes, one per end of the range, and everything between
- * is interpolated. Smoke grows and drifts, so a single box stamped across
- * nineteen frames is too big at the start and too small at the end. While the
- * second anchor is being drawn the first renders ghosted, so it is placed
- * relative to something rather than from memory.
+ * Phase 2 draws ONE box, on the first frame of the range, and every other
+ * frame in the range gets a copy. That is deliberately a first draft: smoke
+ * grows and drifts, so the copy is too small at the end of a long range, and
+ * refining frame by frame in the object editor is the second half of the job.
+ * Interpolating between a box on each end was designed and deferred — see the
+ * spec — and would touch only `objectRangeBoxes` and this phase, since
+ * everything downstream already takes an explicit per-frame box list.
+ *
+ * Stepping to any other in-range frame shows the copy so it can be checked
+ * before creating, but only the first frame is drawable.
+ *
+ * Every control lives in the top bar — smoke type, restart range, create — so
+ * one task is not spread across two edges of the screen. The strip at the
+ * bottom is purely the frames.
  *
  * Nothing autosaves. The object does not exist until Create, which is the
  * whole reason this is a separate surface from the editor rather than a mode
@@ -30,7 +39,7 @@ import {
   buildRangeStripEntries,
   type RangeStripEntry,
 } from '@/utils/annotation/objectRangeStripEntries';
-import { interpolateRangeBoxes, type RangeBox } from '@/utils/annotation/objectRangeInterpolation';
+import { fillRangeBoxes, type RangeBox } from '@/utils/annotation/objectRangeBoxes';
 import { useBoxDrawingStage, type Xyxyn } from '@/hooks/annotation';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
@@ -50,7 +59,7 @@ export interface AddObjectOverlayProps {
   /** The other objects' boxes per frame, so you can tell whose plume it is. */
   objectOverlaysByRecordedAt: Record<string, ObjectOverlayItem[]>;
   isCreating: boolean;
-  /** Every in-range frame with its box, already interpolated. */
+  /** Every in-range frame with the box it will be created with. */
   onCreate: (frames: RangeBox[], smokeType: SmokeType) => void;
   onClose: () => void;
 }
@@ -73,47 +82,30 @@ export function AddObjectOverlay({
   const [range, setRange] = useState<{ firstRecordedAt: string; lastRecordedAt: string } | null>(
     null
   );
-  const [anchorBoxes, setAnchorBoxes] = useState<{ first: Xyxyn | null; last: Xyxyn | null }>({
-    first: null,
-    last: null,
-  });
+  // One box, drawn on the first frame of the range and copied to the rest.
+  const [box, setBox] = useState<Xyxyn | null>(null);
   const [currentRecordedAt, setCurrentRecordedAt] = useState(alertFrames[0]?.recordedAt ?? '');
   const [smokeType, setSmokeType] = useState<SmokeType>('wildfire' as SmokeType);
   const [boxSelected, setBoxSelected] = useState(false);
 
-  const bothAnchorsBoxed = anchorBoxes.first !== null && anchorBoxes.last !== null;
-
   const entries = useMemo(
-    () =>
-      buildRangeStripEntries(
-        alertFrames,
-        range,
-        bothAnchorsBoxed ? { first: anchorBoxes.first!, last: anchorBoxes.last! } : null
-      ),
-    [alertFrames, range, bothAnchorsBoxed, anchorBoxes]
+    () => buildRangeStripEntries(alertFrames, range, box),
+    [alertFrames, range, box]
   );
 
-  const isFirstAnchor = range != null && currentRecordedAt === range.firstRecordedAt;
-  const isLastAnchor = range != null && currentRecordedAt === range.lastRecordedAt;
-  const onAnchor = phase === 'draw' && (isFirstAnchor || isLastAnchor);
+  // The one frame that accepts a box. Every other in-range frame shows the
+  // copy so it can be checked, but is not itself drawable — there is only one
+  // box, and it belongs to the start of the range.
+  const isDrawFrame =
+    phase === 'draw' && range != null && currentRecordedAt === range.firstRecordedAt;
 
-  // The box for the frame on the stage: the anchor's own while drawing it, or
-  // the interpolated one when merely looking at an interior frame.
-  const stageBox: Xyxyn | null = isFirstAnchor
-    ? anchorBoxes.first
-    : isLastAnchor
-      ? anchorBoxes.last
-      : (entries.find(e => e.recordedAt === currentRecordedAt)?.xyxyn ?? null);
+  const stageBox: Xyxyn | null =
+    entries.find(e => e.recordedAt === currentRecordedAt)?.xyxyn ?? null;
 
   const handleDrawn = useCallback(
     (xyxyn: Xyxyn) => {
-      // Only an anchor accepts a box. An interior frame is there to check the
-      // tween on, and its box is derived rather than drawn.
-      if (phase !== 'draw' || range == null) return;
-      setAnchorBoxes(prev => ({
-        first: currentRecordedAt === range.firstRecordedAt ? xyxyn : prev.first,
-        last: currentRecordedAt === range.lastRecordedAt ? xyxyn : prev.last,
-      }));
+      if (phase !== 'draw' || range == null || currentRecordedAt !== range.firstRecordedAt) return;
+      setBox(xyxyn);
     },
     [phase, range, currentRecordedAt]
   );
@@ -121,7 +113,7 @@ export function AddObjectOverlay({
   const stage = useBoxDrawingStage({
     containerRef,
     imgRef,
-    editableBox: onAnchor ? stageBox : null,
+    editableBox: isDrawFrame ? stageBox : null,
     boxSelected,
     onBoxSelectedChange: setBoxSelected,
     onDrawn: handleDrawn,
@@ -155,13 +147,13 @@ export function AddObjectOverlay({
   // Start the range over, from either phase. Choosing a range is a two-click
   // gesture with no natural undo — a mis-click on the first frame otherwise
   // strands you until the second click — so this is always available once
-  // anything is selected. It drops the anchor boxes too: re-anchoring a box
-  // onto a frame that may have left the range is not worth the complexity.
+  // anything is selected. It drops the box too: it belongs to the start of a
+  // range that is about to change.
   const restartRange = () => {
     setPhase('range');
     setPendingFirst(null);
     setRange(null);
-    setAnchorBoxes({ first: null, last: null });
+    setBox(null);
   };
 
   const hasSelection = range !== null || pendingFirst !== null;
@@ -176,9 +168,9 @@ export function AddObjectOverlay({
   );
 
   const submit = () => {
-    if (!range || !bothAnchorsBoxed) return;
+    if (!range || box === null) return;
     const stamps = entries.filter(e => e.inRange).map(e => e.recordedAt);
-    onCreate(interpolateRangeBoxes(stamps, anchorBoxes.first!, anchorBoxes.last!), smokeType);
+    onCreate(fillRangeBoxes(stamps, box), smokeType);
   };
 
   useEffect(() => {
@@ -212,25 +204,16 @@ export function AddObjectOverlay({
   const currentEntry = entries.find(e => e.recordedAt === currentRecordedAt);
   const shownDetection = currentEntry ? detectionsById.get(currentEntry.detectionId) : undefined;
 
-  // The first box stays on screen while the second is drawn, so the second is
-  // placed relative to it rather than from memory.
-  const ghostFirstAnchor =
-    isLastAnchor && !isFirstAnchor && anchorBoxes.first
-      ? [{ source: 'manual' as const, index: 0, xyxyn: anchorBoxes.first }]
-      : [];
-
   const instruction =
     phase === 'range'
       ? pendingFirst === null
         ? 'Click the first frame this object appears on'
         : 'Now click the last frame'
-      : isFirstAnchor && anchorBoxes.first === null
-        ? 'Draw a box around the object on this frame'
-        : isLastAnchor && anchorBoxes.last === null
-          ? 'Now box it on the last frame — the frames between are filled in'
-          : onAnchor
-            ? 'Drag to redraw this box'
-            : 'Interpolated — step to an anchor to change the track';
+      : isDrawFrame
+        ? box === null
+          ? 'Draw a box around the object — every frame in the range gets a copy'
+          : 'Drag to redraw the box'
+        : 'A copy of the box on the first frame — refine each frame after creating';
 
   return (
     <div
@@ -243,8 +226,12 @@ export function AddObjectOverlay({
       aria-label="Add object"
       data-testid="add-object-overlay"
     >
+      {/* Every control lives here, in the order the job is done: what the
+          object is, undo the range, then create it. They used to be split
+          between this bar and the strip's footer, which meant hunting in two
+          places for one task. The strip below is now purely the frames. */}
       <div className="relative z-40 flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
-        <span className="font-body text-sm font-semibold text-char">New object</span>
+        <span className="font-body text-sm font-semibold text-char">{objectLabel}</span>
         <span className="font-data text-detail text-haze">
           {range
             ? `${entries.filter(e => e.inRange).length} frames`
@@ -255,7 +242,31 @@ export function AddObjectOverlay({
             {formatDateTime(currentEntry.recordedAt, { seconds: true })}
           </span>
         )}
+
         <div className="ml-auto flex items-center gap-2">
+          <span
+            role="radiogroup"
+            aria-label="Smoke type"
+            className="inline-flex items-center rounded-lg bg-ash p-0.5"
+          >
+            {SMOKE_TYPES.map(type => (
+              <button
+                key={type}
+                type="button"
+                role="radio"
+                aria-checked={smokeType === type}
+                onClick={() => setSmokeType(type)}
+                className={`rounded-md px-2.5 py-1 font-body text-xs capitalize transition-colors ${
+                  smokeType === type
+                    ? 'bg-paper font-medium text-char shadow-sm'
+                    : 'text-haze hover:text-char'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </span>
+
           {hasSelection && (
             <button
               type="button"
@@ -267,6 +278,18 @@ export function AddObjectOverlay({
               Restart range
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={box === null || isCreating}
+            className="inline-flex items-center rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCreating ? 'Creating…' : 'Create object'}
+          </button>
+
+          <span aria-hidden className="mx-0.5 h-5 w-px self-center bg-line" />
+
           <button
             type="button"
             aria-label="Close"
@@ -292,12 +315,12 @@ export function AddObjectOverlay({
         {shownDetection && (
           <DetectionAnnotationCanvas
             detection={shownDetection}
-            committed={
-              onAnchor && stageBox ? { source: 'manual', index: 0, xyxyn: stageBox } : null
-            }
-            ghosts={ghostFirstAnchor}
-            showGhosts={ghostFirstAnchor.length > 0}
-            selected={onAnchor && boxSelected}
+            // Every in-range frame shows the box, so the copy can be checked
+            // before creating; only the first frame's is editable.
+            committed={stageBox ? { source: 'manual', index: 0, xyxyn: stageBox } : null}
+            ghosts={[]}
+            showGhosts={false}
+            selected={isDrawFrame && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={objectOverlaysByRecordedAt[currentRecordedAt] ?? []}
             isDrawMode={stage.currentDrawing !== null}
@@ -332,6 +355,7 @@ export function AddObjectOverlay({
         </p>
       </div>
 
+      {/* Frames only — every control moved to the bar above. */}
       <div className="flex-none border-t border-line bg-paper">
         <ObjectRangeStrip
           entries={entries}
@@ -339,37 +363,6 @@ export function AddObjectOverlay({
           objectColor={objectColor}
           onSelect={handleSelectFrame}
         />
-        <div className="flex items-center gap-2 border-t border-line px-3 py-2">
-          <span className="font-data text-eyebrow uppercase tracking-eyebrow text-haze">
-            {objectLabel}
-          </span>
-          <span role="radiogroup" aria-label="Smoke type" className="flex items-center gap-1.5">
-            {SMOKE_TYPES.map(type => (
-              <button
-                key={type}
-                type="button"
-                role="radio"
-                aria-checked={smokeType === type}
-                onClick={() => setSmokeType(type)}
-                className={`rounded-lg border px-3 py-1 font-body text-xs capitalize transition-colors ${
-                  smokeType === type
-                    ? 'border-pine bg-pine font-medium text-white'
-                    : 'border-line bg-paper text-char hover:bg-ash'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </span>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!bothAnchorsBoxed || isCreating}
-            className="ml-auto rounded-lg bg-pine px-4 py-1 font-body text-xs font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isCreating ? 'Creating…' : 'Create object'}
-          </button>
-        </div>
       </div>
     </div>
   );

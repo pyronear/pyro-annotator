@@ -12,7 +12,7 @@
  */
 
 import type { AlertFrame } from './alertLocalizeUtils';
-import { interpolateRangeBoxes } from './objectRangeInterpolation';
+import { fillRangeBoxes } from './objectRangeBoxes';
 
 export interface RangeStripEntry {
   recordedAt: string;
@@ -23,9 +23,9 @@ export interface RangeStripEntry {
    */
   detectionId: number;
   inRange: boolean;
-  /** The first or last frame of the range: where the human draws. */
+  /** The first or last frame of the range — the ends, shown more heavily. */
   isAnchor: boolean;
-  /** The box this frame would receive; null until both anchors are drawn. */
+  /** The box this frame would receive; null until one has been drawn. */
   xyxyn: [number, number, number, number] | null;
 }
 
@@ -34,15 +34,11 @@ export interface RangeSelection {
   lastRecordedAt: string;
 }
 
-export interface RangeAnchors {
-  first: [number, number, number, number];
-  last: [number, number, number, number];
-}
-
 export function buildRangeStripEntries(
   frames: AlertFrame[],
   range: RangeSelection | null,
-  anchors: RangeAnchors | null
+  /** The box drawn on the first frame, copied across the range. */
+  box: [number, number, number, number] | null
 ): RangeStripEntry[] {
   // ISO-8601 UTC strings compare correctly lexicographically, and
   // `buildAlertFrameModel` passes them through from the API untouched, so
@@ -52,11 +48,7 @@ export function buildRangeStripEntries(
 
   const rangeStamps = frames.map(f => f.recordedAt).filter(inRange);
   const boxByTime = new Map<string, [number, number, number, number]>(
-    anchors
-      ? interpolateRangeBoxes(rangeStamps, anchors.first, anchors.last).map(
-          b => [b.recordedAt, b.xyxyn] as const
-        )
-      : []
+    box ? fillRangeBoxes(rangeStamps, box).map(b => [b.recordedAt, b.xyxyn] as const) : []
   );
 
   return frames.map(frame => ({

@@ -22,8 +22,11 @@ existed.
 1. **The frame range defines the lane.** The new lane holds Detection rows only
    for the frames the annotator marked the object visible on — the same
    statement every importer-split lane makes.
-2. **Two anchors, interpolated.** The annotator boxes the first frame of the
-   range and the last; every frame between gets a box tweened from the two.
+2. **One box, copied across the range.** The annotator boxes the first frame of
+   the range and every other frame in it gets the same box — a first draft to
+   refine per frame in the editor afterwards. *(Amended 2026-08-12: this
+   originally specified two anchors with the frames between interpolated by
+   elapsed time. Interpolation is deferred — see §3.3.)*
 3. **The entry point is the missed-smoke section.** Yes unlocks the work
    instead of pointing at the exit.
 4. **One atomic POST.** The request carries the complete per-frame box list;
@@ -207,33 +210,36 @@ There is no separate confirm step.
 On success the overlay closes and the page navigates to the new lane's editor
 so per-frame refinement can start immediately.
 
-### 3.3 Interpolation
+### 3.3 The per-frame boxes
 
 Computed **on the client**, so the strip preview and the stored data are
 identical by construction with no second implementation on the server to drift
-from. It also means later refinements — a third anchor, nudging one frame
-before Create — need no backend change.
+from.
 
-**Weighted by time, not by frame index.** Alert frames are not evenly spaced;
-`ObjectFilmstrip`'s own docs note cells "can sit anywhere from two seconds to
-two minutes apart". Each frame's weight is
-`(t − t_first) / (t_last − t_first)` from its `recorded_at`, and the four
-normalised coordinates are lerped independently.
-
-New util, `src/utils/annotation/objectRangeInterpolation.ts`:
+`src/utils/annotation/objectRangeBoxes.ts`:
 
 ```ts
-export function interpolateRangeBoxes(
-  frames: { recordedAt: string }[],   // in range, chronological
-  first: [number, number, number, number],
-  last: [number, number, number, number]
+export function fillRangeBoxes(
+  recordedAts: string[],                        // in range, chronological
+  box: [number, number, number, number]         // drawn on the first frame
 ): { recordedAt: string; xyxyn: [number, number, number, number] }[]
 ```
 
-A one-frame range returns the single anchor box; a two-frame range returns both
-anchors and lerps nothing. A zero-width time span (identical timestamps, which
-the data should never contain) falls back to weight 0 rather than dividing by
-zero.
+**Interpolation is deferred** *(amended 2026-08-12)*. The original design had
+the annotator box both ends of the range and tweened the frames between,
+**weighted by elapsed time rather than frame index** — alert frames are not
+evenly spaced, and `ObjectFilmstrip`'s own docs note cells "can sit anywhere
+from two seconds to two minutes apart", so index weighting misplaces the middle
+boxes. That was built, tested and then removed in favour of the simpler
+one-box flow.
+
+The reasoning that motivated it still holds: one box copied across a long range
+is too small at the end and too big at the start, because smoke grows. The
+mitigation is that the copy is explicitly a first draft and per-frame
+refinement in the editor is the second half of the job. If interpolation
+returns, only `objectRangeBoxes` and the overlay's draw phase change —
+everything downstream (the strip, the request, `add_object`) already takes an
+explicit per-frame box list, which is exactly why that shape was chosen.
 
 ### 3.4 The range strip
 

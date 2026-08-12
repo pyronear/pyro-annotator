@@ -23,7 +23,6 @@ const FRAMES: AlertFrame[] = [
 ];
 
 const SMALL: [number, number, number, number] = [0, 0, 0.2, 0.2];
-const BIG: [number, number, number, number] = [0, 0, 0.6, 0.6];
 
 describe('buildRangeStripEntries', () => {
   it('marks every frame out of range when no range is set yet', () => {
@@ -71,25 +70,25 @@ describe('buildRangeStripEntries', () => {
     expect(entries.every(e => e.xyxyn === null)).toBe(true);
   });
 
-  it('puts the interpolated box on every in-range frame, and none outside it', () => {
+  it('puts the box on every in-range frame, and none outside it', () => {
     const entries = buildRangeStripEntries(
       FRAMES,
       { firstRecordedAt: '2026-08-11T12:00:00Z', lastRecordedAt: '2026-08-11T12:01:00Z' },
-      { first: SMALL, last: BIG }
+      SMALL
     );
+    // The box drawn on the first frame, copied across the range.
     expect(entries[0].xyxyn).toEqual(SMALL);
-    // 30s into a 60s span → halfway.
-    expect(entries[1].xyxyn?.[2]).toBeCloseTo(0.4, 5);
-    expect(entries[2].xyxyn).toEqual(BIG);
+    expect(entries[1].xyxyn).toEqual(SMALL);
+    expect(entries[2].xyxyn).toEqual(SMALL);
     // Out of range: nothing to draw, and the thumbnail stays uncropped.
     expect(entries[3].xyxyn).toBeNull();
   });
 
-  it('is single-anchor safe: a one-frame range gets the first box', () => {
+  it('handles a one-frame range', () => {
     const entries = buildRangeStripEntries(
       FRAMES,
       { firstRecordedAt: '2026-08-11T12:00:30Z', lastRecordedAt: '2026-08-11T12:00:30Z' },
-      { first: SMALL, last: SMALL }
+      SMALL
     );
     expect(entries[1].xyxyn).toEqual(SMALL);
     expect(entries[1].isAnchor).toBe(true);
