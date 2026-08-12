@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_LOCALIZE_QUEUE_VIEW,
+  LocalizeQueueView,
   determineClassifySubmitStage,
+  localizeQueueViewSearch,
+  parseLocalizeQueueView,
   pickNextLocalizeLane,
 } from '@/utils/annotation/localizeUtils';
 import { LocalizationQueueLane } from '@/types/api';
@@ -209,4 +213,42 @@ describe('pickNextLocalizeLane', () => {
     expect(
       pickNextLocalizeLane([lane(1), lane(2, { has_smoke: true, is_unsure: true }), lane(3)], 1)
     ).toBe(3));
+});
+
+describe('localize queue view (the listing an alert was opened from)', () => {
+  it('reads the queue listing out of a detail URL', () => {
+    expect(parseLocalizeQueueView('?order_by=recorded_at&order_direction=asc&skipped=1')).toEqual({
+      orderBy: 'recorded_at',
+      orderDirection: 'asc',
+      skipped: true,
+    });
+  });
+
+  it('falls back to the queue page defaults when the params are absent, junk or unrelated', () => {
+    expect(parseLocalizeQueueView('')).toEqual(DEFAULT_LOCALIZE_QUEUE_VIEW);
+    // A hand-edited or stale URL must never reach the API as an order_by it rejects.
+    expect(parseLocalizeQueueView('?order_by=drop_table&order_direction=sideways')).toEqual(
+      DEFAULT_LOCALIZE_QUEUE_VIEW
+    );
+    // Alert-scoped params (the editor's deep-link frame) are not view state.
+    expect(parseLocalizeQueueView('?frame=3')).toEqual(DEFAULT_LOCALIZE_QUEUE_VIEW);
+  });
+
+  it('round-trips through the search string it builds', () => {
+    const view: LocalizeQueueView = {
+      orderBy: 'recorded_at',
+      orderDirection: 'asc',
+      skipped: true,
+    };
+    expect(localizeQueueViewSearch(view)).toBe(
+      '?order_by=recorded_at&order_direction=asc&skipped=1'
+    );
+    expect(parseLocalizeQueueView(localizeQueueViewSearch(view))).toEqual(view);
+  });
+
+  it('omits the skipped flag for the main queue', () => {
+    expect(localizeQueueViewSearch(DEFAULT_LOCALIZE_QUEUE_VIEW)).toBe(
+      '?order_by=temporal_model_score&order_direction=desc'
+    );
+  });
 });
