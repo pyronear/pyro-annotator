@@ -395,6 +395,21 @@ export default function SequenceGroupsListPage({
                         <span>smoke · {g.smoke_type}</span>
                       ) : g.false_positive_type ? (
                         <span>false positive · {g.false_positive_type.replace(/_/g, ' ')}</span>
+                      ) : g.is_unsure ? (
+                        // A verdict, not a to-do — hence neutral tones and no
+                        // ember chip. The label columns stay null by design:
+                        // the check constraint forbids a labeled_at without a
+                        // label, so an undecidable object cannot be "labeled".
+                        <span className="group relative inline-block">
+                          <span className="inline-flex rounded-full bg-ash px-2 py-1 font-body text-xs font-semibold text-haze">
+                            unsure
+                          </span>
+                          {headerTip(
+                            'An annotator marked this object undecidable, so no label ' +
+                              'could be derived from its sightings. Settle them under ' +
+                              'Classify → Done, with the "Only Unsure" filter.'
+                          )}
+                        </span>
                       ) : (
                         <span className="group relative inline-block">
                           <span className="inline-flex rounded-full bg-ember-soft px-2 py-1 font-body text-xs font-semibold text-ember">

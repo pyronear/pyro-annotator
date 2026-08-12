@@ -301,6 +301,10 @@ export default function SequenceGroupAnnotatePage() {
               <span className="flex-none rounded-full border border-line bg-paper px-2.5 py-0.5 font-body text-xs font-semibold text-char">
                 false positive · {group.false_positive_type.replace(/_/g, ' ')}
               </span>
+            ) : group.is_unsure ? (
+              <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-body text-xs font-semibold text-haze">
+                unsure
+              </span>
             ) : (
               <span className="flex-none rounded-full bg-ember-soft px-2.5 py-0.5 font-body text-xs font-semibold text-ember">
                 to label

@@ -257,6 +257,39 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.getByText('to label')).toHaveClass('bg-ember-soft', 'text-ember');
   });
 
+  it('an unsure group renders the neutral "unsure" chip, not "to label"', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [{ ...group, is_unsure: true }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups/unsure');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    // Neutral tokens, deliberately not the ember to-do chip: an unsure
+    // object is a recorded decision, not outstanding work.
+    expect(screen.getByText('unsure')).toHaveClass('bg-ash', 'text-haze');
+    expect(screen.queryByText('to label')).toBeNull();
+    expect(screen.getByText(/Settle them under Classify/)).toBeTruthy();
+  });
+
+  it('a label outranks is_unsure in the label cell', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [{ ...group, is_unsure: true, smoke_type: 'wildfire' }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups/all');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    expect(screen.getByText('smoke · wildfire')).toBeTruthy();
+    expect(screen.queryByText('unsure')).toBeNull();
+  });
+
   it('filter tabs carry explanatory tooltips', async () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByRole('link', { name: /To label/ })).toBeTruthy());

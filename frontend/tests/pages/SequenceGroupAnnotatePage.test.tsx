@@ -100,6 +100,12 @@ describe('SequenceGroupAnnotatePage', () => {
     expect(screen.getByText('to label')).toHaveClass('bg-ember-soft', 'text-ember');
   });
 
+  it('renders the "unsure" badge with neutral tones', async () => {
+    await renderGroup({ is_unsure: true });
+    expect(screen.getByText('unsure')).toHaveClass('bg-ash', 'text-haze');
+    expect(screen.queryByText('to label')).toBeNull();
+  });
+
   it('Validate group is the ember primary button', async () => {
     await renderGroup();
     const btn = screen.getByRole('button', { name: /Validate group/ });
