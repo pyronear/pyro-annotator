@@ -525,6 +525,118 @@ describe('LocalizeObjectEditor canvas', () => {
     vi.unstubAllGlobals();
   });
 
+  // The same cold-open trap the resize observer has above, and the reason
+  // `imageKey` is threaded into the stage at all: the canvas renders no
+  // container until the image URL resolves, so a wheel listener attached only
+  // on mount is attached to nothing. A deep link into the editor — or a
+  // refresh on it — is exactly that cold open, and the zoom would be dead
+  // there while every warm-open test passed.
+  it('still zooms at the pointer when the image URL arrives late', () => {
+    imageState.data = undefined;
+    const { rerender } = renderEditor();
+    expect(document.querySelector('img')).toBeNull();
+
+    imageState.data = { url: IMAGE_URL };
+    rerender(editorWith());
+    fireEvent.load(screen.getByAltText(/^Detection /));
+
+    const image = stubGeometry();
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(1.15) translate(-3.913%, 0%)' });
+  });
+
+  it('ignores a wheel fired before the image can be measured', () => {
+    // An <img> reports no natural size until it decodes, and the bounds are
+    // computed from its aspect ratio — 0/0, so every coordinate comes back
+    // NaN. Anchoring on that would quietly reset the pan and throw the
+    // framing away on a wheel during a frame change. jsdom lays nothing out,
+    // so leaving the geometry unstubbed IS that state.
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = screen.getByAltText(/^Detection /);
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(16.667%, 16.667%)' });
+
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(16.667%, 16.667%)' });
+  });
+
+  it('zooms at the pointer, holding the point under it still', () => {
+    renderLoadedEditor();
+    const image = stubGeometry();
+
+    // 640px across an 800px image is 0.8 of the way over; one notch up is a
+    // 1.15 factor, and holding 0.8 still takes (1 - 1.15)(0.3)/1.15 of pan.
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(1.15) translate(-3.913%, 0%)' });
+  });
+
+  it('keeps the object framing when the wheel refines it', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = stubGeometry();
+    fireEvent.keyDown(window, { key: 'z' });
+
+    // Wheeling used to reset the transform origin, which threw the framing
+    // away on the first notch. Now it refines it — and the Z toggle stays
+    // pressed, because the framing is a mode, not a snapshot.
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 400,
+      clientY: 225,
+    });
+
+    // The screen's centre is image point 0.333 under this framing, and
+    // anchoring it across 3 -> 3.45 leaves the pan exactly where it was. The
+    // pan is the whole assertion: asserting the scale alone would pass just
+    // as well with the framing thrown away, which is the bug.
+    expect(image).toHaveStyle({ transform: 'scale(3.45) translate(16.667%, 16.667%)' });
+    expect(screen.getByTestId('editor-zoom-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('pans with the cursor, not faster than it', () => {
+    // The pan applies inside the scale, so a 100px drag at 3x over an 800px
+    // image is 100 / (800 * 3) of the image — anything else and the picture
+    // slides out from under the hand.
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = stubGeometry();
+    fireEvent.keyDown(window, { key: 'z' });
+
+    fireEvent.keyDown(window, { code: 'Space' });
+    fireEvent.mouseDown(image, { button: 0, clientX: 400, clientY: 225 });
+    fireEvent.mouseMove(image, { clientX: 500, clientY: 225 });
+    fireEvent.mouseUp(image);
+    fireEvent.keyUp(window, { code: 'Space' });
+
+    // The 16.667% object framing plus 100 / 2400 of the image.
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(20.833%, 16.667%)' });
+  });
+
+  it('centres the image in the stage panel, which the bounds maths assumes', () => {
+    // `calculateImageBounds` works out where an object-contain image sits by
+    // assuming it is CENTRED in its container; drop the centring and every
+    // screen-to-image conversion is off by half the leftover width. The same
+    // centring is what keeps the container's box on the image's, which the
+    // percentage pan resolves against — measured in Chromium down to a 1280x420
+    // viewport (where max-h-[95vh] binds) as agreeing within 0.02px.
+    renderLoadedEditor();
+    const panel = screen.getByAltText(/^Detection /).parentElement?.parentElement;
+    expect(panel?.className).toContain('items-center');
+    expect(panel?.className).toContain('justify-center');
+  });
+
   it('draws on a plain drag, with nothing to arm first', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
@@ -974,7 +1086,7 @@ describe('LocalizeObjectEditor chrome', () => {
     // The fixture box spans 0.1 of the frame, so the framing wants 3.2x and
     // the ceiling holds it at 3.
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -985,7 +1097,7 @@ describe('LocalizeObjectEditor chrome', () => {
 
     fireEvent.click(toggle);
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
@@ -996,7 +1108,7 @@ describe('LocalizeObjectEditor chrome', () => {
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -1004,7 +1116,7 @@ describe('LocalizeObjectEditor chrome', () => {
     renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
     fireEvent.keyDown(window, { key: 'r' });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
   });
 
@@ -1013,7 +1125,7 @@ describe('LocalizeObjectEditor chrome', () => {
     fireEvent.keyDown(window, { key: 'r' });
     fireEvent.keyDown(window, { key: 'z' });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(3) translate(0px, 0px)',
+      transform: 'scale(3) translate(16.667%, 16.667%)',
     });
   });
 
@@ -1037,7 +1149,7 @@ describe('LocalizeObjectEditor chrome', () => {
     // 0.32 target fill over the pick's 0.2 span = 1.6. The union of all
     // three candidates spans 0.7, which clamps to 1 — no zoom at all.
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1.6) translate(0px, 0px)',
+      transform: 'scale(1.6) translate(9.375%, 9.375%)',
     });
   });
 
@@ -1047,7 +1159,7 @@ describe('LocalizeObjectEditor chrome', () => {
       laneDetections: [detectionWithNoBoxes, lastDetection],
     });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
-      transform: 'scale(1) translate(0px, 0px)',
+      transform: 'scale(1) translate(0%, 0%)',
     });
   });
 

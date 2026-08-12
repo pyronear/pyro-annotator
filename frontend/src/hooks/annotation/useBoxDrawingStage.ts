@@ -24,10 +24,15 @@ import {
   normalizedToImageCoordinates,
   moveBox,
   resizeBox,
+  clampPan,
+  cropToPan,
+  wheelZoomFactor,
+  zoomAtPoint,
   type CurrentDrawing,
   type ImageBounds,
   type Point,
   type ResizeHandle,
+  type StageView,
 } from '@/utils/annotation';
 
 export type Xyxyn = [number, number, number, number];
@@ -87,8 +92,8 @@ export interface BoxDrawingStage {
   imageInfo: ImageGeometry | null;
   handleImageLoad: () => void;
   zoomLevel: number;
+  /** Pan, as a fraction of the image's rendered size. */
   panOffset: Point;
-  transformOrigin: Point;
   isDragging: boolean;
   spaceHeld: boolean;
   currentDrawing: CurrentDrawing | null;
@@ -122,12 +127,22 @@ export function useBoxDrawingStage({
 }: UseBoxDrawingStageParams): BoxDrawingStage {
   const [imageInfo, setImageInfo] = useState<ImageGeometry | null>(null);
 
-  // Zoom / pan — lifted from ImageModal unchanged; that plumbing is sound.
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
-  const [transformOrigin, setTransformOrigin] = useState<Point>({ x: 50, y: 50 });
+  // One positional knob: the transform origin is the image's centre and all
+  // framing lives in the pan, as a fraction of the image's rendered size.
+  // Anchoring a zoom on the pointer is a solve for that one number; with an
+  // origin as well it was two coupled unknowns, and the wheel resolved them
+  // by throwing the framing away.
+  const [view, setView] = useState<StageView>({ scale: 1, pan: { x: 0, y: 0 } });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; pan: Point } | null>(
+    null
+  );
+
+  // The coordinate converters are plain functions and the wheel listener is
+  // attached once; both read the view through here, so neither can be left
+  // holding the one it was created with.
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
   // Space swaps the drag from drawing to panning, as it does in every other
@@ -142,41 +157,17 @@ export function useBoxDrawingStage({
   // --- Zoom ---------------------------------------------------------------
 
   const resetZoom = useCallback(() => {
-    setZoomLevel(1);
-    setPanOffset({ x: 0, y: 0 });
-    setTransformOrigin({ x: 50, y: 50 });
+    setView({ scale: 1, pan: { x: 0, y: 0 } });
   }, []);
 
-  const applyView = useCallback((view: { scale: number; originX: number; originY: number }) => {
-    setZoomLevel(view.scale);
-    setPanOffset({ x: 0, y: 0 });
-    setTransformOrigin({ x: view.originX, y: view.originY });
+  const applyView = useCallback((crop: { scale: number; originX: number; originY: number }) => {
+    setView(cropToPan(crop));
   }, []);
 
   const resetTransient = useCallback(() => {
     setCurrentDrawing(null);
     setBoxEdit(null);
   }, []);
-
-  const constrainPan = useCallback(
-    (offset: Point): Point => {
-      if (!imgRef.current || zoomLevel <= 1) return offset;
-      // Layout size, not the transformed rect: the pan applies INSIDE the
-      // scale, so the max offset keeping the image covering its box is
-      // baseSize*(z-1)/(2z).
-      const maxPanX = (imgRef.current.offsetWidth * (zoomLevel - 1)) / (2 * zoomLevel);
-      const maxPanY = (imgRef.current.offsetHeight * (zoomLevel - 1)) / (2 * zoomLevel);
-      return {
-        x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
-        y: Math.max(-maxPanY, Math.min(maxPanY, offset.y)),
-      };
-    },
-    [zoomLevel, imgRef]
-  );
-
-  useEffect(() => {
-    setPanOffset(prev => constrainPan(prev));
-  }, [constrainPan]);
 
   useEffect(() => {
     const setHeld = (held: boolean) => {
@@ -214,16 +205,36 @@ export function useBoxDrawingStage({
     if (!container) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      setTransformOrigin({ x: 50, y: 50 });
-      setZoomLevel(z => {
-        const next = Math.max(1, Math.min(4, z + (e.deltaY < 0 ? 0.2 : -0.2)));
-        if (next === 1) setPanOffset({ x: 0, y: 0 });
-        return next;
+      // Where the cursor sits on the image is what decides where the zoom
+      // happens. Read through the converters, so it accounts for the view
+      // already applied and a burst of notches compounds without drifting —
+      // and so the object framing is refined rather than thrown away.
+      const point = screenToImageCoords(e.clientX, e.clientY);
+      const cursor = imageToNormalized(point.x, point.y);
+      // An <img> reports no natural size until it decodes, and the bounds come
+      // from its aspect ratio — 0/0 — so mid-frame-change every coordinate is
+      // NaN. Zooming on that would throw the framing away rather than anchor
+      // anything, so let the notch go rather than corrupt the view.
+      if (!Number.isFinite(cursor.x) || !Number.isFinite(cursor.y)) return;
+      setView(v => {
+        const next = zoomAtPoint(v, cursor, v.scale * wheelZoomFactor(e));
+        // A horizontal trackpad scroll (deltaY 0) and every further notch at
+        // the clamp both land on the view already showing; a fresh object
+        // would re-render the whole editor to paint the same pixels.
+        return next.scale === v.scale && next.pan.x === v.pan.x && next.pan.y === v.pan.y
+          ? v
+          : next;
       });
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
-  }, [containerRef]);
+    // The converters read the live view through `viewRef`, so a listener
+    // attached once stays correct and the view is deliberately not a dep.
+    // `imageKey` is, for the same reason the resize observer needs it: on a
+    // cold open the canvas has no container yet, and without this the wheel
+    // would be bound to nothing for the life of the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef, imageKey]);
 
   // --- Coordinates --------------------------------------------------------
 
@@ -265,7 +276,7 @@ export function useBoxDrawingStage({
   const getImageInfo = (): {
     containerOffset: Point;
     imageBounds: ImageBounds;
-    transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
+    view: StageView;
   } | null => {
     if (!imgRef.current || !containerRef.current) return null;
     const container = containerRef.current;
@@ -282,7 +293,9 @@ export function useBoxDrawingStage({
         imageNaturalWidth: imgRef.current.naturalWidth,
         imageNaturalHeight: imgRef.current.naturalHeight,
       }),
-      transform: { zoomLevel, panOffset, transformOrigin },
+      // Through the ref, so a converter created on an earlier render still
+      // reports where the cursor is in the view showing NOW.
+      view: viewRef.current,
     };
   };
 
@@ -293,7 +306,7 @@ export function useBoxDrawingStage({
       { x: screenX, y: screenY },
       info.containerOffset,
       info.imageBounds,
-      info.transform
+      info.view
     );
   };
 
@@ -355,9 +368,9 @@ export function useBoxDrawingStage({
     if (wantsPan) {
       // Middle-press otherwise starts the browser's autoscroll.
       if (e.button === 1) e.preventDefault();
-      if (zoomLevel > 1) {
+      if (view.scale > 1) {
         setIsDragging(true);
-        setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+        setPanStart({ clientX: e.clientX, clientY: e.clientY, pan: view.pan });
       }
       return;
     }
@@ -378,8 +391,8 @@ export function useBoxDrawingStage({
     if (boxEdit && imgRef.current) {
       // Screen-px delta over the image's on-screen size: pan- and
       // origin-invariant, so the box tracks the cursor 1:1 at any zoom.
-      const displayW = imgRef.current.offsetWidth * zoomLevel;
-      const displayH = imgRef.current.offsetHeight * zoomLevel;
+      const displayW = imgRef.current.offsetWidth * view.scale;
+      const displayH = imgRef.current.offsetHeight * view.scale;
       const dx = (e.clientX - boxEdit.startClient.x) / displayW;
       const dy = (e.clientY - boxEdit.startClient.y) / displayH;
       const next =
@@ -395,8 +408,22 @@ export function useBoxDrawingStage({
       setCurrentDrawing(prev =>
         prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
       );
-    } else if (isDragging && zoomLevel > 1) {
-      setPanOffset(constrainPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
+    } else if (isDragging && panStart && imgRef.current) {
+      // Screen px over the image's ON-SCREEN size. The pan lives inside the
+      // scale, so dividing by width * scale is what makes the image track the
+      // cursor 1:1; dividing by width alone would move it `scale` times
+      // faster than the hand.
+      const { offsetWidth, offsetHeight } = imgRef.current;
+      setView(v => ({
+        ...v,
+        pan: clampPan(
+          {
+            x: panStart.pan.x + (e.clientX - panStart.clientX) / (offsetWidth * v.scale || 1),
+            y: panStart.pan.y + (e.clientY - panStart.clientY) / (offsetHeight * v.scale || 1),
+          },
+          v.scale
+        ),
+      }));
     }
   };
 
@@ -426,7 +453,10 @@ export function useBoxDrawingStage({
       setCurrentDrawing(null);
     }
 
-    if (isDragging) setIsDragging(false);
+    if (isDragging) {
+      setIsDragging(false);
+      setPanStart(null);
+    }
   };
 
   const getCursorStyle = () => {
@@ -439,9 +469,8 @@ export function useBoxDrawingStage({
   return {
     imageInfo,
     handleImageLoad,
-    zoomLevel,
-    panOffset,
-    transformOrigin,
+    zoomLevel: view.scale,
+    panOffset: view.pan,
     isDragging,
     spaceHeld,
     currentDrawing,

@@ -22,7 +22,6 @@ const imageInfo: ImageInfo = { width: 100, height: 100, offsetX: 0, offsetY: 0 }
 const baseProps = {
   imageInfo,
   panOffset: { x: 0, y: 0 },
-  transformOrigin: { x: 50, y: 50 },
   isDragging: false,
   normalizedToImage: (x: number, y: number) => ({ x: x * 100, y: y * 100 }),
 };

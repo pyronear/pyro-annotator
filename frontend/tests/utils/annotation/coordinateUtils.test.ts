@@ -99,9 +99,8 @@ describe('coordinateUtils', () => {
 
     const containerOffset: Point = { x: 0, y: 0 };
     const defaultTransform = {
-      zoomLevel: 1.0,
-      panOffset: { x: 0, y: 0 },
-      transformOrigin: { x: 50, y: 50 }
+      scale: 1.0,
+      pan: { x: 0, y: 0 }
     };
 
     it('should convert screen coordinates to image coordinates with no transform', () => {
@@ -121,21 +120,19 @@ describe('coordinateUtils', () => {
       expect(imagePoint.y).toBeCloseTo(0, 5);
     });
 
-    it('should handle zoom transformation', () => {
+    it('round-trips a screen point through a zoomed, panned view', () => {
+      // The inverse of s(p) = O + z*((p - O) + t*W): whatever the stage draws
+      // with has to land back where the cursor was. The pan is a FRACTION of
+      // the image's rendered size, and the origin is always its centre.
+      const view = { scale: 2.5, pan: { x: -0.12, y: 0.08 } };
       const screenPoint: Point = { x: 250, y: 175 };
-      const zoomedTransform = {
-        zoomLevel: 2.0,
-        panOffset: { x: 0, y: 0 },
-        transformOrigin: { x: 50, y: 50 }
-      };
-      const imagePoint = screenToImageCoordinates(screenPoint, containerOffset, imageBounds, zoomedTransform);
 
-      // With 2x zoom and transform origin at center, the math is complex
-      // Let's just verify it produces reasonable coordinates
-      expect(typeof imagePoint.x).toBe('number');
-      expect(typeof imagePoint.y).toBe('number');
-      expect(imagePoint.x).toBeGreaterThan(0);
-      expect(imagePoint.y).toBeGreaterThan(0);
+      const imagePoint = screenToImageCoordinates(screenPoint, containerOffset, imageBounds, view);
+
+      const forward = (p: number, size: number, origin: number, pan: number) =>
+        origin + size / 2 + view.scale * (p - size / 2 + pan * size);
+      expect(forward(imagePoint.x, 400, 50, view.pan.x)).toBeCloseTo(screenPoint.x, 6);
+      expect(forward(imagePoint.y, 300, 25, view.pan.y)).toBeCloseTo(screenPoint.y, 6);
     });
 
     it('should handle container offset', () => {

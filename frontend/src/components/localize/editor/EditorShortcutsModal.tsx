@@ -82,7 +82,7 @@ export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onCl
         <Section title="Move around the image">
           <Row label="Pan" keys={['Space + drag']} />
           <Row label="Pan without the keyboard" keys={['middle-drag']} />
-          <Row label="Zoom in and out" keys={['wheel']} />
+          <Row label="Zoom at the pointer" keys={['wheel']} />
           <Row label="Zoom to the object" keys={['Z']} />
           <Row label="Reset the zoom" keys={['R']} />
         </Section>
