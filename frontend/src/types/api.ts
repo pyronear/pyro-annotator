@@ -365,6 +365,7 @@ export interface SequenceGroupStats {
   validated: number;
   unvalidated: number;
   labeled: number;
+  unsure: number;
   unlabeled: number;
 }
 

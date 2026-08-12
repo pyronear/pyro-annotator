@@ -39,6 +39,7 @@ describe('usePipelineStats', () => {
       validated: 20,
       unvalidated: 20,
       labeled: 28,
+      unsure: 0,
       unlabeled: 12,
     });
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(page(9));

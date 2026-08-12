@@ -106,6 +106,7 @@ async def _seed_group_with_members(
     organisation_name: str = "org",
     azimuth: int = 0,
     smoke_type: str | None = None,
+    is_unsure: bool = False,
     scores: list[float | None] | None = None,
 ) -> int:
     """Insert a SequenceGroup with `n_members` member sequences (each with a
@@ -118,10 +119,10 @@ async def _seed_group_with_members(
                 """
                 INSERT INTO sequence_groups
                     (camera_id, azimuth, representative_bbox, is_validated,
-                     created_at, smoke_type, labeled_at)
+                     created_at, smoke_type, labeled_at, is_unsure)
                 VALUES
                     (1, :azimuth, CAST(:bbox AS jsonb), false, :created_at,
-                     :smoke_type, :labeled_at)
+                     :smoke_type, :labeled_at, :is_unsure)
                 RETURNING id
                 """
             ).bindparams(
@@ -132,6 +133,7 @@ async def _seed_group_with_members(
                 # ck_sequence_group_labeled_at_consistency: a labeled group
                 # must carry a labeled_at timestamp.
                 labeled_at=created_at if smoke_type else None,
+                is_unsure=is_unsure,
             )
         )
     ).scalar_one()
@@ -1068,6 +1070,7 @@ async def test_stats_empty(authenticated_client: AsyncClient):
         "validated": 0,
         "unvalidated": 0,
         "labeled": 0,
+        "unsure": 0,
         "unlabeled": 0,
     }
 
@@ -1110,6 +1113,7 @@ async def test_stats_counts_only_groups_with_three_plus_members(
         "validated": 1,
         "unvalidated": 1,
         "labeled": 0,
+        "unsure": 0,
         "unlabeled": 2,
     }
 
@@ -1457,6 +1461,123 @@ def test_crop_bbox_none_when_no_valid_boxes():
         )
         is None
     )
+
+
+async def _seed_one_group_of_each_label_state(session: AsyncSession) -> dict[str, int]:
+    """One labeled, one unsure, one plain-unlabeled group, all with 3 members
+    so they clear the list/stats population floor."""
+    labeled = await _seed_group_with_members(
+        session,
+        n_members=3,
+        created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        alert_api_id_start=1700,
+        smoke_type="wildfire",
+    )
+    unsure = await _seed_group_with_members(
+        session,
+        n_members=3,
+        created_at=datetime(2026, 2, 2, tzinfo=timezone.utc),
+        alert_api_id_start=1800,
+        is_unsure=True,
+    )
+    unlabeled = await _seed_group_with_members(
+        session,
+        n_members=3,
+        created_at=datetime(2026, 2, 3, tzinfo=timezone.utc),
+        alert_api_id_start=1900,
+    )
+    return {"labeled": labeled, "unsure": unsure, "unlabeled": unlabeled}
+
+
+@pytest.mark.asyncio
+async def test_list_label_state_returns_each_partition(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """The three label states are mutually exclusive: an unsure group is in
+    neither `unlabeled` nor `labeled`."""
+    ids = await _seed_one_group_of_each_label_state(async_session)
+
+    for state, expected_id in ids.items():
+        resp = await authenticated_client.get(f"/sequence_groups/?label_state={state}")
+        assert resp.status_code == 200, resp.text
+        returned = [g["id"] for g in resp.json()["items"]]
+        assert returned == [expected_id], f"label_state={state}"
+
+
+@pytest.mark.asyncio
+async def test_list_without_label_state_returns_every_state(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """Omitting the filter is 'all three', not 'labeled + unlabeled'."""
+    ids = await _seed_one_group_of_each_label_state(async_session)
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200, resp.text
+    assert set(g["id"] for g in resp.json()["items"]) == set(ids.values())
+
+    # An unknown state is a client error, not a silent "all".
+    bad = await authenticated_client.get("/sequence_groups/?label_state=bogus")
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stats_partition_total_across_the_three_label_states(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """labeled + unsure + unlabeled == total, with the unsure group counted
+    once, under `unsure` only."""
+    await _seed_one_group_of_each_label_state(async_session)
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200, resp.text
+    stats = resp.json()
+    assert stats["total"] == 3
+    assert stats["labeled"] == 1
+    assert stats["unsure"] == 1
+    assert stats["unlabeled"] == 1
+    assert stats["labeled"] + stats["unsure"] + stats["unlabeled"] == stats["total"]
+
+
+@pytest.mark.asyncio
+async def test_label_outranks_is_unsure_in_the_partition(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """A group can carry a label *and* is_unsure, so the two states must be
+    ordered rather than treated as disjoint inputs.
+
+    `_propagate_to_group_if_validated` assigns `group.is_unsure` from the
+    source annotation alongside whatever label it derived, so an unsure
+    classification whose clusters still carry a smoke type produces exactly
+    this combination. It counts as labeled — the label is the stronger
+    statement — and must land in that one partition only."""
+    both = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 2, 4, tzinfo=timezone.utc),
+        alert_api_id_start=2000,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+
+    for state, expected in (
+        ("labeled", [both]),
+        ("unsure", []),
+        ("unlabeled", []),
+    ):
+        resp = await authenticated_client.get(f"/sequence_groups/?label_state={state}")
+        assert resp.status_code == 200, resp.text
+        assert [
+            g["id"] for g in resp.json()["items"]
+        ] == expected, f"label_state={state}"
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200, resp.text
+    stats = resp.json()
+    assert (stats["labeled"], stats["unsure"], stats["unlabeled"]) == (1, 0, 0)
 
 
 @pytest.mark.asyncio

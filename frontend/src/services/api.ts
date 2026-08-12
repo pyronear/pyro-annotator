@@ -458,7 +458,7 @@ class ApiClient {
 
   async getSequenceGroups(
     filters: {
-      labeled?: boolean;
+      label_state?: 'labeled' | 'unlabeled' | 'unsure';
       page?: number;
       size?: number;
       order_by?: 'member_count' | 'camera_name' | 'azimuth' | 'created_at' | 'temporal_model_score';

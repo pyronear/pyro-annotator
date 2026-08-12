@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
-import { Loader2, AlertCircle, Check, Info, Layers, ChevronRight } from 'lucide-react';
+import { Loader2, AlertCircle, Check, HelpCircle, Info, Layers, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { BboxCrop } from '@/components/annotation/BboxCrop';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
+import { UNSURE_GROUP_TIP } from '@/utils/groupLabels';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
 import { TablePagination } from '@/components/sequences/TablePagination';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
@@ -46,6 +47,12 @@ const FILTERS: {
     label: 'To label',
     countOf: 'unlabeled',
     tip: "Objects that don't have a label yet",
+  },
+  {
+    value: 'unsure',
+    label: 'Unsure',
+    countOf: 'unsure',
+    tip: 'Objects an annotator marked undecidable',
   },
   {
     value: 'labeled',
@@ -92,7 +99,7 @@ export default function SequenceGroupsListPage({
     queryKey: ['sequenceGroupsList', filter, page, size, orderBy, orderDirection],
     queryFn: () =>
       apiClient.getSequenceGroups({
-        labeled: filter === 'all' ? undefined : filter === 'labeled',
+        label_state: filter === 'all' ? undefined : filter,
         page,
         size,
         order_by: orderBy,
@@ -134,6 +141,7 @@ export default function SequenceGroupsListPage({
 
   const items = data?.items ?? [];
   const totalPages = data?.pages ?? 1;
+  const unsureCount = stats?.unsure ?? 0;
 
   return (
     <div className="space-y-6">
@@ -201,7 +209,10 @@ export default function SequenceGroupsListPage({
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             {filter === 'unlabeled' ? (
-              // Every group labeled - success
+              // Nothing left on this tab. Unsure objects carry no label
+              // either, so "every object is labeled" is only true when there
+              // are none of them — otherwise the success copy is a lie about
+              // the very objects the next tab is holding.
               <>
                 <span
                   aria-hidden="true"
@@ -210,11 +221,20 @@ export default function SequenceGroupsListPage({
                   <Check className="h-7 w-7 text-pine" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  All objects labeled
+                  {unsureCount > 0 ? 'Nothing left to label' : 'All objects labeled'}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Nice work — every object is labeled. New objects appear automatically a few
-                  minutes after each import.
+                  {unsureCount > 0 ? (
+                    <>
+                      {`${unsureCount} object${unsureCount === 1 ? ' is' : 's are'} marked unsure — an annotator judged them undecidable, so they carry no label.`}{' '}
+                      <Link to={classifyGroups('unsure')} className="text-ember underline">
+                        Review them
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    'Nice work — every object is labeled. New objects appear automatically a few minutes after each import.'
+                  )}
                 </p>
                 <Link
                   to={ROUTES.CLASSIFY}
@@ -222,6 +242,22 @@ export default function SequenceGroupsListPage({
                 >
                   Start classifying
                 </Link>
+              </>
+            ) : filter === 'unsure' ? (
+              // Not a to-do: these carry a verdict, they just carry no label.
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-ash"
+                >
+                  <HelpCircle className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No unsure objects
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Objects whose sightings an annotator marked undecidable land here.
+                </p>
               </>
             ) : filter === 'labeled' ? (
               // Nothing labeled yet - work to do
@@ -387,6 +423,17 @@ export default function SequenceGroupsListPage({
                         <span>smoke · {g.smoke_type}</span>
                       ) : g.false_positive_type ? (
                         <span>false positive · {g.false_positive_type.replace(/_/g, ' ')}</span>
+                      ) : g.is_unsure ? (
+                        // A verdict, not a to-do — hence neutral tones and no
+                        // ember chip. The label columns stay null by design:
+                        // the check constraint forbids a labeled_at without a
+                        // label, so an undecidable object cannot be "labeled".
+                        <span className="group relative inline-block">
+                          <span className="inline-flex rounded-full bg-ash px-2 py-1 font-body text-xs font-semibold text-haze">
+                            unsure
+                          </span>
+                          {headerTip(UNSURE_GROUP_TIP)}
+                        </span>
                       ) : (
                         <span className="group relative inline-block">
                           <span className="inline-flex rounded-full bg-ember-soft px-2 py-1 font-body text-xs font-semibold text-ember">

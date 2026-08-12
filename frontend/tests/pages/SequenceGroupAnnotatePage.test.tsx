@@ -100,6 +100,20 @@ describe('SequenceGroupAnnotatePage', () => {
     expect(screen.getByText('to label')).toHaveClass('bg-ember-soft', 'text-ember');
   });
 
+  it('renders the "unsure" badge with neutral tones', async () => {
+    await renderGroup({ is_unsure: true });
+    expect(screen.getByText('unsure')).toHaveClass('bg-ash', 'text-haze');
+    expect(screen.queryByText('to label')).toBeNull();
+  });
+
+  it('the "unsure" badge explains itself — the only header chip whose state is not self-evident', async () => {
+    // Arriving from the Unsure tab, this chip is the whole explanation of
+    // why the object sits outside both backlogs.
+    await renderGroup({ is_unsure: true });
+    expect(screen.getByText(/marked this object undecidable/)).toBeTruthy();
+    expect(screen.getByText(/Settle them under Classify/)).toBeTruthy();
+  });
+
   it('Validate group is the ember primary button', async () => {
     await renderGroup();
     const btn = screen.getByRole('button', { name: /Validate group/ });

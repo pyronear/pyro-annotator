@@ -94,6 +94,10 @@ function App() {
                     element={<SequenceGroupsListPage filter="labeled" />}
                   />
                   <Route
+                    path="/classify/groups/unsure"
+                    element={<SequenceGroupsListPage filter="unsure" />}
+                  />
+                  <Route
                     path="/classify/groups/all"
                     element={<SequenceGroupsListPage filter="all" />}
                   />
