@@ -55,6 +55,11 @@ export interface AlertFrameCell {
   cellState: CellState;
   /** The lane's object color — tints markers that don't ride on a box (the cleared chip). */
   color: string;
+  /**
+   * The object's boxes on this frame. One on a pending frame (the model
+   * layer is capped at its winning box); whatever is committed on a settled
+   * one; empty is a real state (cleared, or no model evidence yet).
+   */
   boxes: AlertFrameBox[];
   /** Read-only false-positive context (opt-in) — visible, never openable in the editor. */
   isFalsePositive?: boolean;
@@ -174,6 +179,15 @@ export function buildAlertFrameModel(
       // with nothing to draw — no mini-boxes, no crop-mode zoom, and a
       // timeline row stuck at 'empty'. Its engine track is what the
       // read-only context view is for.
+      //
+      // A pending frame draws ONE box, because `getWinningBoxes` caps the
+      // model layer at the box it would also commit — the model regularly
+      // proposes two or three and the extras are noise nobody is being asked
+      // about. The committed and false-positive paths are deliberately NOT
+      // capped: those boxes are already in the database and the export ships
+      // every one of them, so a surface that quietly drew fewer would
+      // under-report what is stored — the same class of mismatch, pointed
+      // the other way.
       const rawBoxes = falsePositive
         ? falsePositiveContextBoxes(detection)
         : cellState === 'done'

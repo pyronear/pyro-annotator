@@ -245,6 +245,75 @@ describe('buildQuickSubmitPlan', () => {
     expect(plan.noBoxCount).toBe(0);
   });
 
+  it('commits only the box that was shown when the winning layer holds several', () => {
+    // Accept-remaining must write what the annotator was looking at. The
+    // auto layer regularly carries two or three boxes on one frame (the
+    // sensitive model runs at a 0.01 confidence floor), and the runners-up
+    // are noise nobody was asked about — committing them would put boxes in
+    // the database that no surface ever displayed, and ship them in the
+    // export.
+    const best = box(0.4, 0.3, 0.49, 0.4, 0.52);
+    const runnerUp = box(0.43, 0.38, 0.45, 0.4, 0.15);
+    const detection = makeDetection(1, {
+      engine: [box(0.37, 0.29, 0.49, 0.41)],
+      auto: [best, runnerUp],
+    });
+
+    const plan = buildQuickSubmitPlan([detection], new Map(), 'wildfire');
+
+    expect(plan.payloads[0].body.annotation.annotation).toEqual([
+      { xyxyn: best.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+    ]);
+  });
+
+  it('prefers the box anchored to this frame over a higher-confidence stray', () => {
+    // The worker anchors sequence-wide: `engine_seed_boxes` aggregates the
+    // engine boxes of EVERY detection in the lane, so an auto box survives
+    // by matching where the object was on some OTHER frame. On 77 of the 255
+    // multi-box detections in the 2026-08-12 data, the top-confidence box
+    // does not overlap its own frame's engine box while a runner-up does.
+    // Picking by confidence alone would commit a box sitting where the plume
+    // isn't.
+    const anchor = box(0.37, 0.29, 0.49, 0.41);
+    const stray = box(0.05, 0.05, 0.12, 0.12, 0.52);
+    const anchored = box(0.4, 0.3, 0.47, 0.4, 0.15);
+    const detection = makeDetection(1, { engine: [anchor], auto: [stray, anchored] });
+
+    const plan = buildQuickSubmitPlan([detection], new Map(), 'wildfire');
+
+    expect(plan.payloads[0].body.annotation.annotation).toEqual([
+      { xyxyn: anchored.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+    ]);
+  });
+
+  it('falls back to the top-confidence box when none is anchored to this frame', () => {
+    const top = box(0.05, 0.05, 0.12, 0.12, 0.52);
+    const other = box(0.6, 0.6, 0.7, 0.7, 0.15);
+    const detection = makeDetection(1, {
+      engine: [box(0.37, 0.29, 0.49, 0.41)],
+      auto: [top, other],
+    });
+
+    const plan = buildQuickSubmitPlan([detection], new Map(), 'wildfire');
+
+    expect(plan.payloads[0].body.annotation.annotation).toEqual([
+      { xyxyn: top.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+    ]);
+  });
+
+  it('shows one box per frame in the preview loop when the layer holds several', () => {
+    const best = box(0.4, 0.3, 0.49, 0.4, 0.52);
+    const runnerUp = box(0.43, 0.38, 0.45, 0.4, 0.15);
+    const detection = makeDetection(1, {
+      engine: [box(0.37, 0.29, 0.49, 0.41)],
+      auto: [best, runnerUp],
+    });
+
+    expect(collectLaneBoxes([detection], new Map())).toEqual([
+      { detection_id: 1, xyxyn: best.xyxyn },
+    ]);
+  });
+
   it('routes to update when an annotation exists, create when missing', () => {
     const dExisting = makeDetection(1, { auto: [box()] });
     const dMissing = makeDetection(2, { auto: [box()] });
@@ -291,10 +360,15 @@ describe('buildQuickSubmitPlan', () => {
     expect(items[0].smoke_type).toBe('industrial');
   });
 
-  it('keeps multiple boxes on one frame', () => {
+  it('commits one box on a frame whose layer holds several, whatever their geometry', () => {
+    // Replaces a `keeps multiple boxes on one frame` assertion from the
+    // util's first commit (2026-07-28), which predated the object editor's
+    // one-box-per-object model. A lane is a single object, so two boxes on
+    // its frame are the model's runners-up, not two things to record.
+    // Disjoint geometry here, so no overlap filter can be what drops one.
     const d = makeDetection(1, { auto: [box(), box(0.5, 0.5, 0.7, 0.7)] });
     const plan = buildQuickSubmitPlan([d], new Map(), 'wildfire');
-    expect(plan.payloads[0].body.annotation.annotation).toHaveLength(2);
+    expect(plan.payloads[0].body.annotation.annotation).toHaveLength(1);
   });
 
   it('includes no-box frames with empty items and counts them', () => {

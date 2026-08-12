@@ -11,8 +11,11 @@
  * Nothing in the pipeline guarantees a model layer returns a single box —
  * object_split.py:208 writes a list, worker.py:109 keeps every box overlapping
  * the lane's anchor — so a layer holding two boxes must render as two rows
- * rather than reach an unhandled branch. It does not happen in today's data
- * (0 occurrences in 10,047 detections); this keeps it from ever mattering.
+ * rather than reach an unhandled branch. It is not hypothetical: 255 of 6,807
+ * auto-annotated detections (3.7%) carried more than one auto box as of
+ * 2026-08-12, the extras being sub-0.1-confidence noise from a detector run
+ * at a 0.01 floor. Only ONE is ever drawn or committed by default — the one
+ * anchored to the frame, see `boxCandidates` and `getWinningBoxes`.
  */
 
 import type {
@@ -23,6 +26,7 @@ import type {
   DetectionAnnotationBbox,
   SmokeType,
 } from '@/types/api';
+import { focusOnMainObject } from './gridCropUtils';
 
 export type BoxSource = 'manual' | 'auto' | 'engine';
 
@@ -104,6 +108,22 @@ export function isCleared(annotation: DetectionAnnotation | null | undefined): b
  * (manual, then auto, then engine). A manual candidate exists only once one
  * has been drawn and saved — drawing commits immediately, so the committed
  * annotation IS where a manual box lives.
+ *
+ * Within the auto layer, the boxes anchored to THIS frame come first, so the
+ * head of the list — what `priorityPick` returns and Enter commits — is the
+ * same box `getWinningBoxes` draws in the grid and writes on accept-remaining.
+ * The model orders its output by confidence, but the worker's anchor is
+ * sequence-wide, so the most confident box is not always the one on this
+ * frame's plume.
+ *
+ * The runners-up are kept, in their original order, but note what that does
+ * and does not buy: `BoxSourceRail` renders one row per SOURCE, so only the
+ * head of each layer is clickable, and `G` ghosts the rest for comparison
+ * without offering them. On a frame whose engine anchor is stale, the more
+ * confident box is therefore visible but not selectable — the annotator has
+ * to draw it. Acceptable because the anchored box is the better default on
+ * the 30% of multi-box frames where the two differ, but it is a real
+ * trade, not a free one.
  */
 export function boxCandidates(
   detection: Detection,
@@ -112,9 +132,13 @@ export function boxCandidates(
   const committed = committedBox(annotation);
   const manual: BoxCandidate[] = committed && committed.source === 'manual' ? [committed] : [];
 
+  const auto = fromPredictions('auto', detection.auto_predictions?.predictions ?? []);
+  const anchored = new Set(focusOnMainObject(detection, auto));
+
   return [
     ...manual,
-    ...fromPredictions('auto', detection.auto_predictions?.predictions ?? []),
+    ...auto.filter(c => anchored.has(c)),
+    ...auto.filter(c => !anchored.has(c)),
     ...fromPredictions('engine', detection.algo_predictions?.predictions ?? []),
   ];
 }

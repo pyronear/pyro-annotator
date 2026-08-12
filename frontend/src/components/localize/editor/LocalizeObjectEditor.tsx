@@ -290,8 +290,16 @@ export function LocalizeObjectEditor({
   const shownCommitted: BoxCandidate | null = boxEdit
     ? { source: 'manual', index: 0, xyxyn: boxEdit.next }
     : committed;
+  // Matched on GEOMETRY, not on source+index: `committedBox` reports
+  // `index: 0` for whatever it read out of the annotation, while the auto
+  // layer is ordered anchored-first (`boxCandidates`), so the committed box
+  // is frequently candidate index 1. Comparing the pair would then mark the
+  // wrong candidate as committed — drawing a ghost on top of the committed
+  // box and hiding the only real loser, which is the comparison `G` exists
+  // to offer. Two candidates sharing a geometry are the same box, so
+  // dropping both is right.
   const losers = candidates.filter(
-    c => !(shownCommitted && c.source === shownCommitted.source && c.index === shownCommitted.index)
+    c => !(shownCommitted && c.xyxyn.every((v, i) => v === shownCommitted.xyxyn[i]))
   );
 
   /**
@@ -435,7 +443,12 @@ export function LocalizeObjectEditor({
       resetStageZoom();
       return;
     }
-    const boxes = committed ? [committed] : candidates;
+    // The box that speaks for the object — committed, else the one Enter
+    // would commit. NOT every candidate: a layer holding a stray box
+    // elsewhere in the scene made the window span both, which
+    // `computeCellCrop` clamps to scale 1, so the framing did nothing on
+    // precisely the frames that needed it.
+    const boxes = committed ? [committed] : pick ? [pick] : [];
     if (boxes.length === 0) return;
     applyStageView(computeCellCrop(boxes, OBJECT_FRAMING));
     // Re-frames on frame change too, since the object moves between frames.

@@ -233,6 +233,40 @@ describe('LocalizeObjectEditor', () => {
     expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
   });
 
+  it('ghosts the box that lost, not the one that was committed, when the pick was a runner-up', () => {
+    // The anchored box can be the layer's SECOND prediction, and
+    // `committedBox` reports `index: 0` for whatever was committed, so
+    // identifying the committed candidate by source+index matched the wrong
+    // one: `G` drew a ghost on top of the committed box and hid the real
+    // loser — the one comparison `G` exists to offer.
+    const stray = { xyxyn: [0.7, 0.7, 0.8, 0.8], confidence: 0.52, class_name: 'smoke' };
+    const anchored = { xyxyn: [0.15, 0.15, 0.35, 0.35], confidence: 0.15, class_name: 'smoke' };
+    const detection = {
+      ...makeDetection('t001'),
+      auto_predictions: { predictions: [stray, anchored] },
+      algo_predictions: {
+        predictions: [{ xyxyn: [0.1, 0.1, 0.4, 0.4], confidence: 0.5, class_name: 'smoke' }],
+      },
+    } as unknown as Detection;
+    const committed = {
+      id: 7,
+      detection_id: detection.id,
+      annotation: {
+        annotation: [
+          { xyxyn: anchored.xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' },
+        ],
+      },
+    } as unknown as DetectionAnnotation;
+
+    renderLoadedEditor({ detection, existingAnnotation: committed });
+    fireEvent.keyDown(window, { key: 'g' });
+
+    // The stray is what the annotator did not take, so it is what `G` shows.
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    // The committed box must not also be drawn as its own ghost.
+    expect(screen.queryByTestId('ghost-box-auto-1')).not.toBeInTheDocument();
+  });
+
   it('G cycles the stage through pick, every candidate, none, and back', () => {
     renderLoadedEditor();
 
@@ -980,6 +1014,30 @@ describe('LocalizeObjectEditor chrome', () => {
     fireEvent.keyDown(window, { key: 'z' });
     expect(screen.getByAltText(/^Detection /)).toHaveStyle({
       transform: 'scale(3) translate(0px, 0px)',
+    });
+  });
+
+  it('frames the box it would commit, not the union with a stray candidate', () => {
+    // Framing every candidate meant that on exactly the multi-box frames
+    // this branch is about, the window spanned the pick AND a stray sitting
+    // elsewhere in the scene — `computeCellCrop` clamps that to scale 1, so
+    // the object framing silently did nothing on the frames that needed it.
+    const stray = { xyxyn: [0.7, 0.7, 0.8, 0.8], confidence: 0.52, class_name: 'smoke' };
+    const anchored = { xyxyn: [0.15, 0.15, 0.35, 0.35], confidence: 0.15, class_name: 'smoke' };
+    const detection = {
+      ...makeDetection('t001'),
+      auto_predictions: { predictions: [stray, anchored] },
+      algo_predictions: {
+        predictions: [{ xyxyn: [0.1, 0.1, 0.4, 0.4], confidence: 0.5, class_name: 'smoke' }],
+      },
+    } as unknown as Detection;
+
+    renderLoadedEditor({ detection });
+
+    // 0.32 target fill over the pick's 0.2 span = 1.6. The union of all
+    // three candidates spans 0.7, which clamps to 1 — no zoom at all.
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(1.6) translate(0px, 0px)',
     });
   });
 

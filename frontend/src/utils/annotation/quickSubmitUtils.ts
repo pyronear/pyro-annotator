@@ -1,8 +1,12 @@
 /**
  * Localize quick submit: per-frame cell state for the grid glance-check and
- * the batch payloads for one-click lane submit. Reuses the modal's exact
- * submit semantics (getWinningModelLayer + materializeReviewAnnotation with
- * every box accepted) so what the grid shows is what submit records.
+ * the batch payloads for one-click lane submit. Every model-layer read in
+ * here and in the grid goes through `getWinningBoxes`, so what the grid
+ * shows is what submit records — the property this module exists to hold,
+ * and the reason that function picks the frame's box itself rather than
+ * leaving each caller to choose. Committed boxes are a different matter:
+ * those are read straight from the annotation, all of them, because they are
+ * already stored and already exported.
  */
 
 import {
@@ -39,14 +43,50 @@ export function getIsAnnotated(
   return annotation?.processing_stage === 'annotated';
 }
 
-/** The winning model layer's boxes for a detection (auto if ≥1 box, else engine). */
+/**
+ * The winning model layer's box for a detection (auto if ≥1 box, else
+ * engine), as a list of AT MOST ONE.
+ *
+ * The layer itself can hold several: the sensitive model runs at a 0.01
+ * confidence floor and the worker keeps every prediction overlapping the
+ * lane's engine anchor, so a frame's auto layer routinely carries two or
+ * three boxes, the runners-up being sub-0.1-confidence noise. But an object
+ * has at most one box per frame (`objectBoxCandidates.ts`), and everything
+ * downstream of here either DRAWS this box (the grid cell, the preview loop)
+ * or COMMITS it (`buildQuickSubmitPlan`). Returning the whole layer meant
+ * accept-remaining wrote boxes to the database that no surface had ever
+ * shown, and that the export would then ship.
+ *
+ * The winner is the first box ANCHORED TO THIS FRAME — which for the auto
+ * layer means the most confident such box, since the model emits its
+ * predictions in descending confidence. (The engine layer carries no
+ * ordering guarantee: it arrives from the alert API. No detection in the
+ * data has ever had more than one engine box, so which one "first" means
+ * there has never mattered; if that changes, sort before slicing.)
+ *
+ * Anchoring is the point. The head of the list looks like the obvious pick
+ * on confidence alone — but the worker's
+ * anchor is sequence-wide (`engine_seed_boxes` aggregates the engine boxes
+ * of every detection in the lane), so a box survives by matching where the
+ * object was on some OTHER frame. On 77 of the 255 multi-box detections in
+ * the 2026-08-12 data, the top-confidence box does not overlap its own
+ * frame's engine box while a runner-up does; taking the head there would
+ * draw and commit a box sitting where the plume isn't. `focusOnMainObject`
+ * falls back to the whole list when nothing is anchored, so a frame the
+ * engine never boxed still gets its most confident candidate.
+ *
+ * `boxCandidates` deliberately does NOT go through this function — the
+ * editor's rail offers every candidate, which is where a runner-up can still
+ * be chosen deliberately — but it orders its own auto candidates the same
+ * way, so `priorityPick` and this agree on the default.
+ */
 export function getWinningBoxes(detection: Detection) {
   const layer = getWinningModelLayer(detection);
   const boxes =
     layer === 'auto'
       ? (detection.auto_predictions?.predictions ?? [])
       : (detection.algo_predictions?.predictions ?? []);
-  return { layer, boxes };
+  return { layer, boxes: focusOnMainObject(detection, boxes).slice(0, 1) };
 }
 
 /**
