@@ -55,6 +55,12 @@ export interface AlertFrameCell {
   cellState: CellState;
   /** The lane's object color — tints markers that don't ride on a box (the cleared chip). */
   color: string;
+  /**
+   * The object's box on this frame. At most one — see the cap in
+   * `buildAlertFrameModel`. Kept as a list because the crop helpers take
+   * one, and because an empty cell is a real state (cleared, or no model
+   * evidence yet).
+   */
   boxes: AlertFrameBox[];
   /** Read-only false-positive context (opt-in) — visible, never openable in the editor. */
   isFalsePositive?: boolean;
@@ -174,15 +180,36 @@ export function buildAlertFrameModel(
       // with nothing to draw — no mini-boxes, no crop-mode zoom, and a
       // timeline row stuck at 'empty'. Its engine track is what the
       // read-only context view is for.
-      const rawBoxes = falsePositive
-        ? falsePositiveContextBoxes(detection)
-        : cellState === 'done'
-          ? (annotation?.annotation?.annotation ?? [])
-              .filter(item => item.false_positive_type == null)
-              .map(item => ({ xyxyn: item.xyxyn }))
-          : cellState === 'auto'
-            ? getWinningBoxes(detection).boxes.map(b => ({ xyxyn: b.xyxyn }))
-            : [];
+      //
+      // Capped at ONE box: an object has at most one box per frame — the
+      // invariant the editor's box model states
+      // (`objectBoxCandidates.ts`) and the only thing this lane can ever
+      // commit. Nothing upstream enforces it. The worker keeps every
+      // sensitive-model prediction overlapping the lane's engine anchor
+      // (`worker.py`), and that model runs at a 0.01 confidence floor, so a
+      // pending frame's auto layer regularly holds two or three boxes — the
+      // extras being noise the annotator is not being asked about. Drawing
+      // the whole layer stacked them all in one cell and read as "this
+      // object is in three places at once", while the editor, three clicks
+      // away, drew one.
+      //
+      // So both surfaces have to choose, and they have to choose alike. The
+      // editor draws `priorityPick` / `committedBox`, each the FIRST of its
+      // list; the cap here is the same rule, which is why it is applied
+      // BEFORE `focusOnMainObject` below — that filter has no counterpart in
+      // the editor, and letting it run first could leave the grid showing a
+      // different box from the one Enter would commit.
+      const rawBoxes = (
+        falsePositive
+          ? falsePositiveContextBoxes(detection)
+          : cellState === 'done'
+            ? (annotation?.annotation?.annotation ?? [])
+                .filter(item => item.false_positive_type == null)
+                .map(item => ({ xyxyn: item.xyxyn }))
+            : cellState === 'auto'
+              ? getWinningBoxes(detection).boxes.map(b => ({ xyxyn: b.xyxyn }))
+              : []
+      ).slice(0, 1);
 
       // All three cell states stay distinct on the strip. Collapsing 'auto'
       // and 'no-box' into one "pending" fill made a frame with nothing on it

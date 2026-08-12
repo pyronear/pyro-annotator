@@ -155,6 +155,58 @@ describe('buildAlertFrameModel', () => {
     expect(noBoxCell.boxes).toHaveLength(0);
   });
 
+  it('draws only the priority pick when the winning layer holds several boxes', () => {
+    // The sensitive model runs at a 0.01 confidence floor and the worker
+    // keeps EVERY prediction overlapping the lane's engine anchor
+    // (worker.py:107), so a pending frame's auto layer routinely carries two
+    // or three boxes — 3.7% of auto-annotated detections at the time of
+    // writing. The object still has at most one box (see
+    // objectBoxCandidates.ts), and the editor draws exactly the one Enter
+    // would commit, so the grid must not stack the runners-up on top of it.
+    const t1 = '2026-01-01T10:00:00Z';
+    const best = box(0.4, 0.3, 0.49, 0.4);
+    const runnerUp = box(0.43, 0.38, 0.45, 0.4);
+
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      // Engine box spans both, so `focusOnMainObject` keeps both — the
+      // overlap filter is not what limits the cell to one box.
+      { 1: [makeDetection(1, t1, { engine: [box(0.37, 0.29, 0.49, 0.41)], auto: [best, runnerUp] })] },
+      { 1: [] }
+    );
+
+    const cell = frames[0].cells[0];
+    expect(cell.cellState).toBe('auto');
+    expect(cell.boxes.map(b => b.xyxyn)).toEqual([best.xyxyn]);
+  });
+
+  it('draws only the first committed box when an annotation holds several', () => {
+    // Same invariant on the committed side: nothing validates one box per
+    // object per frame in the database, and the editor's `committedBox`
+    // reads the first smoke item, so the grid must agree with it.
+    const t1 = '2026-01-01T10:00:00Z';
+    const first: [number, number, number, number] = [0.2, 0.2, 0.4, 0.4];
+
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      { 1: [makeDetection(1, t1, { engine: [box()] })] },
+      {
+        1: [
+          makeDetAnnotation(1, 'annotated', [
+            { xyxyn: first, class_name: 'smoke', smoke_type: 'wildfire' },
+            // Inside the engine anchor, so `focusOnMainObject` keeps it and
+            // the cap is what has to drop it.
+            { xyxyn: [0.15, 0.15, 0.25, 0.25], class_name: 'smoke', smoke_type: 'wildfire' },
+          ]),
+        ],
+      }
+    );
+
+    const cell = frames[0].cells[0];
+    expect(cell.cellState).toBe('done');
+    expect(cell.boxes.map(b => b.xyxyn)).toEqual([first]);
+  });
+
   it('maps a committed annotation with zero smoke boxes to cleared, not confirmed', () => {
     const t1 = '2026-01-01T10:00:00Z';
     // Evidence-bearing frame (engine box) cleared by the annotator: the

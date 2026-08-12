@@ -11,8 +11,11 @@
  * Nothing in the pipeline guarantees a model layer returns a single box —
  * object_split.py:208 writes a list, worker.py:109 keeps every box overlapping
  * the lane's anchor — so a layer holding two boxes must render as two rows
- * rather than reach an unhandled branch. It does not happen in today's data
- * (0 occurrences in 10,047 detections); this keeps it from ever mattering.
+ * rather than reach an unhandled branch. It is not hypothetical: 255 of 6,807
+ * auto-annotated detections (3.7%) carried more than one auto box as of
+ * 2026-08-12, the extras being sub-0.1-confidence noise from a detector run
+ * at a 0.01 floor. Only the FIRST is ever drawn or committed (`priorityPick`,
+ * `committedBox`, and the grid's own cap in `alertLocalizeUtils.ts`).
  */
 
 import type {
