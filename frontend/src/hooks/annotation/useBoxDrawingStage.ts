@@ -26,6 +26,8 @@ import {
   resizeBox,
   clampPan,
   cropToPan,
+  wheelZoomFactor,
+  zoomAtPoint,
   type CurrentDrawing,
   type ImageBounds,
   type Point,
@@ -203,13 +205,19 @@ export function useBoxDrawingStage({
     if (!container) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      setView(v => ({
-        scale: Math.max(1, Math.min(4, v.scale + (e.deltaY < 0 ? 0.2 : -0.2))),
-        pan: { x: 0, y: 0 },
-      }));
+      // Where the cursor sits on the image is what decides where the zoom
+      // happens. Read through the converters, so it accounts for the view
+      // already applied and a burst of notches compounds without drifting —
+      // and so the object framing is refined rather than thrown away.
+      const point = screenToImageCoords(e.clientX, e.clientY);
+      const cursor = imageToNormalized(point.x, point.y);
+      setView(v => zoomAtPoint(v, cursor, v.scale * wheelZoomFactor(e)));
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
+    // The converters read the live view through `viewRef`, so the listener
+    // attached on the first render stays correct and needs no re-attaching.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef]);
 
   // --- Coordinates --------------------------------------------------------

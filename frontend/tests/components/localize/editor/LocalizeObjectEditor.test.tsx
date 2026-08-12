@@ -525,6 +525,39 @@ describe('LocalizeObjectEditor canvas', () => {
     vi.unstubAllGlobals();
   });
 
+  it('zooms at the pointer, holding the point under it still', () => {
+    renderLoadedEditor();
+    const image = stubGeometry();
+
+    // 640px across an 800px image is 0.8 of the way over; one notch up is a
+    // 1.15 factor, and holding 0.8 still takes (1 - 1.15)(0.3)/1.15 of pan.
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(1.15) translate(-3.913%, 0%)' });
+  });
+
+  it('keeps the object framing when the wheel refines it', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = stubGeometry();
+    fireEvent.keyDown(window, { key: 'z' });
+
+    // Wheeling used to reset the transform origin, which threw the framing
+    // away on the first notch. Now it refines it — and the Z toggle stays
+    // pressed, because the framing is a mode, not a snapshot.
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 400,
+      clientY: 225,
+    });
+
+    expect(image.style.transform).toContain('scale(3.45)');
+    expect(screen.getByTestId('editor-zoom-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('pans with the cursor, not faster than it', () => {
     // The pan applies inside the scale, so a 100px drag at 3x over an 800px
     // image is 100 / (800 * 3) of the image — anything else and the picture
