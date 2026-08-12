@@ -256,9 +256,13 @@ export function AddObjectOverlay({
                 role="radio"
                 aria-checked={smokeType === type}
                 onClick={() => setSmokeType(type)}
+                // Pine for the selected class — the Localize lane's own
+                // colour, so what the object IS reads in the same hue as the
+                // work being done. It sits inside the ash track, which keeps
+                // it from merging with the pine Create button beside it.
                 className={`rounded-md px-2.5 py-1 font-body text-xs capitalize transition-colors ${
                   smokeType === type
-                    ? 'bg-paper font-medium text-char shadow-sm'
+                    ? 'bg-pine font-medium text-white'
                     : 'text-haze hover:text-char'
                 }`}
               >
