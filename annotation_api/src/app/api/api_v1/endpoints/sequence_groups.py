@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import and_, asc, desc, func, not_, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_group_crud
@@ -45,6 +45,34 @@ class SequenceGroupOrderByField(str, Enum):
     camera_name = "camera_name"
     azimuth = "azimuth"
     created_at = "created_at"
+
+
+class GroupLabelState(str, Enum):
+    """A group's label state. The three values are mutually exclusive and
+    together cover every group.
+
+    `unsure` is a recorded annotator decision — the object was judged
+    undecidable and the verdict fanned across the group without a label
+    (`_propagate_to_group_if_validated`) — so it partitions *out* of
+    `unlabeled` rather than sitting inside it as phantom to-do work."""
+
+    labeled = "labeled"
+    unlabeled = "unlabeled"
+    unsure = "unsure"
+
+
+def _label_state_clause(state: GroupLabelState):
+    """SQL predicate for one label state. A group carrying both a label and
+    is_unsure counts as labeled: the label is the stronger statement."""
+    has_label = or_(
+        SequenceGroup.smoke_type.is_not(None),
+        SequenceGroup.false_positive_type.is_not(None),
+    )
+    if state is GroupLabelState.labeled:
+        return has_label
+    if state is GroupLabelState.unsure:
+        return and_(not_(has_label), SequenceGroup.is_unsure.is_(True))
+    return and_(not_(has_label), SequenceGroup.is_unsure.is_(False))
 
 
 class OrderDirection(str, Enum):
@@ -175,11 +203,12 @@ async def _thumbnails_for_groups(
     summary="List sequence groups (paginated, with member counts)",
 )
 async def list_sequence_groups(
-    labeled: Optional[bool] = Query(
+    label_state: Optional[GroupLabelState] = Query(
         None,
         description=(
-            "Filter by label presence: true = only labeled groups, "
-            "false = only unlabeled, omit for both."
+            "Filter by label state: 'labeled' (smoke or false-positive type "
+            "set), 'unsure' (no label, marked undecidable), or 'unlabeled' "
+            "(no label and not unsure). Omit for all three."
         ),
     ),
     order_by: SequenceGroupOrderByField = Query(
@@ -246,16 +275,8 @@ async def list_sequence_groups(
             desc(SequenceGroup.id),
         )
     )
-    if labeled is True:
-        query = query.where(
-            (SequenceGroup.smoke_type.is_not(None))
-            | (SequenceGroup.false_positive_type.is_not(None))
-        )
-    elif labeled is False:
-        query = query.where(
-            SequenceGroup.smoke_type.is_(None)
-            & SequenceGroup.false_positive_type.is_(None)
-        )
+    if label_state is not None:
+        query = query.where(_label_state_clause(label_state))
 
     async def _hydrate(rows: list) -> list[SequenceGroupListItem]:
         group_ids = [r.id for r in rows]
@@ -316,22 +337,23 @@ async def get_sequence_group_stats(
             .filter(SequenceGroup.is_validated.is_(True))
             .label("validated"),
             func.count(SequenceGroup.id)
-            .filter(
-                (SequenceGroup.smoke_type.is_not(None))
-                | (SequenceGroup.false_positive_type.is_not(None))
-            )
+            .filter(_label_state_clause(GroupLabelState.labeled))
             .label("labeled"),
+            func.count(SequenceGroup.id)
+            .filter(_label_state_clause(GroupLabelState.unsure))
+            .label("unsure"),
         )
         .select_from(SequenceGroup)
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
     )
-    total, validated, labeled = (await session.exec(query)).one()
+    total, validated, labeled, unsure = (await session.exec(query)).one()
     return SequenceGroupStats(
         total=total,
         validated=validated,
         unvalidated=total - validated,
         labeled=labeled,
-        unlabeled=total - labeled,
+        unsure=unsure,
+        unlabeled=total - labeled - unsure,
     )
 
 

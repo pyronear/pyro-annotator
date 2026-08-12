@@ -119,13 +119,17 @@ class SequenceGroupListItem(BaseModel):
 class SequenceGroupStats(BaseModel):
     """Aggregate counts over groups with 3 or more members — the same
     population the list endpoint returns, so UI counts match the list.
-    A group is "labeled" when smoke_type or false_positive_type is set —
-    the same predicate as the list endpoint's `labeled` filter."""
+
+    `labeled`, `unsure` and `unlabeled` partition `total`: a group is
+    labeled when smoke_type or false_positive_type is set, unsure when it
+    carries no label but is_unsure, and unlabeled otherwise. Same
+    predicates as the list endpoint's `label_state` filter."""
 
     total: int
     validated: int
     unvalidated: int
     labeled: int
+    unsure: int
     unlabeled: int
 
 
