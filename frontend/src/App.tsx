@@ -15,7 +15,11 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
-import { localizeObjectRoute, localizeObjectSelectRoute } from '@/utils/routes';
+import {
+  localizeAddObjectRoute,
+  localizeObjectRoute,
+  localizeObjectSelectRoute,
+} from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -148,6 +152,8 @@ function App() {
                   >
                     <Route path={localizeObjectSelectRoute()} element={null} />
                     <Route path={localizeObjectRoute()} element={null} />
+                    {/* Queue prefix only — see localizeAddObjectRoute. */}
+                    <Route path={localizeAddObjectRoute()} element={null} />
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />

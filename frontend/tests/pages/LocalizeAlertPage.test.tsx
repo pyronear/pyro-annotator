@@ -173,6 +173,7 @@ import {
   localizeObjectRoute,
   localizeObjectSelect,
   localizeObjectSelectRoute,
+  localizeAddObjectRoute,
 } from '@/utils/routes';
 
 // Lets tests assert the URL the page navigated to (which object + frame the
@@ -241,6 +242,7 @@ function makeWrapper(initialPath = '/localize/101', priorEntries: string[] = [])
             <Route path="/localize/:sequenceId" element={children}>
               <Route path={localizeObjectSelectRoute()} element={null} />
               <Route path={localizeObjectRoute()} element={null} />
+              <Route path={localizeAddObjectRoute()} element={null} />
             </Route>
             {/* Real routes for the landing pages so a post-submit
                 `navigate(listPath)` is observable (it actually navigates,
@@ -2532,7 +2534,7 @@ describe('LocalizeAlertPage', () => {
       expect(within(row).queryByText(/isn't supported yet/i)).not.toBeInTheDocument();
     });
 
-    it('opens the add-object overlay from the Yes answer', async () => {
+    it('opens the add-object overlay from the Yes answer, and routes to it', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
       answerMissedSmokeYes();
 
@@ -2542,6 +2544,34 @@ describe('LocalizeAlertPage', () => {
         })
       );
       expect(screen.getByTestId('add-object-overlay')).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/add-object');
+    });
+
+    it('closes on Escape, leaving no add-object entry to walk forward into', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      answerMissedSmokeYes();
+      fireEvent.click(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('button', {
+          name: /add object/i,
+        })
+      );
+      expect(screen.getByTestId('add-object-overlay')).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() =>
+        expect(screen.queryByTestId('add-object-overlay')).not.toBeInTheDocument()
+      );
+      expect(screen.getByTestId('location')).not.toHaveTextContent('/add-object');
+    });
+
+    it('survives a reload on the add-object URL', async () => {
+      // The URL names no object, so the arrival auto-select would otherwise
+      // redirect to the first one and slam the screen shut on load.
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/add-object'),
+      });
+      await waitFor(() => expect(screen.getByTestId('add-object-overlay')).toBeInTheDocument());
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/add-object');
     });
 
     it('opens the add-object overlay with N once missed smoke is Yes', async () => {

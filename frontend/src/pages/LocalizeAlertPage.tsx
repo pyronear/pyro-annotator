@@ -172,6 +172,8 @@ import {
   localizeObjectRoute,
   localizeObjectSelect,
   localizeObjectSelectRoute,
+  localizeAddObject,
+  localizeAddObjectRoute,
 } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
@@ -272,9 +274,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
-  // The add-object overlay (missed smoke, Yes → "+ Add object"). Like every
-  // other overlay on this page it must also suspend the keyboard guards.
-  const [addObjectOpen, setAddObjectOpen] = useState(false);
+  // The add-object screen is URL-driven, like the editor and the object
+  // selection: `<basePath>/add-object`. That makes Back close it, a reload
+  // reopen it, and the browser's own history the undo — none of which local
+  // state gives. Like every other overlay on this page it must also suspend
+  // the keyboard guards.
+  const addObjectMatch = useMatch(localizeAddObjectRoute());
+  const addObjectOpen = addObjectMatch != null;
   // Confirm before removing a manually added object: its boxes are the
   // annotator's own work, and the delete is not undoable.
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
@@ -620,6 +626,19 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     );
   }, [modalContext, detectionsByLaneId]);
 
+  // Opening the add-object screen PUSHES, so Back closes it — the browser's
+  // own gesture for "I didn't mean to start this", and the reason the screen
+  // is a route at all. Closing goes back rather than replacing, so a cancelled
+  // add leaves no trace in history to walk forward into.
+  const openAddObject = useCallback(() => {
+    if (sequenceIdNum == null) return;
+    navigate(`${localizeAddObject(sequenceIdNum)}${location.search}`);
+  }, [sequenceIdNum, location.search, navigate]);
+
+  const closeAddObject = useCallback(() => {
+    navigate(-1);
+  }, [navigate]);
+
   // Closing the editor keeps its object selected: the editor URL names the
   // lane, so the close target is that lane's selection URL (bare alert URL
   // only if the lane is somehow absent). Path-only navigation within this
@@ -760,7 +779,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         frames.map(f => ({ recordedAt: f.recordedAt, xyxyn: f.xyxyn }))
       ),
     onSuccess: async lane => {
-      setAddObjectOpen(false);
       await queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
       // Land on the new object so per-frame refinement can start at once —
       // the interpolated track is a first draft, not a finished one.
@@ -948,6 +966,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // settled.
   useEffect(() => {
     if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
+    // The add-object URL names no object, so without this the auto-select
+    // would redirect straight to the first one and slam the screen shut on
+    // arrival — most visibly on a reload or a pasted link.
+    if (addObjectOpen) return;
     if (selectLaneIdNum != null) {
       // Not while a refetch is in flight: judging the URL against a stale
       // lane list would bounce a lane that only the incoming alert-detail
@@ -1689,8 +1711,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // Same gate as the "+ Add object" button's render condition: it only
       // exists once the annotator has said there IS a missed smoke, and only
       // in queue mode.
-      if (key === 'n' && mode !== 'done' && missedSmoke) {
-        setAddObjectOpen(true);
+      if (key === 'n' && mode !== 'done' && missedSmoke && sequenceIdNum != null) {
+        openAddObject();
         e.preventDefault();
         return;
       }
@@ -1991,7 +2013,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 onChange={handleMissedSmokeChange}
                 isSaving={setMissedSmokeFlag.isPending}
                 disabled={missedSmokeAnnotationId == null}
-                onAddObject={mode !== 'done' ? () => setAddObjectOpen(true) : undefined}
+                onAddObject={mode !== 'done' ? openAddObject : undefined}
               />
             }
             footer={
@@ -2116,7 +2138,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           objectOverlaysByRecordedAt={objectOverlaysByRecordedAt}
           isCreating={addObject.isPending}
           onCreate={(frames, smokeType) => addObject.mutate({ frames, smokeType })}
-          onClose={() => setAddObjectOpen(false)}
+          onClose={closeAddObject}
         />
       )}
 
