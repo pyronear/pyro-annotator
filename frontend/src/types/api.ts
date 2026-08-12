@@ -350,6 +350,9 @@ export interface SequenceGroupListItem {
   labeled_at: string | null;
   created_at: string;
   member_count: number;
+  // Highest Alert API temporal-model score among the object's sightings.
+  // null when none of them was scored — 0 is a real score, not "unscored".
+  temporal_model_score: number | null;
   // Distinct humans who annotated any of the object's sightings, ordered by
   // first contribution. The worker's machine writes never appear.
   annotators: string[];
