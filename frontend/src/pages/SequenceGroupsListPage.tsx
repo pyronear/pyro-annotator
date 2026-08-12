@@ -9,6 +9,7 @@ import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
 import { TablePagination } from '@/components/sequences/TablePagination';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
 import {
   CELL_CLASSES,
   CELL_TEXT,
@@ -22,7 +23,7 @@ import {
   THEAD_CLASSES,
 } from '@/components/sequences/tableStyles';
 import { formatDateTime } from '@/utils/datetime';
-type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
+type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at' | 'temporal_model_score';
 type OrderDirection = 'asc' | 'desc';
 
 // First click on a column uses its natural direction: text asc, numbers/dates desc.
@@ -31,6 +32,7 @@ const DEFAULT_DIRECTION: Record<OrderBy, OrderDirection> = {
   camera_name: 'asc',
   azimuth: 'asc',
   created_at: 'desc',
+  temporal_model_score: 'desc',
 };
 
 const FILTERS: {
@@ -302,6 +304,15 @@ export default function SequenceGroupsListPage({
                     }}
                   />
                   <ColumnHeader
+                    label="Score"
+                    tip="Highest Alert API temporal-model score across this object's sightings. The platform scores one object per alert, so — means this object was never the one it scored."
+                    sort={{
+                      active: orderBy === 'temporal_model_score',
+                      direction: orderDirection,
+                      onSort: () => handleSort('temporal_model_score'),
+                    }}
+                  />
+                  <ColumnHeader
                     label="Sightings"
                     tip="Times this object was seen"
                     sort={{
@@ -367,6 +378,9 @@ export default function SequenceGroupsListPage({
                       {formatDateTime(g.created_at)}
                     </td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.azimuth}°</td>
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                      <TemporalScoreCell score={g.temporal_model_score} />
+                    </td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.member_count}</td>
                     <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                       {g.smoke_type ? (

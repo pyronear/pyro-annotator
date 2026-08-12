@@ -461,7 +461,7 @@ class ApiClient {
       labeled?: boolean;
       page?: number;
       size?: number;
-      order_by?: 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
+      order_by?: 'member_count' | 'camera_name' | 'azimuth' | 'created_at' | 'temporal_model_score';
       order_direction?: 'asc' | 'desc';
     } = {}
   ): Promise<PaginatedResponse<SequenceGroupListItem>> {
