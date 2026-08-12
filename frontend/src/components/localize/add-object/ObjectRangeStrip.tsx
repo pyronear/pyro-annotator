@@ -41,6 +41,14 @@ export interface ObjectRangeStripProps {
    * as a set of targets rather than a row of thumbnails.
    */
   selecting?: boolean;
+  /**
+   * Preview a frame without choosing it. Supplied only while the range is
+   * being chosen: there a click COMMITS an anchor, so without hover the only
+   * way to look before leaping is the arrow keys. Deliberately absent once
+   * drawing starts — swapping the stage out from under a drag would be a way
+   * to lose a box.
+   */
+  onHoverPreview?: (entry: RangeStripEntry) => void;
 }
 
 export function ObjectRangeStrip({
@@ -49,6 +57,7 @@ export function ObjectRangeStrip({
   objectColor,
   onSelect,
   selecting = false,
+  onHoverPreview,
 }: ObjectRangeStripProps) {
   return (
     <div className="flex items-end gap-1 overflow-x-auto px-2 py-2">
@@ -65,6 +74,10 @@ export function ObjectRangeStrip({
             aria-label={`Frame at ${formatTime(entry.recordedAt)}`}
             aria-pressed={entry.inRange}
             onClick={() => onSelect(entry)}
+            onMouseEnter={onHoverPreview ? () => onHoverPreview(entry) : undefined}
+            // Keyboard parity: tabbing through the strip previews too, rather
+            // than leaving the stage on whatever the mouse last touched.
+            onFocus={onHoverPreview ? () => onHoverPreview(entry) : undefined}
             className={`relative aspect-square w-12 shrink-0 rounded-sm transition-transform focus:outline-none focus:ring-1 focus:ring-ember ${
               isCurrent ? 'z-10 scale-110 shadow-md' : ''
             } ${entry.inRange ? '' : 'opacity-40 saturate-50'} ${

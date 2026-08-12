@@ -321,7 +321,7 @@ describe('AddObjectOverlay guidance', () => {
     renderOverlay();
     const children = Array.from(screen.getByTestId('add-object-instruction').children);
     const buttonIndex = children.indexOf(screen.getByTestId('create-object'));
-    const hintIndex = children.findIndex(el => /preview a frame/i.test(el.textContent ?? ''));
+    const hintIndex = children.indexOf(screen.getByTestId('add-object-hint'));
     expect(buttonIndex).toBeGreaterThan(-1);
     expect(hintIndex).toBeGreaterThan(-1);
     expect(buttonIndex).toBeLessThan(hintIndex);
@@ -382,6 +382,53 @@ describe('AddObjectOverlay guidance', () => {
     fireEvent.click(cell(TIMES[0]));
     fireEvent.click(cell(TIMES[2]));
     expect(screen.getAllByTestId('add-object-instruction')).toHaveLength(1);
+  });
+});
+
+describe('AddObjectOverlay hover preview', () => {
+  const shownDetection = () =>
+    (screen.getByAltText(/^Detection /) as HTMLImageElement).getAttribute('alt');
+
+  it('previews the hovered frame on the stage while choosing the range', () => {
+    // A click COMMITS an anchor here, so without hover the only way to look
+    // before leaping is the arrow keys.
+    renderOverlay();
+    expect(shownDetection()).toBe('Detection 101');
+
+    fireEvent.mouseEnter(cell(TIMES[2]));
+    expect(shownDetection()).toBe('Detection 103');
+  });
+
+  it('leaves the preview where the mouse left it, rather than snapping back', () => {
+    renderOverlay();
+    fireEvent.mouseEnter(cell(TIMES[3]));
+    fireEvent.mouseLeave(cell(TIMES[3]));
+    expect(shownDetection()).toBe('Detection 104');
+  });
+
+  it('previews on keyboard focus too', () => {
+    renderOverlay();
+    fireEvent.focus(cell(TIMES[1]));
+    expect(shownDetection()).toBe('Detection 102');
+  });
+
+  it('does NOT preview once drawing starts', () => {
+    // Swapping the stage out from under a drag would be a way to lose a box.
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    expect(shownDetection()).toBe('Detection 101');
+
+    fireEvent.mouseEnter(cell(TIMES[2]));
+    expect(shownDetection()).toBe('Detection 101');
+  });
+
+  it('still lets a click move the stage while drawing', () => {
+    renderOverlay();
+    fireEvent.click(cell(TIMES[0]));
+    fireEvent.click(cell(TIMES[2]));
+    fireEvent.click(cell(TIMES[1]));
+    expect(shownDetection()).toBe('Detection 102');
   });
 });
 

@@ -232,7 +232,7 @@ export function AddObjectOverlay({
 
   const hint =
     stepNumber === 1
-      ? '← → preview a frame · Enter picks it'
+      ? 'Hover to preview · click to pick · ← → and Enter also work'
       : stepNumber === 2
         ? '← → step through the range'
         : isDrawFrame
@@ -319,7 +319,12 @@ export function AddObjectOverlay({
         {isCreating ? 'Creating…' : 'Create object'}
       </button>
       {/* Ancillary, so it takes the far edge the button gave up. */}
-      <span className="ml-auto whitespace-nowrap font-body text-detail text-pine/70">{hint}</span>
+      <span
+        data-testid="add-object-hint"
+        className="ml-auto whitespace-nowrap font-body text-detail text-pine/70"
+      >
+        {hint}
+      </span>
     </div>
   );
 
@@ -445,6 +450,13 @@ export function AddObjectOverlay({
           objectColor={objectColor}
           onSelect={handleSelectFrame}
           selecting={phase === 'range'}
+          // Only while choosing the range. There a click commits an anchor, so
+          // hovering is the only way to scan for where the plume starts
+          // without picking a frame by accident; once drawing begins the stage
+          // must stay on the frame being drawn.
+          onHoverPreview={
+            phase === 'range' ? entry => setCurrentRecordedAt(entry.recordedAt) : undefined
+          }
         />
       </div>
     </div>
