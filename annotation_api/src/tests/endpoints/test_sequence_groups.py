@@ -1533,3 +1533,42 @@ async def test_stats_partition_total_across_the_three_label_states(
     assert stats["unsure"] == 1
     assert stats["unlabeled"] == 1
     assert stats["labeled"] + stats["unsure"] + stats["unlabeled"] == stats["total"]
+
+
+@pytest.mark.asyncio
+async def test_label_outranks_is_unsure_in_the_partition(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """A group can carry a label *and* is_unsure, so the two states must be
+    ordered rather than treated as disjoint inputs.
+
+    `_propagate_to_group_if_validated` assigns `group.is_unsure` from the
+    source annotation alongside whatever label it derived, so an unsure
+    classification whose clusters still carry a smoke type produces exactly
+    this combination. It counts as labeled — the label is the stronger
+    statement — and must land in that one partition only."""
+    both = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 2, 4, tzinfo=timezone.utc),
+        alert_api_id_start=2000,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+
+    for state, expected in (
+        ("labeled", [both]),
+        ("unsure", []),
+        ("unlabeled", []),
+    ):
+        resp = await authenticated_client.get(f"/sequence_groups/?label_state={state}")
+        assert resp.status_code == 200, resp.text
+        assert [
+            g["id"] for g in resp.json()["items"]
+        ] == expected, f"label_state={state}"
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200, resp.text
+    stats = resp.json()
+    assert (stats["labeled"], stats["unsure"], stats["unlabeled"]) == (1, 0, 0)
