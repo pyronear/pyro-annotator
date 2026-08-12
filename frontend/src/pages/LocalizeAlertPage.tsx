@@ -871,10 +871,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   };
 
   // Shared step: accept the winning model boxes for every pending frame of
-  // one lane (create-or-update, sequential — fail-fast on the first
-  // rejection). Does not submit the lane. Used both by the per-object
-  // quick-accept button and by "Accept all & submit alert", which runs this
-  // for every workable lane before the atomic localize-submit call.
+  // one lane, in ONE request the server upserts atomically — this used to be
+  // a POST/PATCH per frame, each its own commit, so a failure partway left
+  // the object half-annotated with nothing to reconcile it. Does not submit
+  // the lane. Used both by the per-object quick-accept button and by "Accept
+  // all & submit alert", which runs this for every workable lane before the
+  // atomic localize-submit call.
   const runLaneQuickAccept = useCallback(
     async (laneSequenceId: number) => {
       const lane = alertDetail?.lanes.find(l => l.sequence.id === laneSequenceId);
@@ -888,16 +890,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         annotations,
         sequenceSmokeType(lane.annotation)
       );
-      for (const payload of plan.payloads) {
-        if (payload.existingAnnotationId !== null) {
-          await apiClient.updateDetectionAnnotation(payload.existingAnnotationId, payload.body);
-        } else {
-          await apiClient.createDetectionAnnotation({
-            detection_id: payload.detection.id,
-            ...payload.body,
-          });
-        }
-      }
+      const items = plan.payloads.map(payload => ({
+        detection_id: payload.detection.id,
+        ...payload.body,
+      }));
+      if (items.length === 0) return;
+      await apiClient.bulkUpsertDetectionAnnotations(laneSequenceId, items);
     },
     [alertDetail, detectionsByLaneId, annotationsByLaneId]
   );

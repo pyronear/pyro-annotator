@@ -4,6 +4,8 @@ import {
   Sequence,
   SequenceAnnotation,
   DetectionAnnotation,
+  DetectionAnnotationBulkItem,
+  DetectionAnnotationBulkResult,
   Detection,
   Camera,
   Contributor,
@@ -576,6 +578,23 @@ class ApiClient {
 
   async deleteDetectionAnnotation(id: number): Promise<void> {
     await this.client.delete(`/annotations/detections/${id}`);
+  }
+
+  /**
+   * Accept a whole object in one transaction. The per-frame loop this
+   * replaced could fail partway and leave the object half-annotated; the
+   * server upserts by detection_id, so a retry updates instead of colliding.
+   */
+  async bulkUpsertDetectionAnnotations(
+    sequenceId: number,
+    items: DetectionAnnotationBulkItem[]
+  ): Promise<DetectionAnnotationBulkResult[]> {
+    const response: AxiosResponse<{ results: DetectionAnnotationBulkResult[] }> =
+      await this.client.post(`${API_ENDPOINTS.DETECTION_ANNOTATIONS}bulk`, {
+        sequence_id: sequenceId,
+        items,
+      });
+    return response.data.results;
   }
 
   // Authentication
