@@ -211,14 +211,30 @@ export function useBoxDrawingStage({
       // and so the object framing is refined rather than thrown away.
       const point = screenToImageCoords(e.clientX, e.clientY);
       const cursor = imageToNormalized(point.x, point.y);
-      setView(v => zoomAtPoint(v, cursor, v.scale * wheelZoomFactor(e)));
+      // An <img> reports no natural size until it decodes, and the bounds come
+      // from its aspect ratio — 0/0 — so mid-frame-change every coordinate is
+      // NaN. Zooming on that would throw the framing away rather than anchor
+      // anything, so let the notch go rather than corrupt the view.
+      if (!Number.isFinite(cursor.x) || !Number.isFinite(cursor.y)) return;
+      setView(v => {
+        const next = zoomAtPoint(v, cursor, v.scale * wheelZoomFactor(e));
+        // A horizontal trackpad scroll (deltaY 0) and every further notch at
+        // the clamp both land on the view already showing; a fresh object
+        // would re-render the whole editor to paint the same pixels.
+        return next.scale === v.scale && next.pan.x === v.pan.x && next.pan.y === v.pan.y
+          ? v
+          : next;
+      });
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
-    // The converters read the live view through `viewRef`, so the listener
-    // attached on the first render stays correct and needs no re-attaching.
+    // The converters read the live view through `viewRef`, so a listener
+    // attached once stays correct and the view is deliberately not a dep.
+    // `imageKey` is, for the same reason the resize observer needs it: on a
+    // cold open the canvas has no container yet, and without this the wheel
+    // would be bound to nothing for the life of the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerRef]);
+  }, [containerRef, imageKey]);
 
   // --- Coordinates --------------------------------------------------------
 

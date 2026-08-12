@@ -113,6 +113,14 @@ export function DetectionAnnotationCanvas({
 
   // Every layer shares the stage's transform — the image, the other objects'
   // boxes, the ghosts and the drawing overlay have to scale and pan as one.
+  //
+  // The pan renders as a percentage, which CSS resolves against each element's
+  // OWN box: the picture for the <img>, this container for the `inset-0`
+  // overlay layers. They agree because the container is a shrink-to-fit flex
+  // item wrapping one centred image — measured in Chromium from 1920x1080 down
+  // to 1280x420, where `max-h-[95vh]` binds, as agreeing within 0.02px. Give
+  // the container a width of its own and the overlays would drift from the
+  // image by pan% of the difference, but only once panned.
   const transform = stageTransform({ scale: zoomLevel, pan: panOffset });
 
   // `DrawingOverlay` speaks in rectangle arrays; the committed box is a

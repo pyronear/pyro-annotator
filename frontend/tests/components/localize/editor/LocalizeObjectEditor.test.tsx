@@ -525,6 +525,50 @@ describe('LocalizeObjectEditor canvas', () => {
     vi.unstubAllGlobals();
   });
 
+  // The same cold-open trap the resize observer has above, and the reason
+  // `imageKey` is threaded into the stage at all: the canvas renders no
+  // container until the image URL resolves, so a wheel listener attached only
+  // on mount is attached to nothing. A deep link into the editor — or a
+  // refresh on it — is exactly that cold open, and the zoom would be dead
+  // there while every warm-open test passed.
+  it('still zooms at the pointer when the image URL arrives late', () => {
+    imageState.data = undefined;
+    const { rerender } = renderEditor();
+    expect(document.querySelector('img')).toBeNull();
+
+    imageState.data = { url: IMAGE_URL };
+    rerender(editorWith());
+    fireEvent.load(screen.getByAltText(/^Detection /));
+
+    const image = stubGeometry();
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(1.15) translate(-3.913%, 0%)' });
+  });
+
+  it('ignores a wheel fired before the image can be measured', () => {
+    // An <img> reports no natural size until it decodes, and the bounds are
+    // computed from its aspect ratio — 0/0, so every coordinate comes back
+    // NaN. Anchoring on that would quietly reset the pan and throw the
+    // framing away on a wheel during a frame change. jsdom lays nothing out,
+    // so leaving the geometry unstubbed IS that state.
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const image = screen.getByAltText(/^Detection /);
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(16.667%, 16.667%)' });
+
+    fireEvent.wheel(image.parentElement as HTMLElement, {
+      deltaY: -100,
+      clientX: 640,
+      clientY: 225,
+    });
+
+    expect(image).toHaveStyle({ transform: 'scale(3) translate(16.667%, 16.667%)' });
+  });
+
   it('zooms at the pointer, holding the point under it still', () => {
     renderLoadedEditor();
     const image = stubGeometry();
@@ -554,7 +598,11 @@ describe('LocalizeObjectEditor canvas', () => {
       clientY: 225,
     });
 
-    expect(image.style.transform).toContain('scale(3.45)');
+    // The screen's centre is image point 0.333 under this framing, and
+    // anchoring it across 3 -> 3.45 leaves the pan exactly where it was. The
+    // pan is the whole assertion: asserting the scale alone would pass just
+    // as well with the framing thrown away, which is the bug.
+    expect(image).toHaveStyle({ transform: 'scale(3.45) translate(16.667%, 16.667%)' });
     expect(screen.getByTestId('editor-zoom-toggle')).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -576,16 +624,17 @@ describe('LocalizeObjectEditor canvas', () => {
     expect(image).toHaveStyle({ transform: 'scale(3) translate(20.833%, 16.667%)' });
   });
 
-  it('keeps the stage container hugging the image, which the percentage pan rests on', () => {
-    // `translate(%)` on the overlay layers resolves against the container and
-    // on the <img> against the picture. They agree only while the container is
-    // a shrink-to-fit flex item centring one image — the same centring
-    // `calculateImageBounds` assumes. jsdom lays nothing out, so this pins the
-    // mechanism; the measured version is a browser check.
+  it('centres the image in the stage panel, which the bounds maths assumes', () => {
+    // `calculateImageBounds` works out where an object-contain image sits by
+    // assuming it is CENTRED in its container; drop the centring and every
+    // screen-to-image conversion is off by half the leftover width. The same
+    // centring is what keeps the container's box on the image's, which the
+    // percentage pan resolves against — measured in Chromium down to a 1280x420
+    // viewport (where max-h-[95vh] binds) as agreeing within 0.02px.
     renderLoadedEditor();
-    const stage = screen.getByAltText(/^Detection /).parentElement?.parentElement;
-    expect(stage?.className).toContain('items-center');
-    expect(stage?.className).toContain('justify-center');
+    const panel = screen.getByAltText(/^Detection /).parentElement?.parentElement;
+    expect(panel?.className).toContain('items-center');
+    expect(panel?.className).toContain('justify-center');
   });
 
   it('draws on a plain drag, with nothing to arm first', () => {

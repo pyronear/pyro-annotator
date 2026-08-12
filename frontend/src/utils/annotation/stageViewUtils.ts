@@ -66,9 +66,15 @@ export function clampScale(scale: number): number {
  */
 export function clampPan(pan: { x: number; y: number }, scale: number): { x: number; y: number } {
   const max = (scale - 1) / (2 * scale);
-  // Clamping a negative pan to a bound of 0 yields -0, which compares
-  // unequal to the 0 every other path produces.
-  const clamp = (value: number) => Math.max(-max, Math.min(max, value)) || 0;
+  const clamp = (value: number) => {
+    const clamped = Math.max(-max, Math.min(max, value));
+    // Clamping a negative pan to a bound of 0 yields -0, which compares
+    // unequal to the 0 every other path produces. Only -0 is normalized:
+    // `|| 0` would also swallow a NaN, and a NaN here means the caller
+    // measured a geometry that was not there yet — worth surfacing, not
+    // rounding into a view that looks deliberate.
+    return clamped === 0 ? 0 : clamped;
+  };
   return { x: clamp(pan.x), y: clamp(pan.y) };
 }
 
