@@ -1297,6 +1297,57 @@ describe('LocalizeAlertPage', () => {
       expect(submit).not.toHaveClass('animate-pine-glow');
     });
 
+    // The two above only ever observe a gate that was already open, or already
+    // shut, at arrival — an implementation that decided the halo once at mount
+    // would satisfy both. But the whole point of the halo is the moment the
+    // gate opens under you, so drive that for real: accept both objects from
+    // the CTA bar and watch the halo arrive with the enablement.
+    it('starts the halo when the last object is accepted, not only on arrival', async () => {
+      // Frames read as pending until their lane has actually been accepted,
+      // so the accept mutation is what flips the gate — as it does in the app.
+      const detectionIdsByLane: Record<number, number[]> = { 101: [1001], 102: [1002, 1003] };
+      const acceptedLanes = new Set<number>();
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        const laneId = filters?.sequence_id ?? 0;
+        const items = acceptedLanes.has(laneId)
+          ? (detectionIdsByLane[laneId] ?? []).map(makeDetectionAnnotation)
+          : [];
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+      vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mockImplementation(
+        async (sequenceId, items) => {
+          acceptedLanes.add(sequenceId);
+          return items.map(item => ({
+            annotation_id: 9100 + item.detection_id,
+            detection_id: item.detection_id,
+            processing_stage: item.processing_stage,
+          }));
+        }
+      );
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Arrival: genuinely shut, so what follows is a real transition and not
+      // a gate that was open the whole time.
+      expect(screen.getByRole('button', { name: /Submit/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Submit/ })).not.toHaveClass('animate-pine-glow');
+
+      for (const label of ['Object 1', 'Object 2']) {
+        fireEvent.click(screen.getByRole('button', { name: label }));
+        fireEvent.click(
+          within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+            name: `Accept ${label}'s boxes`,
+          })
+        );
+        fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
+      }
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled()
+      );
+      expect(screen.getByRole('button', { name: /Submit/ })).toHaveClass('animate-pine-glow');
+    });
+
     it('blocks submit and explains why while a sibling object is still undecided', async () => {
       // The queue hides such an alert; this covers a deep link or a stale
       // tab, and mirrors the server guard on localize-submit (spec:

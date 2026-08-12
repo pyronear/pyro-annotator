@@ -2190,11 +2190,21 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         // enabling it quietly is easy to miss. Keyed on the
                         // whole gate rather than on the boxes alone, so an
                         // undecided sibling never pulses an unclickable
-                        // button, and dropped the moment the click lands so
-                        // the halo and the spinner never run together.
+                        // button, and off again while the submit is in flight
+                        // so the halo and the spinner never run together.
+                        //
+                        // `focus-visible:animate-none` is not decoration: the
+                        // focus ring below is a box-shadow, the halo animates
+                        // box-shadow, and animations outrank normal author
+                        // declarations — so a running halo would erase the
+                        // ring, and `focus:outline-none` has already removed
+                        // the native fallback. Keyboard focus therefore stops
+                        // the halo and takes the ring back. It has served its
+                        // purpose by then anyway: you cannot focus the button
+                        // without having found it.
                         className={`flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50${
                           !submitBlocked && !submitAlert.isPending
-                            ? ' animate-pine-glow motion-reduce:animate-none'
+                            ? ' animate-pine-glow focus-visible:animate-none motion-reduce:animate-none'
                             : ''
                         }`}
                       >
