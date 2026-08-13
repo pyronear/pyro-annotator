@@ -98,6 +98,8 @@ make export-alerts OUTPUT_DIR=outputs/alerts_export
 
 Writes `manifest.jsonl` (one line per alert) plus `images/{source_api}/{platform_alert_id}/{detection_id}.jpg`; each frame carries an `image_path` into that tree. Only alerts whose every lane reached `ANNOTATED` are exported. Re-runs are idempotent — the manifest is rewritten and only missing images are downloaded.
 
+Each alert also carries `temporal_model_score` (plus `temporal_model_version` / `temporal_api_version`) for score-based mining: rank objects by their alert's score and filter on `record_kind` to surface hard negatives. The score is alert-level because the platform's temporal model scores an alert, not an object — the verdict rides the primary lane and object-split siblings hold NULL. `null` means **no verdict is attributed**: either never scored (alerts imported before 2026-08-10, fail-opens, risk-gated sequences) or scored but not attributable to a lane during the object split. It never means "scored low", so drop nulls when ranking rather than coalescing them to `0.0`; `0.0` itself is a real verdict. Note a score refresh does not move `last_annotated_at`, so a backfill only shows up in a full pull, not an `annotation_updated_gte` one.
+
 ### Export QA overlays
 
 ```bash

@@ -69,6 +69,9 @@ overlay row) restores the alert to the export untouched.
       "azimuth": 200,
       "recorded_at": "2026-07-14T15:42:10",
       "last_annotated_at": "2026-07-16T10:03:17",
+      "temporal_model_score": 0.87,
+      "temporal_model_version": "0.2.0",
+      "temporal_api_version": "0.3.1",
       "objects": [
         {
           "sequence_id": 3121,
@@ -135,6 +138,18 @@ azimuth, `recorded_at` (alert start, min over lanes' `recorded_at`), and
 `last_annotated_at` = max annotation `updated_at` (sequence and detection
 annotations) across all exported lanes. `last_annotated_at` is the value the
 `annotation_updated_gte` filter compares against.
+
+Also alert level: `temporal_model_score` and its provenance pair
+`temporal_model_version` / `temporal_api_version`, each a `max` over the
+alert's lanes. Alert grain is the score's true grain — the platform scores a
+platform sequence, and object-splitting is annotator-side, so the verdict
+rides the primary lane while split siblings stay NULL and `max` collapses the
+group losslessly. Unlike `last_annotated_at`, these span **all** lanes rather
+than only exported ones, so an unsure primary lane cannot erase its alert's
+score. `null` means no verdict is attributed (never scored, or scored but not
+attributable to a lane during the split) — never "scored low"; `0.0` is a real
+verdict. A temporal-score refresh does not move `last_annotated_at`, so
+backfilled scores require a full pull rather than an incremental one.
 
 **Object level:**
 

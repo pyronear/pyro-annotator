@@ -58,6 +58,9 @@ async def create_lane(
     organisation_name: str = "Export Org",
     organisation_id: int = 70,
     recorded_at: Optional[datetime] = None,
+    temporal_model_score: Optional[float] = None,
+    temporal_model_version: Optional[str] = None,
+    temporal_api_version: Optional[str] = None,
 ) -> int:
     """Create one sequence (lane) of an alert, returns sequence id."""
     payload = {
@@ -73,6 +76,14 @@ async def create_lane(
         "recorded_at": (recorded_at or now).isoformat(),
         "last_seen_at": (recorded_at or now).isoformat(),
     }
+    # Omitted rather than sent empty: the platform scores an alert, so only
+    # its primary lane carries these; siblings must stay NULL.
+    if temporal_model_score is not None:
+        payload["temporal_model_score"] = str(temporal_model_score)
+    if temporal_model_version is not None:
+        payload["temporal_model_version"] = temporal_model_version
+    if temporal_api_version is not None:
+        payload["temporal_api_version"] = temporal_api_version
     resp = await client.post("/sequences", data=payload)
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
@@ -872,6 +883,151 @@ async def test_export_alerts_annotation_updated_watermark(
     )
     items = resp.json()["items"]
     assert [i["platform_alert_id"] for i in items] == [7602]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_carries_alert_temporal_score(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """The platform's temporal-model verdict is an ALERT property: it rides
+    the scored primary lane, and the export surfaces it once at alert level
+    even though the sibling lane holds NULL."""
+    scored_seq = await create_lane(
+        authenticated_client,
+        platform_alert_id=7801,
+        alert_api_id=7801,
+        temporal_model_score=0.87,
+        temporal_model_version="0.2.0",
+        temporal_api_version="0.3.1",
+    )
+    sibling_seq = await create_lane(
+        authenticated_client, platform_alert_id=7801, alert_api_id=1000007801001
+    )
+    for seq_id in (scored_seq, sibling_seq):
+        det_id = await create_frame(
+            authenticated_client, sequence_id=seq_id, alert_api_id=1
+        )
+        await annotate_lane(
+            authenticated_client,
+            sequence_id=seq_id,
+            detection_ids=[det_id],
+            is_smoke=False,
+            false_positive_types=["antenna"],
+        )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    alert = items[0]
+    assert alert["temporal_model_score"] == 0.87
+    assert alert["temporal_model_version"] == "0.2.0"
+    assert alert["temporal_api_version"] == "0.3.1"
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_temporal_score_null_when_never_scored(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """An alert the platform never scored exports null, never 0.0 — the
+    difference is 'no verdict' vs 'confidently not smoke'."""
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7802)
+
+    resp = await authenticated_client.get("/export/alerts")
+    alert = resp.json()["items"][0]
+    assert alert["temporal_model_score"] is None
+    assert alert["temporal_model_version"] is None
+    assert alert["temporal_api_version"] is None
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_temporal_score_zero_survives(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """0.0 is a real production verdict and must not be flattened to null by
+    any falsy-value handling on the way out."""
+    seq_id = await create_lane(
+        authenticated_client,
+        platform_alert_id=7803,
+        alert_api_id=7803,
+        temporal_model_score=0.0,
+        temporal_model_version="0.2.0",
+    )
+    det_id = await create_frame(
+        authenticated_client, sequence_id=seq_id, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_id,
+        detection_ids=[det_id],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    alert = resp.json()["items"][0]
+    assert alert["temporal_model_score"] == 0.0
+    assert alert["temporal_model_score"] is not None
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_temporal_score_survives_unsure_scored_lane(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """The score aggregates over ALL lanes, not just exported ones: when the
+    scored lane is unsure (and so omitted from objects), the alert it belongs
+    to must still report the platform's verdict."""
+    unsure_scored_seq = await create_lane(
+        authenticated_client,
+        platform_alert_id=7804,
+        alert_api_id=7804,
+        temporal_model_score=0.42,
+        temporal_model_version="0.2.0",
+    )
+    sure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7804, alert_api_id=1000007804001
+    )
+    unsure_det = await create_frame(
+        authenticated_client, sequence_id=unsure_scored_seq, alert_api_id=1
+    )
+    sure_det = await create_frame(
+        authenticated_client, sequence_id=sure_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=unsure_scored_seq,
+        detection_ids=[unsure_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=sure_seq,
+        detection_ids=[sure_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    items = resp.json()["items"]
+    assert len(items) == 1
+    alert = items[0]
+    assert [o["sequence_id"] for o in alert["objects"]] == [sure_seq]
+    assert alert["temporal_model_score"] == 0.42
+    assert alert["temporal_model_version"] == "0.2.0"
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,18 @@ class AlertExportItem(BaseModel):
     azimuth: Optional[int] = None
     recorded_at: datetime
     last_annotated_at: datetime
+    # Platform temporal-model verdict for the alert. NULL means no verdict is
+    # attributed to this alert, which covers two different situations: the
+    # platform never scored it (pre-2026-06-11 alerts, fail-opens, risk-gated
+    # or sub-MIN_FRAMES sequences, anything imported before the column
+    # existed), OR it was scored but the object split could not tell which
+    # lane the score belonged to and cleared it from all of them
+    # (object_split.py, `primary_identified` false). NULL never means "scored
+    # low", so consumers ranking on it must drop nulls rather than coalesce
+    # them to 0.0 — and must not read a null as evidence of a low verdict.
+    temporal_model_score: Optional[float] = None
+    temporal_model_version: Optional[str] = None
+    temporal_api_version: Optional[str] = None
     objects: List[ObjectExport]
 
 
@@ -156,7 +168,10 @@ async def export_alerts(
         None,
         description=(
             "Incremental-sync watermark: alerts whose last_annotated_at is "
-            "greater or equal to this date"
+            "greater or equal to this date. Covers annotation work only — a "
+            "temporal-score refresh writes no annotation row, so scores "
+            "backfilled onto already-annotated alerts do NOT move this "
+            "watermark and need a full pull to appear."
         ),
     ),
     smoke_types: Optional[List[SmokeType]] = Query(
@@ -205,6 +220,14 @@ async def export_alerts(
     # Alert start deliberately spans ALL lanes, unsure ones included — the
     # alert began when its first object appeared, exported or not.
     alert_recorded_at = func.min(Sequence.recorded_at)
+    # The platform scores an alert, not an object: the verdict rides the
+    # primary lane and every object-split sibling stays NULL by import
+    # construction, so max() collapses the group without losing anything.
+    # Spans ALL lanes like alert_recorded_at — an unsure primary lane must
+    # not erase its alert's score.
+    temporal_model_score = func.max(Sequence.temporal_model_score)
+    temporal_model_version = func.max(Sequence.temporal_model_version)
+    temporal_api_version = func.max(Sequence.temporal_api_version)
 
     stmt = (
         select(
@@ -212,6 +235,9 @@ async def export_alerts(
             Sequence.platform_alert_id.label("platform_alert_id"),
             alert_recorded_at.label("recorded_at"),
             last_annotated_at.label("last_annotated_at"),
+            temporal_model_score.label("temporal_model_score"),
+            temporal_model_version.label("temporal_model_version"),
+            temporal_api_version.label("temporal_api_version"),
         )
         .select_from(Sequence)
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
@@ -394,6 +420,9 @@ async def export_alerts(
                 azimuth=first_seq.azimuth,
                 recorded_at=row.recorded_at,
                 last_annotated_at=row.last_annotated_at,
+                temporal_model_score=row.temporal_model_score,
+                temporal_model_version=row.temporal_model_version,
+                temporal_api_version=row.temporal_api_version,
                 objects=objects,
             )
         )
