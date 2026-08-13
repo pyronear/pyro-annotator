@@ -113,8 +113,14 @@ export interface LocalizeObjectEditorProps {
   /**
    * Commit the winning model box on every frame of this object that has
    * none. Never overwrites a frame the annotator already decided.
+   *
+   * `onAccepted` fires once the write has landed, and the editor passes its
+   * own close in: accepting the remainder settles every frame, so there is
+   * nothing left to do here. Waiting for the write rather than closing on the
+   * gesture is what keeps a failed accept on screen, where its error toast is
+   * still about the object in front of you.
    */
-  onAcceptRemaining: () => void;
+  onAcceptRemaining: (onAccepted?: () => void) => void;
   /** Hand this object's classification back to the classify cockpit. */
   onReclassify: () => void;
   onClose: () => void;
@@ -514,6 +520,10 @@ export function LocalizeObjectEditor({
   const isClosingRef = useRef(false);
   const requestClose = useCallback(() => {
     if (isClosingRef.current) return;
+    // The accept handler hands this to the page, which fires it whenever the
+    // write lands — possibly after the annotator has already left by another
+    // door. Closing something that is gone would navigate them back to it.
+    if (!mountedRef.current) return;
     const root = rootRef.current;
     if (!root || typeof root.animate !== 'function') {
       onClose();
@@ -554,6 +564,16 @@ export function LocalizeObjectEditor({
     animation.addEventListener('cancel', done);
   }, [onClose, frameCellRect, peeked, detection]);
 
+  // What the accept hands the page. The page fires it whenever the write
+  // lands, and nothing stops the annotator arrowing on meanwhile — so it must
+  // resolve to the CURRENT `requestClose`, whose target cell is the frame
+  // they are on now. The frozen one would shrink into a frame they already
+  // left. Same ref trick `clearRef` uses to keep the keyboard handler from
+  // re-binding.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+  const requestLatestClose = useCallback(() => requestCloseRef.current(), []);
+
   // --- Keyboard -----------------------------------------------------------
 
   useEffect(() => {
@@ -587,7 +607,7 @@ export function LocalizeObjectEditor({
             )
               return;
             if (!isAccepting) {
-              onAcceptRemaining();
+              onAcceptRemaining(requestLatestClose);
               setAcceptOpen(false);
             }
           } else {
@@ -659,6 +679,7 @@ export function LocalizeObjectEditor({
     shortcutsOpen,
     resetStageZoom,
     requestClose,
+    requestLatestClose,
     editable,
     isAccepting,
     onAcceptRemaining,
@@ -764,7 +785,7 @@ export function LocalizeObjectEditor({
                   gapCount={gapCount}
                   isAccepting={isAccepting}
                   onConfirm={() => {
-                    onAcceptRemaining();
+                    onAcceptRemaining(requestLatestClose);
                     setAcceptOpen(false);
                   }}
                   onCancel={() => setAcceptOpen(false)}

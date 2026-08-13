@@ -2297,7 +2297,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           onCommit={handleEditorCommit}
           onCommitGapFrame={handleEditorCommitGapFrame}
           onUnmaterialize={handleEditorUnmaterialize}
-          onAcceptRemaining={() => quickAcceptLane.mutate(modalContext.laneId)}
+          // The editor asks to be closed once the boxes are actually written,
+          // and only then: a failed accept keeps it open, with its own error
+          // toast still about the object on screen. The rail's copy of the
+          // same action passes no callback — there is no editor to close.
+          onAcceptRemaining={onAccepted =>
+            quickAcceptLane.mutate(modalContext.laneId, { onSuccess: onAccepted })
+          }
           onReclassify={() => handleReclassify(modalContext.laneId)}
           onNavigateToDetection={navigateModalTo}
           onClose={closeModal}
