@@ -965,6 +965,49 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it('leaves the editor once the accepted boxes are written', () => {
+    // Accepting the remainder settles every frame of the object, so there is
+    // nothing left to do here — the editor hands the page a callback and the
+    // page fires it when the write lands.
+    const onAcceptRemaining = vi.fn();
+    const onClose = vi.fn();
+    renderEditor({ onAcceptRemaining, onClose });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(onClose).not.toHaveBeenCalled();
+    onAcceptRemaining.mock.calls[0][0]();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('leaves the editor when confirmed by click too', () => {
+    const onAcceptRemaining = vi.fn();
+    const onClose = vi.fn();
+    renderEditor({ onAcceptRemaining, onClose });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.click(screen.getByTestId('accept-remaining-confirm'));
+
+    onAcceptRemaining.mock.calls[0][0]();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('stays put when the write never lands', () => {
+    // A failed accept leaves the object unfinished and a failure toast on
+    // screen — closing on the keypress alone would carry the annotator away
+    // from work that did not happen.
+    const onAcceptRemaining = vi.fn();
+    const onClose = vi.fn();
+    renderEditor({ onAcceptRemaining, onClose });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(onAcceptRemaining).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('warns about frames no model found smoke on, without blocking', () => {
     // One frame has candidates, the other has none at all.
     renderEditor({

@@ -113,8 +113,14 @@ export interface LocalizeObjectEditorProps {
   /**
    * Commit the winning model box on every frame of this object that has
    * none. Never overwrites a frame the annotator already decided.
+   *
+   * `onAccepted` fires once the write has landed, and the editor passes its
+   * own close in: accepting the remainder settles every frame, so there is
+   * nothing left to do here. Waiting for the write rather than closing on the
+   * gesture is what keeps a failed accept on screen, where its error toast is
+   * still about the object in front of you.
    */
-  onAcceptRemaining: () => void;
+  onAcceptRemaining: (onAccepted?: () => void) => void;
   /** Hand this object's classification back to the classify cockpit. */
   onReclassify: () => void;
   onClose: () => void;
@@ -587,7 +593,7 @@ export function LocalizeObjectEditor({
             )
               return;
             if (!isAccepting) {
-              onAcceptRemaining();
+              onAcceptRemaining(requestClose);
               setAcceptOpen(false);
             }
           } else {
@@ -764,7 +770,7 @@ export function LocalizeObjectEditor({
                   gapCount={gapCount}
                   isAccepting={isAccepting}
                   onConfirm={() => {
-                    onAcceptRemaining();
+                    onAcceptRemaining(requestClose);
                     setAcceptOpen(false);
                   }}
                   onCancel={() => setAcceptOpen(false)}
