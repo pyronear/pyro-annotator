@@ -23,6 +23,7 @@ help:
 	@echo "Other data commands:"
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo "  export-alerts        - Export annotated alerts (manifest + images) from annotation API"
+	@echo "  render-overlays      - Render QA contact sheets from an exported alert dataset"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
 	@echo "  make import-alert-api DATE_FROM=2025-03-04 MAX_SEQUENCES=20"
@@ -131,6 +132,17 @@ export-alerts:
 		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
+# Render QA contact sheets (boxes drawn on the frames) from a dataset written
+# by export-alerts, so annotations can be eyeballed against the UI.
+# Usage: make render-overlays [DATASET_DIR=outputs/alerts_export] [FP_SAMPLE=40]
+render-overlays: DATASET_DIR ?= outputs/alerts_export
+render-overlays: FP_SAMPLE ?= 40
+render-overlays:
+	uv run python -m scripts.data_transfer.export.render_overlays \
+		--dataset-dir $(DATASET_DIR) \
+		--fp-sample $(FP_SAMPLE) \
+		--loglevel $(LOGLEVEL)
+
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	import-alert-api export-alerts
+	import-alert-api export-alerts render-overlays

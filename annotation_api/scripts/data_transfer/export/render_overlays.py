@@ -160,27 +160,117 @@ def lane_panel(
     return region
 
 
+def open_backdrop(
+    dataset_dir: Path, per_lane: Dict[int, Dict[str, Any]]
+) -> Optional[Image.Image]:
+    """Decode some lane's copy of this capture, or None if none can be read.
+
+    Sibling lanes hold their own copies of one capture, so any of them serves
+    as the backdrop; lanes are tried in sequence-id order so the pick is
+    stable, and a lane whose copy is missing or corrupt simply yields to the
+    next. Two ways a copy is unusable: the exporter writes image_path null for
+    a download it could not complete, and a download that produced a truncated
+    file is never retried (its idempotency check is mere existence).
+    """
+    for _seq_id, frame in sorted(per_lane.items()):
+        path = frame.get("image_path")
+        if not path:
+            continue
+        try:
+            # convert() forces the decode, so a truncated file fails here
+            # rather than later mid-render.
+            return Image.open(dataset_dir / path).convert("RGB")
+        except (OSError, ValueError) as exc:
+            logger.warning("Unusable image %s: %s", path, exc)
+    return None
+
+
 def render_sheet(
     dataset_dir: Path,
     item: Dict[str, Any],
     lanes: List[Dict[str, Any]],
     out_path: Path,
-) -> None:
-    """One sheet covering `lanes` of `item`, frames aligned by recorded_at."""
+) -> bool:
+    """One sheet covering `lanes` of `item`, frames aligned by recorded_at.
+
+    Returns whether a sheet was written: an alert whose images are all missing
+    or corrupt yields nothing, and the caller must not index a file that does
+    not exist.
+    """
+    if len(lanes) > len(LANE_COLORS):
+        logger.warning(
+            "alert %s has %d lanes but only %d distinct colours; some lanes "
+            "share one on the full-frame row",
+            item["platform_alert_id"],
+            len(lanes),
+            len(LANE_COLORS),
+        )
     colors = {
         obj["sequence_id"]: LANE_COLORS[i % len(LANE_COLORS)]
         for i, obj in enumerate(lanes)
     }
     lane_order = [obj["sequence_id"] for obj in lanes]
+    panel_w = CROP_W // len(lanes)
 
     by_time: Dict[str, Dict[int, Dict[str, Any]]] = collections.defaultdict(dict)
     for obj in lanes:
         for frame in obj["frames"]:
             by_time[frame["recorded_at"]][obj["sequence_id"]] = frame
-    times = sorted(by_time)
 
-    cols = min(MAX_COLS, len(times))
-    rows = (len(times) + cols - 1) // cols
+    # Build every cell first, decoding each capture exactly once: the grid can
+    # only be sized once the unreadable captures are known.
+    cells: List[Tuple[Image.Image, Image.Image, str]] = []
+    for timestamp in sorted(by_time):
+        per_lane = by_time[timestamp]
+        img = open_backdrop(dataset_dir, per_lane)
+        if img is None:
+            continue
+        entries = [
+            (colors[seq_id], box)
+            for seq_id, frame in sorted(per_lane.items())
+            for box in frame["boxes"]
+        ]
+        crop_row = Image.new("RGB", (CROP_W, CROP_H), (12, 12, 12))
+        for panel_i, seq_id in enumerate(lane_order):
+            frame = per_lane.get(seq_id)
+            if frame is None:
+                panel = Image.new("RGB", (panel_w, CROP_H), (24, 24, 24))
+                pd = ImageDraw.Draw(panel)
+                pd.text(
+                    (6, CROP_H // 2 - 8),
+                    f"{seq_id}: no frame",
+                    fill=(140, 140, 140),
+                    font=FONT,
+                )
+                pd.rectangle([0, 0, panel_w - 1, CROP_H - 1], outline=(80, 80, 80))
+            else:
+                panel = lane_panel(img, colors[seq_id], seq_id, frame["boxes"], panel_w)
+            crop_row.paste(panel, (panel_i * panel_w, 0))
+        present = ", ".join(
+            f"{seq_id}:{len(f['boxes'])}b/det{f['detection_id']}"
+            for seq_id, f in sorted(per_lane.items())
+        )
+        cells.append(
+            (draw_full(img, entries), crop_row, f"{timestamp[11:19]}  {present}")
+        )
+
+    dropped = len(by_time) - len(cells)
+    if dropped:
+        logger.warning(
+            "alert %s: skipped %d capture(s) with no usable image",
+            item["platform_alert_id"],
+            dropped,
+        )
+    if not cells:
+        logger.warning(
+            "alert %s: nothing to render for lanes %s",
+            item["platform_alert_id"],
+            lane_order,
+        )
+        return False
+
+    cols = min(MAX_COLS, len(cells))
+    rows = (len(cells) + cols - 1) // cols
     sheet = Image.new("RGB", (cols * FULL_W, HEADER_H + rows * CELL_H), (12, 12, 12))
     d = ImageDraw.Draw(sheet)
 
@@ -188,7 +278,7 @@ def render_sheet(
         (8, 6),
         f"alert {item['platform_alert_id']} | {item['camera_name']} "
         f"({item['organisation_name']}) | {len(lanes)} object(s) | "
-        f"{len(times)} captures | "
+        f"{len(cells)} captures | "
         f"{item['recorded_at'][:19].replace('T', ' ')} UTC",
         fill=(235, 235, 235),
         font=FONT_BOLD,
@@ -206,51 +296,17 @@ def render_sheet(
         d.text((x + 15, 32), text, fill=color, font=FONT)
         x += int(d.textlength(text, font=FONT)) + 37
 
-    panel_w = CROP_W // len(lanes)
-    for i, timestamp in enumerate(times):
-        per_lane = by_time[timestamp]
-        # Any lane's copy is the same capture; the lowest id is a stable pick.
-        img = Image.open(dataset_dir / per_lane[min(per_lane)]["image_path"]).convert(
-            "RGB"
-        )
+    for i, (full, crop_row, caption) in enumerate(cells):
         cx = (i % cols) * FULL_W
         cy = HEADER_H + (i // cols) * CELL_H
-
-        entries = [
-            (colors[seq_id], box)
-            for seq_id, frame in sorted(per_lane.items())
-            for box in frame["boxes"]
-        ]
-        sheet.paste(draw_full(img, entries), (cx, cy))
-
-        crop_row = Image.new("RGB", (CROP_W, CROP_H), (12, 12, 12))
-        for panel_i, seq_id in enumerate(lane_order):
-            frame = per_lane.get(seq_id)
-            if frame is None:
-                panel = Image.new("RGB", (panel_w, CROP_H), (24, 24, 24))
-                pd = ImageDraw.Draw(panel)
-                pd.text(
-                    (6, CROP_H // 2 - 8),
-                    f"{seq_id}: no frame",
-                    fill=(140, 140, 140),
-                    font=FONT,
-                )
-                pd.rectangle([0, 0, panel_w - 1, CROP_H - 1], outline=(80, 80, 80))
-            else:
-                panel = lane_panel(img, colors[seq_id], seq_id, frame["boxes"], panel_w)
-            crop_row.paste(panel, (panel_i * panel_w, 0))
+        sheet.paste(full, (cx, cy))
         sheet.paste(crop_row, (cx, cy + FULL_H))
-
-        present = ", ".join(
-            f"{seq_id}:{len(f['boxes'])}b/det{f['detection_id']}"
-            for seq_id, f in sorted(per_lane.items())
-        )
         d.rectangle(
             [cx, cy + FULL_H + CROP_H, cx + FULL_W, cy + CELL_H], fill=(20, 20, 20)
         )
         d.text(
             (cx + 4, cy + FULL_H + CROP_H + 4),
-            f"#{i + 1} {timestamp[11:19]}  {present}",
+            f"#{i + 1} {caption}",
             fill=(200, 200, 200),
             font=FONT,
         )
@@ -258,7 +314,8 @@ def render_sheet(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out_path)
-    logger.info("Wrote %s (%d captures)", out_path, len(times))
+    logger.info("Wrote %s (%d captures)", out_path, len(cells))
+    return True
 
 
 def select_lanes(
@@ -349,8 +406,10 @@ def parse_args() -> argparse.Namespace:
         "--fp-sample",
         type=int,
         default=40,
-        help="How many false-positive lanes to render, 0 for all "
-        "(every smoke lane is always rendered)",
+        help="How many false-positive lanes to render as per-object sheets, "
+        "0 for all. Every smoke lane is always rendered, and this does not "
+        "bound --mode multi, which covers every multi-object alert; use "
+        "--alerts to bound the run itself",
     )
     parser.add_argument(
         "--alerts",
@@ -386,7 +445,8 @@ def main() -> None:
                 f"_{slug(item['camera_name'])}.png"
             )
             path = out_dir / obj["record_kind"] / name
-            render_sheet(args.dataset_dir, item, [obj], path)
+            if not render_sheet(args.dataset_dir, item, [obj], path):
+                continue
             rows.append(
                 {
                     "sheet": str(path.relative_to(out_dir)),
@@ -412,7 +472,8 @@ def main() -> None:
                 f"_{len(lanes)}objects.png"
             )
             path = out_dir / "multi_object" / name
-            render_sheet(args.dataset_dir, item, lanes, path)
+            if not render_sheet(args.dataset_dir, item, lanes, path):
+                continue
             rows.append(
                 {
                     "sheet": str(path.relative_to(out_dir)),

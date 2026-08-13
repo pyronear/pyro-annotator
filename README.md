@@ -62,7 +62,7 @@ Annotations stay on the API you annotated against; the file-based local→remote
 
 #### B. Other commands
 
-**Export annotated alerts for ML training**: `GET /api/v1/export/alerts` returns finished alerts (false positives and localized smoke) as nested alert → objects → frames → boxes JSON with presigned image URLs, keyset-paginated via `cursor` and incrementally syncable via `annotation_updated_gte`. See `docs/specs/2026-08-06-export-alerts-endpoint-design.md`. The old `make export-dataset` YOLO exporter was removed with the `/export/detections` endpoint it consumed; a pull script against the new endpoint is planned.
+**Export annotated alerts for ML training**: `GET /api/v1/export/alerts` returns finished alerts (false positives and localized smoke) as nested alert → objects → frames → boxes JSON with presigned image URLs, keyset-paginated via `cursor` and incrementally syncable via `annotation_updated_gte`. See `docs/specs/2026-08-06-export-alerts-endpoint-design.md`. The old `make export-dataset` YOLO exporter was removed with the `/export/detections` endpoint it consumed. Pull a dataset with `make export-alerts OUTPUT_DIR=...` (manifest + images), then review it visually with `make render-overlays DATASET_DIR=...`, which draws the exported boxes onto the exported frames.
 
 ## Admin Workflow — Populate the main API from the alert API
 

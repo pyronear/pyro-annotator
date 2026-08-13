@@ -98,6 +98,15 @@ make export-alerts OUTPUT_DIR=outputs/alerts_export
 
 Writes `manifest.jsonl` (one line per alert) plus `images/{source_api}/{platform_alert_id}/{detection_id}.jpg`; each frame carries an `image_path` into that tree. Only alerts whose every lane reached `ANNOTATED` are exported. Re-runs are idempotent — the manifest is rewritten and only missing images are downloaded.
 
+### Export QA overlays
+
+```bash
+# Draw the exported boxes onto the exported frames for visual review
+make render-overlays DATASET_DIR=outputs/alerts_export
+```
+
+Writes `<dataset>/overlays/`: one contact sheet per object under `smoke/` and `false_positive/`, a combined sheet per multi-object alert under `multi_object/`, and an `index.csv`. Each cell pairs the full frame with a magnified crop of the box, since exported boxes are often ~0.05% of the frame area. Every smoke lane is rendered plus `FP_SAMPLE` false-positive lanes (round-robin across type combinations). `FP_SAMPLE` caps only the per-object sheets — the multi-object pass always covers every multi-lane alert; `--alerts` and `--mode` (script-only flags) are what bound a run.
+
 ## Key Architecture Concepts
 
 **Backend data flow**: Alert API → ingestion scripts → annotation_api DB → frontend UI → human annotations
