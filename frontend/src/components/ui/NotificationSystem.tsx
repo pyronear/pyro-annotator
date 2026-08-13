@@ -86,7 +86,11 @@ export const NotificationSystem: React.FC<NotificationSystemProps> = ({
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 transition-all duration-300 ease-in-out transform ${
+      // top-16 rather than top-4: pages can put a full-width bar across the
+      // top of the viewport — the localize object editor's is 48px and ends
+      // with a close button on this same right edge — and a toast landing on
+      // it covers a control the reader is reaching for.
+      className={`fixed top-16 right-4 z-50 transition-all duration-300 ease-in-out transform ${
         showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
       }`}
     >

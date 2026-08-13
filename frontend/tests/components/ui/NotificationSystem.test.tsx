@@ -191,10 +191,19 @@ describe('NotificationSystem', () => {
     expect(screen.getByText(longMessage)).toBeInTheDocument();
   });
 
+  it('should sit below a full-width top bar', () => {
+    // top-16 (64px) clears the localize editor's 48px bar, whose close
+    // button sits at the same right edge the toast does.
+    const { container } = render(<NotificationSystem {...defaultProps} />);
+
+    expect(container.querySelector('.fixed.right-4')).toHaveClass('top-16');
+    expect(container.querySelector('.top-4')).toBeNull();
+  });
+
   it('should apply correct transition classes', () => {
     const { container } = render(<NotificationSystem {...defaultProps} />);
-    
-    const notificationDiv = container.querySelector('.fixed.top-4.right-4');
+
+    const notificationDiv = container.querySelector('.fixed.top-16.right-4');
     expect(notificationDiv).toHaveClass(
       'transition-all',
       'duration-300',
