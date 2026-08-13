@@ -64,10 +64,15 @@ class AlertExportItem(BaseModel):
     azimuth: Optional[int] = None
     recorded_at: datetime
     last_annotated_at: datetime
-    # Platform temporal-model verdict for the alert. NULL means the platform
-    # never scored it (pre-2026-06-11 alerts, fail-opens, anything imported
-    # before the column existed); it never means "scored low", so consumers
-    # ranking on it must drop nulls rather than coalesce them to 0.0.
+    # Platform temporal-model verdict for the alert. NULL means no verdict is
+    # attributed to this alert, which covers two different situations: the
+    # platform never scored it (pre-2026-06-11 alerts, fail-opens, risk-gated
+    # or sub-MIN_FRAMES sequences, anything imported before the column
+    # existed), OR it was scored but the object split could not tell which
+    # lane the score belonged to and cleared it from all of them
+    # (object_split.py, `primary_identified` false). NULL never means "scored
+    # low", so consumers ranking on it must drop nulls rather than coalesce
+    # them to 0.0 — and must not read a null as evidence of a low verdict.
     temporal_model_score: Optional[float] = None
     temporal_model_version: Optional[str] = None
     temporal_api_version: Optional[str] = None
@@ -163,7 +168,10 @@ async def export_alerts(
         None,
         description=(
             "Incremental-sync watermark: alerts whose last_annotated_at is "
-            "greater or equal to this date"
+            "greater or equal to this date. Covers annotation work only — a "
+            "temporal-score refresh writes no annotation row, so scores "
+            "backfilled onto already-annotated alerts do NOT move this "
+            "watermark and need a full pull to appear."
         ),
     ),
     smoke_types: Optional[List[SmokeType]] = Query(
