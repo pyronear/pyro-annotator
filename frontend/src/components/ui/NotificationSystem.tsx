@@ -33,6 +33,13 @@ interface NotificationSystemProps {
   onDismiss: () => void;
   /** Auto-dismiss timeout in milliseconds (default: 3000ms, 0 to disable) */
   autoDismissMs?: number;
+  /**
+   * Drop the toast clear of a full-width 48px bar pinned to the top of the
+   * viewport. Set it while such a bar is up — the localize object editor and
+   * the add-object overlay both raise one, and both end it with a close
+   * button on the same right edge the toast anchors to.
+   */
+  belowTopBar?: boolean;
 }
 
 /**
@@ -68,6 +75,7 @@ export const NotificationSystem: React.FC<NotificationSystemProps> = ({
   toastType,
   onDismiss,
   autoDismissMs = 3000,
+  belowTopBar = false,
 }) => {
   // Auto-dismiss logic
   useEffect(() => {
@@ -86,11 +94,11 @@ export const NotificationSystem: React.FC<NotificationSystemProps> = ({
 
   return (
     <div
-      // top-16 rather than top-4: pages can put a full-width bar across the
-      // top of the viewport — the localize object editor's is 48px and ends
-      // with a close button on this same right edge — and a toast landing on
-      // it covers a control the reader is reaching for.
-      className={`fixed top-16 right-4 z-50 transition-all duration-300 ease-in-out transform ${
+      // top-16 clears a 48px top bar with the same 16px of air top-4 leaves
+      // against the viewport edge. It is not the default because the pages
+      // that raise such a bar only raise it some of the time, and 64px is
+      // where their own content — the localize rail's header button — starts.
+      className={`fixed ${belowTopBar ? 'top-16' : 'top-4'} right-4 z-50 transition-all duration-300 ease-in-out transform ${
         showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
       }`}
     >
