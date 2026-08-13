@@ -1008,6 +1008,22 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('does not navigate when the write lands after the editor is gone', () => {
+    // Accept, then leave before it returns — browser Back, say, which keeps
+    // the cockpit page (and its mutation) mounted. The late callback must not
+    // drag the annotator back to wherever the editor had been.
+    const onAcceptRemaining = vi.fn();
+    const onClose = vi.fn();
+    const { unmount } = renderEditor({ onAcceptRemaining, onClose });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    unmount();
+    onAcceptRemaining.mock.calls[0][0]();
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('warns about frames no model found smoke on, without blocking', () => {
     // One frame has candidates, the other has none at all.
     renderEditor({

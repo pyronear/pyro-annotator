@@ -520,6 +520,10 @@ export function LocalizeObjectEditor({
   const isClosingRef = useRef(false);
   const requestClose = useCallback(() => {
     if (isClosingRef.current) return;
+    // The accept handler hands this to the page, which fires it whenever the
+    // write lands — possibly after the annotator has already left by another
+    // door. Closing something that is gone would navigate them back to it.
+    if (!mountedRef.current) return;
     const root = rootRef.current;
     if (!root || typeof root.animate !== 'function') {
       onClose();
