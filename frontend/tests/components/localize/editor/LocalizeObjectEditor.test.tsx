@@ -993,20 +993,11 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('stays put when the write never lands', () => {
-    // A failed accept leaves the object unfinished and a failure toast on
-    // screen — closing on the keypress alone would carry the annotator away
-    // from work that did not happen.
-    const onAcceptRemaining = vi.fn();
-    const onClose = vi.fn();
-    renderEditor({ onAcceptRemaining, onClose });
-    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
-
-    fireEvent.keyDown(window, { key: 'Enter' });
-
-    expect(onAcceptRemaining).toHaveBeenCalledTimes(1);
-    expect(onClose).not.toHaveBeenCalled();
-  });
+  // Whether a FAILED write leaves the editor open is the page's half of this
+  // contract — it decides when to fire the callback — and is covered where it
+  // lives, in LocalizeAlertPage's "keeps the editor open when the write
+  // fails". An editor-level version could only re-assert that it does not
+  // close on the keypress, which the test above already pins.
 
   it('does not navigate when the write lands after the editor is gone', () => {
     // Accept, then leave before it returns — browser Back, say, which keeps
@@ -1545,6 +1536,28 @@ describe('open/close transition', () => {
     expect(closeCall[0][1]).toEqual({ opacity: 0 });
     finish();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shrinks into the frame it closes from, not the one the accept started on', () => {
+    // The accept's close is fired by the page whenever the write lands, and
+    // nothing stops the annotator arrowing on meanwhile. A close frozen at
+    // gesture time would fly into the cell of a frame they already left —
+    // possibly one scrolled out of view.
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onAcceptRemaining = vi.fn();
+    const frameCellRect = vi.fn(() => ({ left: 5, top: 6, width: 100, height: 60 }));
+    const { rerender } = renderEditor({ onAcceptRemaining, frameCellRect });
+
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    // Write in flight; the annotator steps on to the next frame.
+    rerender(editorWith({ onAcceptRemaining, frameCellRect, detection: lastDetection }));
+    onAcceptRemaining.mock.calls[0][0]();
+
+    expect(frameCellRect).toHaveBeenLastCalledWith(lastDetection.recorded_at);
   });
 
   it('closes immediately when element.animate is unavailable', () => {

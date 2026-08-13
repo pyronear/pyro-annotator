@@ -101,6 +101,7 @@ vi.mock('@/components/localize/editor', () => ({
     onCommit: (detection: Detection, items: unknown[]) => void;
     onCommitGapFrame?: (recordedAt: string, items: unknown[]) => void;
     onUnmaterialize?: (detection: Detection) => void;
+    onAcceptRemaining: (onAccepted?: () => void) => void;
     objectOverlays?: Array<{ color: string; label: string; boxes: unknown[] }>;
   }) => (
     <div data-testid="image-modal">
@@ -165,6 +166,13 @@ vi.mock('@/components/localize/editor', () => ({
       </button>
       <button type="button" onClick={props.onClose}>
         Mock Close
+      </button>
+      {/* The real editor's accept hands its own close in, for the page to
+          fire once the write lands — so the stand-in does the same. Whether
+          that callback runs on success only is the page's business, and this
+          button is what lets a test hold it to it. */}
+      <button type="button" onClick={() => props.onAcceptRemaining(props.onClose)}>
+        Mock Accept Remaining
       </button>
     </div>
   ),
@@ -2477,6 +2485,40 @@ describe('LocalizeAlertPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: "Accept Object 1's boxes" }));
       return await screen.findByTestId('accept-remaining-popover');
     };
+
+    // The same accept, reached from inside the editor. What the page owes the
+    // editor there is a close — but only once the boxes are actually written,
+    // which is the half no editor-level test can see.
+    describe('from the editor', () => {
+      const editorWrapper = makeWrapper('/localize/101/object/102/1002');
+
+      it('closes the editor once the boxes are written', async () => {
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper: editorWrapper });
+        expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mock Accept Remaining' }));
+
+        await waitFor(() => {
+          expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+        });
+        // Back to the object's own page, object still selected.
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          /^\/localize\/101\/object\/102$/
+        );
+      });
+
+      it('keeps the editor open when the write fails, with the failure in view', async () => {
+        vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mockRejectedValue(new Error('boom'));
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper: editorWrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mock Accept Remaining' }));
+
+        expect(await screen.findByText(/failed to accept boxes/i)).toBeInTheDocument();
+        // Closing here would carry the annotator away from work that did not
+        // happen, and bury the toast on a page that is no longer about it.
+        expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+      });
+    });
 
     it('opens the popover instead of accepting immediately, previewing the active lane', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });

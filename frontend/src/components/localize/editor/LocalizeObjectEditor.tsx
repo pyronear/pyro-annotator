@@ -564,6 +564,16 @@ export function LocalizeObjectEditor({
     animation.addEventListener('cancel', done);
   }, [onClose, frameCellRect, peeked, detection]);
 
+  // What the accept hands the page. The page fires it whenever the write
+  // lands, and nothing stops the annotator arrowing on meanwhile — so it must
+  // resolve to the CURRENT `requestClose`, whose target cell is the frame
+  // they are on now. The frozen one would shrink into a frame they already
+  // left. Same ref trick `clearRef` uses to keep the keyboard handler from
+  // re-binding.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+  const requestLatestClose = useCallback(() => requestCloseRef.current(), []);
+
   // --- Keyboard -----------------------------------------------------------
 
   useEffect(() => {
@@ -597,7 +607,7 @@ export function LocalizeObjectEditor({
             )
               return;
             if (!isAccepting) {
-              onAcceptRemaining(requestClose);
+              onAcceptRemaining(requestLatestClose);
               setAcceptOpen(false);
             }
           } else {
@@ -669,6 +679,7 @@ export function LocalizeObjectEditor({
     shortcutsOpen,
     resetStageZoom,
     requestClose,
+    requestLatestClose,
     editable,
     isAccepting,
     onAcceptRemaining,
@@ -774,7 +785,7 @@ export function LocalizeObjectEditor({
                   gapCount={gapCount}
                   isAccepting={isAccepting}
                   onConfirm={() => {
-                    onAcceptRemaining(requestClose);
+                    onAcceptRemaining(requestLatestClose);
                     setAcceptOpen(false);
                   }}
                   onCancel={() => setAcceptOpen(false)}
