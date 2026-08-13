@@ -100,6 +100,8 @@ Writes `manifest.jsonl` (one line per alert) plus `images/{source_api}/{platform
 
 Each alert also carries `temporal_model_score` (plus `temporal_model_version` / `temporal_api_version`) for score-based mining: rank objects by their alert's score and filter on `record_kind` to surface hard negatives. The score is alert-level because the platform's temporal model scores an alert, not an object — the verdict rides the primary lane and object-split siblings hold NULL. `null` means **no verdict is attributed**: either never scored (alerts imported before 2026-08-10, fail-opens, risk-gated sequences) or scored but not attributable to a lane during the object split. It never means "scored low", so drop nulls when ranking rather than coalescing them to `0.0`; `0.0` itself is a real verdict. Note a score refresh does not move `last_annotated_at`, so a backfill only shows up in a full pull, not an `annotation_updated_gte` one.
 
+**Downstream consumer**: pyro-dataset imports this export into its sequential dataset for the temporal model — see `docs/specs/2026-08-13-annotator-export-sequential-import-design.md` in `pyronear/pyro-dataset` (branch `feat/annotator-export-import` until merged), and the "Downstream consumers" section of `docs/specs/2026-08-06-export-alerts-endpoint-design.md` for the fields it depends on. Check there before reshaping the payload.
+
 ### Export QA overlays
 
 ```bash
