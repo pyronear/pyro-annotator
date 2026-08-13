@@ -298,3 +298,25 @@ Rewrite `src/tests/endpoints/test_export.py` against the new endpoint:
   replaces the deleted `export_dataset.py`.
 - Trainer-format conversion (YOLO/COCO) — downstream of the script.
 - API keys / scoped service accounts.
+
+## Downstream consumers
+
+**pyro-dataset's sequential-dataset import** (`pyronear/pyro-dataset`,
+`docs/specs/2026-08-13-annotator-export-sequential-import-design.md`, branch
+`feat/annotator-export-import` until merged) builds training sequences for the temporal
+model from this export. Recorded here so a change to the payload is known to have a
+consumer — it depends on:
+
+| field | what it is used for |
+|-------|---------------------|
+| `record_kind` | decides whether a sequence is a positive (`wildfire/`) or a negative (`fp/`) |
+| `false_positive_types` | stratifies the false-positive sample across failure modes |
+| `temporal_model_score` | ranks hard negatives — the false positives the deployed model still believes |
+| box `origin`, `smoke_type`, `false_positive_types` | selects which boxes become YOLO labels and which are kept as provenance only |
+| `xyxyn` | converted to YOLO `xywhn` |
+| `image_path` (pull script) + `bucket_key` | materialised frames, and the stable frame identity |
+| `platform_alert_id`, `camera_name`, `azimuth`, `recorded_at` | the sequence folder name, which is also its identity across re-imports |
+
+Two properties it relies on beyond the field list: sibling lanes of one alert share
+identical frame images, and an alert's lanes never mix `record_kind` in practice (the
+importer handles the mixed case, but its box-selection rule assumes it is rare).
