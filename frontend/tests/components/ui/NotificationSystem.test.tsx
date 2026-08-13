@@ -191,9 +191,26 @@ describe('NotificationSystem', () => {
     expect(screen.getByText(longMessage)).toBeInTheDocument();
   });
 
+  it('should sit high by default', () => {
+    const { container } = render(<NotificationSystem {...defaultProps} />);
+
+    expect(container.querySelector('.fixed.right-4')).toHaveClass('top-4');
+    expect(container.querySelector('.top-16')).toBeNull();
+  });
+
+  it('should clear a full-width top bar when asked', () => {
+    // top-16 (64px) clears the 48px bar the localize object editor and the
+    // add-object overlay each pin to the top of the viewport — a bar whose
+    // close button sits at the same right edge the toast does.
+    const { container } = render(<NotificationSystem {...defaultProps} belowTopBar />);
+
+    expect(container.querySelector('.fixed.right-4')).toHaveClass('top-16');
+    expect(container.querySelector('.top-4')).toBeNull();
+  });
+
   it('should apply correct transition classes', () => {
     const { container } = render(<NotificationSystem {...defaultProps} />);
-    
+
     const notificationDiv = container.querySelector('.fixed.top-4.right-4');
     expect(notificationDiv).toHaveClass(
       'transition-all',

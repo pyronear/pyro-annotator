@@ -860,6 +860,40 @@ describe('LocalizeAlertPage', () => {
     expect(screen.queryByText('Frame saved')).not.toBeInTheDocument();
   });
 
+  it('drops the toast below the editor bar while the editor is open, and only then', async () => {
+    // The editor's own 48px bar ends with its close button on the right edge
+    // the toast anchors to; with no editor up, that height belongs to the
+    // rail's header button instead.
+    vi.mocked(apiClient.createDetectionAnnotation).mockRejectedValue(new Error('boom'));
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper(`${ROUTES.LOCALIZE}/101/object/101/1001`),
+    });
+    await waitFor(() => expect(screen.getByTestId('image-modal')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Mock Submit'));
+
+    const toast = (await screen.findByText(/failed to save frame/i)).closest('.fixed')!;
+    expect(toast).toHaveClass('top-16');
+    expect(toast).not.toHaveClass('top-4');
+  });
+
+  it('keeps the toast high when no overlay owns the top of the viewport', async () => {
+    vi.mocked(apiClient.bulkUpsertDetectionAnnotations).mockRejectedValue(new Error('boom'));
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+    fireEvent.click(
+      within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+        name: "Accept Object 2's boxes",
+      })
+    );
+    fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
+
+    const toast = (await screen.findByText(/failed to accept boxes/i)).closest('.fixed')!;
+    expect(toast).toHaveClass('top-4');
+    expect(toast).not.toHaveClass('top-16');
+  });
+
   it('hands the editor the object named in the URL, not just the frame', async () => {
     await renderAndSettle(<LocalizeAlertPage />, {
       wrapper: makeWrapper(`${ROUTES.LOCALIZE}/101/object/101/1001`),

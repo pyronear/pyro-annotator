@@ -2498,6 +2498,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         toastMessage={toastMessage}
         toastType={toastType}
         onDismiss={dismissToast}
+        // Both full-screen overlays fill the top 48px of the viewport with
+        // their own bar, close button included; the toast has to clear it.
+        // With neither up it stays high, where it covers only the page
+        // header's progress badge rather than the rail's FP toggle.
+        belowTopBar={modalContext !== null || addObjectOpen}
       />
 
       {showShortcutsModal && (
