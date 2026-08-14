@@ -5,6 +5,7 @@ import {
   hasModelEvidence,
   isCleared,
   priorityPick,
+  previousShownBox,
   candidateToBbox,
 } from '@/utils/annotation/objectBoxCandidates';
 import type { Detection, DetectionAnnotation } from '@/types/api';
@@ -248,6 +249,67 @@ describe('hasModelEvidence', () => {
         auto_predictions: null,
       } as unknown as Detection)
     ).toBe(false);
+  });
+});
+
+describe('previousShownBox', () => {
+  const laneDetection = (id: number, autoBox?: [number, number, number, number]): Detection =>
+    detection({
+      id,
+      auto_predictions: {
+        predictions: autoBox ? [{ xyxyn: autoBox, confidence: 0.8, class_name: 'smoke' }] : [],
+      },
+    });
+
+  const committedFor = (
+    detectionId: number,
+    xyxyn: [number, number, number, number]
+  ): DetectionAnnotation =>
+    ({
+      id: detectionId * 10,
+      detection_id: detectionId,
+      annotation: {
+        annotation: [{ xyxyn, class_name: 'smoke', smoke_type: 'wildfire', origin: 'auto' }],
+      },
+    }) as DetectionAnnotation;
+
+  const clearedFor = (detectionId: number): DetectionAnnotation =>
+    ({
+      id: detectionId * 10,
+      detection_id: detectionId,
+      annotation: { annotation: [] },
+      processing_stage: 'annotated',
+    }) as unknown as DetectionAnnotation;
+
+  it("returns the previous frame's committed box", () => {
+    const lane = [laneDetection(1, [0.1, 0.1, 0.2, 0.2]), laneDetection(2, [0.5, 0.5, 0.6, 0.6])];
+    const result = previousShownBox(2, lane, [committedFor(1, [0.3, 0.3, 0.4, 0.4])]);
+    expect(result).toEqual([0.3, 0.3, 0.4, 0.4]);
+  });
+
+  it("falls back to the previous frame's winning pick when it is undecided", () => {
+    const lane = [laneDetection(1, [0.1, 0.1, 0.2, 0.2]), laneDetection(2)];
+    expect(previousShownBox(2, lane, [])).toEqual([0.1, 0.1, 0.2, 0.2]);
+  });
+
+  it('skips cleared and boxless frames to the nearest earlier shown box', () => {
+    const lane = [
+      laneDetection(1, [0.1, 0.1, 0.2, 0.2]),
+      laneDetection(2), // boxless, undecided — shows nothing
+      laneDetection(3, [0.7, 0.7, 0.8, 0.8]), // cleared — shows nothing
+      laneDetection(4),
+    ];
+    expect(previousShownBox(4, lane, [clearedFor(3)])).toEqual([0.1, 0.1, 0.2, 0.2]);
+  });
+
+  it('returns null when no earlier frame shows a box', () => {
+    const lane = [laneDetection(1), laneDetection(2)];
+    expect(previousShownBox(2, lane, [])).toBeNull();
+  });
+
+  it('returns null on the first frame of the lane', () => {
+    const lane = [laneDetection(1, [0.1, 0.1, 0.2, 0.2]), laneDetection(2)];
+    expect(previousShownBox(1, lane, [])).toBeNull();
   });
 });
 

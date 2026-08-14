@@ -152,6 +152,30 @@ export function priorityPick(candidates: BoxCandidate[]): BoxCandidate | null {
   return null;
 }
 
+/**
+ * The box the nearest earlier lane frame SHOWS for this object — its committed
+ * box, or the winning pick it would commit if undecided. What `P` copies onto
+ * the current frame. Cleared frames show no box (the annotator said "not
+ * visible here") and are skipped, as are frames with nothing on offer.
+ */
+export function previousShownBox(
+  currentDetectionId: number,
+  laneDetections: Detection[],
+  laneAnnotations: DetectionAnnotation[]
+): [number, number, number, number] | null {
+  const index = laneDetections.findIndex(d => d.id === currentDetectionId);
+  for (let i = index - 1; i >= 0; i--) {
+    const det = laneDetections[i];
+    const annotation = laneAnnotations.find(a => a.detection_id === det.id) ?? null;
+    const committed = committedBox(annotation);
+    if (committed) return committed.xyxyn;
+    if (isCleared(annotation)) continue;
+    const pick = priorityPick(boxCandidates(det, annotation));
+    if (pick) return pick.xyxyn;
+  }
+  return null;
+}
+
 /** Whether any model layer put a box on this frame. A frame without model
  *  evidence exists in its lane only because a human boxed it (a materialized
  *  gap frame, or any frame of an added-object lane), so clearing it removes
