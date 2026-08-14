@@ -399,10 +399,8 @@ export function LocalizeObjectEditor({
   const copyPreviousRef = useRef<() => void>(() => undefined);
   const copyPrevious = useCallback(() => {
     const xyxyn = previousShownBox(detection.id, laneDetections, laneAnnotations);
-    if (!xyxyn) return;
-    setPreviewed(null);
-    onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]);
-  }, [detection, laneDetections, laneAnnotations, smokeType, onCommit]);
+    if (xyxyn) commitCandidate({ source: 'manual', index: 0, xyxyn });
+  }, [detection.id, laneDetections, laneAnnotations, commitCandidate]);
   copyPreviousRef.current = copyPrevious;
 
   // --- Navigation ---------------------------------------------------------
@@ -646,7 +644,14 @@ export function LocalizeObjectEditor({
           break;
         case 'p':
         case 'P':
-          // Same async-save reasoning as Delete for dropping auto-repeat.
+          // Ctrl/Cmd+P is the browser's print — a held modifier means the
+          // press was never for us (the page-level handler draws the same
+          // line). Unlike the view toggles, this key WRITES, so it also
+          // stays inert behind the shortcuts sheet — which documents P and
+          // thereby invites the press — and the accept popover. Auto-repeat
+          // is dropped for the same async-save reason as Delete.
+          if (e.ctrlKey || e.metaKey || e.altKey) return;
+          if (shortcutsOpen || acceptOpen) return;
           if (!editable || e.repeat) return;
           copyPreviousRef.current();
           break;

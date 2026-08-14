@@ -877,13 +877,31 @@ describe('LocalizeObjectEditor box selection', () => {
   });
 
   it('P does nothing on an out-of-range frame', () => {
+    // From the LAST frame, whose previous frame does offer a box — from the
+    // first, P is a no-op regardless and the guard would be untested.
     const onCommit = vi.fn();
     const onCommitGapFrame = vi.fn();
-    renderEditor({ onCommit, onCommitGapFrame });
-    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    renderEditor({ detection: lastDetection, onCommit, onCommitGapFrame });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
     fireEvent.keyDown(window, { key: 'p' });
     expect(onCommit).not.toHaveBeenCalled();
     expect(onCommitGapFrame).not.toHaveBeenCalled();
+  });
+
+  it('P with a held modifier is the browser\'s shortcut, not ours', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'p', metaKey: true });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('P does not write behind the shortcuts sheet that documents it', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: '?' });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it('drops the selection when the frame changes', () => {
