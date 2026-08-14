@@ -77,6 +77,7 @@ export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onCl
           <Row label="Draw one — drag on the image" keys={['drag']} />
           <Row label="Move or resize — click it first, then drag" keys={['click']} />
           <Row label="Mark the object not visible here" keys={['Del']} />
+          <Row label="Copy the previous frame's box here" keys={['P']} />
           <Row label="Deselect the box" keys={['Esc']} />
         </Section>
         <Section title="Move around the image">

@@ -34,6 +34,7 @@ import {
   committedBox,
   hasModelEvidence,
   isCleared,
+  previousShownBox,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -392,6 +393,16 @@ export function LocalizeObjectEditor({
 
   clearRef.current = clear;
 
+  // `P`: replace this frame's box with the one the previous frame shows —
+  // committed, or its winning pick. Copied geometry commits as `human`: no
+  // model proposed it HERE, a person placed it. Same ref trick as `clear`.
+  const copyPreviousRef = useRef<() => void>(() => undefined);
+  const copyPrevious = useCallback(() => {
+    const xyxyn = previousShownBox(detection.id, laneDetections, laneAnnotations);
+    if (xyxyn) commitCandidate({ source: 'manual', index: 0, xyxyn });
+  }, [detection.id, laneDetections, laneAnnotations, commitCandidate]);
+  copyPreviousRef.current = copyPrevious;
+
   // --- Navigation ---------------------------------------------------------
 
   const currentEntryIndex = peeked
@@ -630,6 +641,19 @@ export function LocalizeObjectEditor({
           // the first one already removed.
           if (!editable || e.repeat) return;
           clearRef.current();
+          break;
+        case 'p':
+        case 'P':
+          // Ctrl/Cmd+P is the browser's print — a held modifier means the
+          // press was never for us (the page-level handler draws the same
+          // line). Unlike the view toggles, this key WRITES, so it also
+          // stays inert behind the shortcuts sheet — which documents P and
+          // thereby invites the press — and the accept popover. Auto-repeat
+          // is dropped for the same async-save reason as Delete.
+          if (e.ctrlKey || e.metaKey || e.altKey) return;
+          if (shortcutsOpen || acceptOpen) return;
+          if (!editable || e.repeat) return;
+          copyPreviousRef.current();
           break;
         case 'g':
         case 'G':

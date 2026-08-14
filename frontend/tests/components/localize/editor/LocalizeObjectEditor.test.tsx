@@ -826,6 +826,84 @@ describe('LocalizeObjectEditor box selection', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("P commits the previous frame's committed box onto this frame as a human decision", () => {
+    const onCommit = vi.fn();
+    const previous = {
+      ...committedAnnotation(firstDetection.id, 'auto'),
+      annotation: {
+        annotation: [
+          {
+            xyxyn: [0.42, 0.42, 0.52, 0.52],
+            class_name: 'smoke',
+            smoke_type: 'wildfire',
+            origin: 'auto',
+          },
+        ],
+      },
+    } as unknown as DetectionAnnotation;
+    renderEditor({ detection: lastDetection, laneAnnotations: [previous], onCommit });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: lastDetection.id }), [
+      {
+        xyxyn: [0.42, 0.42, 0.52, 0.52],
+        class_name: 'smoke',
+        smoke_type: 'wildfire',
+        origin: 'human',
+      },
+    ]);
+  });
+
+  it("P falls back to the previous frame's winning pick when it is undecided", () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: 'P' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: lastDetection.id }), [
+      expect.objectContaining({ xyxyn: [0.2, 0.2, 0.3, 0.3], origin: 'human' }),
+    ]);
+  });
+
+  it('P does nothing on the first frame — there is no earlier box to copy', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: firstDetection, onCommit });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('P ignores auto-repeat — the save is async and a held key would double-write', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: 'p', repeat: true });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('P does nothing on an out-of-range frame', () => {
+    // From the LAST frame, whose previous frame does offer a box — from the
+    // first, P is a no-op regardless and the guard would be untested.
+    const onCommit = vi.fn();
+    const onCommitGapFrame = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit, onCommitGapFrame });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onCommitGapFrame).not.toHaveBeenCalled();
+  });
+
+  it('P with a held modifier is the browser\'s shortcut, not ours', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'p', metaKey: true });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('P does not write behind the shortcuts sheet that documents it', () => {
+    const onCommit = vi.fn();
+    renderEditor({ detection: lastDetection, onCommit });
+    fireEvent.keyDown(window, { key: '?' });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('drops the selection when the frame changes', () => {
     const { rerender } = renderLoadedEditor({ existingAnnotation: committed() });
     fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
