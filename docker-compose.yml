@@ -82,6 +82,7 @@ services:
       - AUTH_PASSWORD=admin12345
       - JWT_SECRET=your_jwt_secret_key_change_in_production_please
       - ACCESS_TOKEN_EXPIRE_HOURS=24
+      - CONNECTOR_SECRET_KEY=${CONNECTOR_SECRET_KEY:-}
       # Serving / pool sizing. UVICORN_WORKERS is read both by the command
       # below and by app.core.config, so the process count and the connection
       # budget can never drift apart.
@@ -127,6 +128,8 @@ services:
       - S3_ACCESS_KEY=fake
       - S3_SECRET_KEY=fakefake
       - S3_REGION=us-east-1
+      - CONNECTOR_SECRET_KEY=${CONNECTOR_SECRET_KEY:-}
+      - ANNOTATION_API_INTERNAL_URL=${ANNOTATION_API_INTERNAL_URL:-http://annotation_api:5050}
     restart: unless-stopped
     command: "procrastinate --app=app.worker.app worker"
     healthcheck:

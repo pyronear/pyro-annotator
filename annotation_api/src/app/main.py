@@ -35,9 +35,10 @@ logger = logging.getLogger("uvicorn.error")
 
 async def seed_default_users(session: AsyncSession) -> None:
     """Idempotent startup seeding: the human admin (AUTH_USERNAME) and the
-    login-disabled worker user (WORKER_USERNAME). The worker user no longer
-    writes annotations (the sweep is membership-only) but stays seeded —
-    existing machine-written annotations are attributed to it."""
+    password-disabled worker user (WORKER_USERNAME). The worker no longer writes
+    annotations (the sweep is membership-only) but stays seeded for two reasons:
+    existing machine-written annotations are attributed to it, and it is the
+    identity the connector import mints its API token for (app/services/worker_auth.py)."""
     user_crud = UserCRUD(session)
 
     admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
@@ -69,10 +70,13 @@ async def seed_default_users(session: AsyncSession) -> None:
             worker_create = UserCreate(
                 username=settings.WORKER_USERNAME,
                 # Random and immediately discarded: this user exists purely
-                # for attribution and must never be able to log in (also
-                # seeded inactive, which login rejects independently).
+                # for attribution and can never log in, since no password can
+                # ever match. It must be active: app.api.dependencies.get_current_user
+                # is an alias for get_current_active_user, so an inactive
+                # identity could not call the endpoints the worker posts to
+                # (see app/services/worker_auth.py).
                 password=secrets.token_urlsafe(32),
-                is_active=False,
+                is_active=True,
                 is_superuser=False,
                 can_localize=False,
             )
@@ -81,15 +85,12 @@ async def seed_default_users(session: AsyncSession) -> None:
         except Exception as e:
             logger.error(f"Failed to create worker user: {e}")
             await session.rollback()
-    elif worker_user.is_active:
-        # get-or-create adopted a pre-existing account: attribution will go
-        # to what looks like a human user. Almost certainly a naming
-        # collision — pick a different WORKER_USERNAME.
-        logger.warning(
-            f"User {settings.WORKER_USERNAME!r} already exists and is active; "
-            "the group-assignment sweep will attribute annotations to it."
-        )
     else:
+        # With the worker seeded active, a get-or-create hit that adopted a
+        # pre-existing human account is no longer distinguishable from our
+        # own worker user — the is_active-based collision check this branch
+        # used to do is not expressible anymore. Not replacing it with a new
+        # heuristic; just noting the loss.
         logger.info("Worker user already exists")
 
 

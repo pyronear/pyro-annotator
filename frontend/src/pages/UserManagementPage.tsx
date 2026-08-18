@@ -263,10 +263,14 @@ export default function UserManagementPage() {
                     <span
                       className={clsx(
                         'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
-                        user.is_active ? 'bg-pine-soft text-pine' : 'bg-signal-soft text-signal'
+                        user.is_system
+                          ? 'bg-ash text-haze'
+                          : user.is_active
+                            ? 'bg-pine-soft text-pine'
+                            : 'bg-signal-soft text-signal'
                       )}
                     >
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.is_system ? 'Service' : user.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

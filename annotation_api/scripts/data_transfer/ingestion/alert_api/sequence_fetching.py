@@ -38,7 +38,7 @@ import concurrent.futures
 import logging
 import time
 from datetime import date, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 from rich.console import Console
 from rich.progress import (
@@ -140,6 +140,35 @@ def fetch_sequences_for_date(
     except Exception as e:
         logging.error(f"Error fetching sequences for date {target_date}: {e}")
         return sequences
+
+
+def filter_sequences(
+    sequences: List[Dict[str, Any]],
+    *,
+    camera_org: Dict[int, Optional[int]],
+    organization_ids: Optional[Set[int]],
+    skip_ids: Set[int],
+) -> List[Dict[str, Any]]:
+    """Drop sequences we must not, or need not, fetch detections for.
+
+    Applied immediately after the date listing and before any per-sequence
+    detection call — that ordering is the whole point. The importer otherwise
+    only discovers "already exists" at POST time, after paying for every fetch.
+
+    A sequence whose camera is absent from the index cannot be attributed to an
+    organization; it is dropped when filtering by organization (importing it
+    would silently ingest an org the operator never enabled) and kept when not.
+    """
+    kept = []
+    for sequence in sequences:
+        if sequence["id"] in skip_ids:
+            continue
+        if organization_ids is not None:
+            org = camera_org.get(sequence.get("camera_id"))
+            if org is None or org not in organization_ids:
+                continue
+        kept.append(sequence)
+    return kept
 
 
 def process_single_sequence_detections(
@@ -308,6 +337,58 @@ def fetch_all_sequences_within(
     if error_collector is None:
         error_collector = ErrorCollector()
 
+    indexed_cameras, indexed_organizations = load_alert_api_metadata(
+        api_endpoint=api_endpoint,
+        access_token=access_token,
+        access_token_admin=access_token_admin,
+        console=console,
+        error_collector=error_collector,
+    )
+    sequences = list_sequences_within(
+        date_from=date_from,
+        date_end=date_end,
+        api_endpoint=api_endpoint,
+        access_token=access_token,
+        selected_sequence_list=selected_sequence_list,
+        max_sequences=max_sequences,
+        suppress_logs=suppress_logs,
+        console=console,
+        risk_score=risk_score,
+    )
+    return fetch_detections_for_sequences(
+        sequences=sequences,
+        indexed_cameras=indexed_cameras,
+        indexed_organizations=indexed_organizations,
+        api_endpoint=api_endpoint,
+        access_token=access_token,
+        detections_limit=detections_limit,
+        detections_order_by=detections_order_by,
+        worker_config=worker_config,
+        suppress_logs=suppress_logs,
+        console=console,
+        error_collector=error_collector,
+        organization=organization,
+    )
+
+
+def load_alert_api_metadata(
+    api_endpoint: str,
+    access_token: str,
+    access_token_admin: str,
+    console: Optional[Console] = None,
+    error_collector: Optional[ErrorCollector] = None,
+) -> Tuple[Dict[int, Dict[str, Any]], Dict[int, Dict[str, Any]]]:
+    """Load the camera and organization indexes used to enrich records.
+
+    Split out of `fetch_all_sequences_within` so a caller that needs the camera
+    index *before* deciding which sequences deserve a detection fetch (see
+    `filter_sequences`) can reuse it instead of listing cameras twice.
+    """
+    if console is None:
+        console = Console()
+    if error_collector is None:
+        error_collector = ErrorCollector()
+
     # Load metadata with progress display
     metadata_start_time = time.time()
     with console.status(
@@ -339,6 +420,28 @@ def fetch_all_sequences_within(
             error_msg = f"Failed to load alert API metadata: {e}"
             error_collector.add_error(error_msg)
             raise Exception(error_msg)
+
+    return indexed_cameras, indexed_organizations
+
+
+def list_sequences_within(
+    date_from: date,
+    date_end: date,
+    api_endpoint: str,
+    access_token: str,
+    selected_sequence_list: Optional[List[int]] = None,
+    max_sequences: Optional[int] = None,
+    suppress_logs: bool = True,
+    console: Optional[Console] = None,
+    risk_score: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """List the alert sequences in the date range, without their detections.
+
+    Split out of `fetch_all_sequences_within` so the organization / already-seen
+    filters can run between the listing and the per-sequence detection fetch.
+    """
+    if console is None:
+        console = Console()
 
     # Prepare date range
     dates = get_dates_within(date_from=date_from, date_end=date_end)
@@ -413,6 +516,33 @@ def fetch_all_sequences_within(
         )
 
     console.print(f"[green]✅ Found {len(sequences)} sequences[/]")
+
+    return sequences
+
+
+def fetch_detections_for_sequences(
+    sequences: List[Dict[str, Any]],
+    indexed_cameras: Dict[int, Dict[str, Any]],
+    indexed_organizations: Dict[int, Dict[str, Any]],
+    api_endpoint: str,
+    access_token: str,
+    detections_limit: int,
+    detections_order_by: str,
+    worker_config: WorkerConfig,
+    suppress_logs: bool = True,
+    console: Optional[Console] = None,
+    error_collector: Optional[ErrorCollector] = None,
+    organization: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch each listed sequence's detections and flatten them into records.
+
+    Split out of `fetch_all_sequences_within`; this is the expensive stage the
+    `filter_sequences` short-circuit exists to keep work out of.
+    """
+    if console is None:
+        console = Console()
+    if error_collector is None:
+        error_collector = ErrorCollector()
 
     # Without this the two cases are indistinguishable: an alert API that
     # predates temporal validation imports exactly like a day where nothing was

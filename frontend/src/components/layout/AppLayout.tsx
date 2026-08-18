@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu } from '@headlessui/react';
-import { Menu as MenuIcon, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
+import { Menu as MenuIcon, MoreVertical, X, LogOut, User, Users, Plug } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -216,19 +216,35 @@ function UserSection() {
         </Menu.Button>
       </div>
 
-      <Menu.Items className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+      <Menu.Items className="absolute bottom-full right-0 mb-1 w-full rounded-md border border-line bg-paper focus:outline-none">
         {isSuperuser() && (
           <Menu.Item>
             {({ active }) => (
               <Link
                 to="/users"
                 className={clsx(
-                  active && 'bg-gray-100',
-                  'flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-md'
+                  active && 'bg-ash',
+                  'flex items-center w-full px-4 py-2 text-sm text-char rounded-md'
                 )}
               >
                 <Users className="h-4 w-4 mr-2" />
                 User Management
+              </Link>
+            )}
+          </Menu.Item>
+        )}
+        {isSuperuser() && (
+          <Menu.Item>
+            {({ active }) => (
+              <Link
+                to="/connectors"
+                className={clsx(
+                  active && 'bg-ash',
+                  'flex items-center w-full px-4 py-2 text-sm text-char rounded-md'
+                )}
+              >
+                <Plug className="h-4 w-4 mr-2" />
+                Connectors
               </Link>
             )}
           </Menu.Item>
@@ -238,8 +254,8 @@ function UserSection() {
             <button
               onClick={logout}
               className={clsx(
-                active && 'bg-gray-100',
-                'flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-md'
+                active && 'bg-ash',
+                'flex items-center w-full px-4 py-2 text-sm text-char rounded-md'
               )}
             >
               <LogOut className="h-4 w-4 mr-2" />

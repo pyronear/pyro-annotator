@@ -65,37 +65,19 @@ Examples:
 """
 
 import argparse
-import concurrent.futures
 import logging
 import os
 import re
 import sys
-import time
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.panel import Panel
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-)
 
-# Import new modular components
-from .progress_management import ErrorCollector, StepManager, LogSuppressor
-from .worker_config import WorkerConfig
-from .sequence_fetching import fetch_all_sequences_within
-from . import object_split
-from .annotation_management import (
-    valid_date,
-    annotate_split_sequence,
-)
+from .annotation_management import valid_date
+from .runner import ImportConfig, run_import
 from . import shared
-from . import client as alert_api_client
 from app.clients import annotation_api
 
 load_dotenv()
@@ -249,57 +231,23 @@ def validate_args(args: argparse.Namespace) -> bool:
     return True
 
 
-def test_annotation_credentials(
+def authenticate_annotation_api(
     base_url: str, login: str, password: str, label: str, console: Console
-) -> bool:
+) -> Optional[str]:
     """
     Attempt to authenticate against an annotation API endpoint.
+
+    Returns the access token, or None when authentication failed.
     """
     try:
-        annotation_api.get_auth_token(base_url, username=login, password=password)
+        token = annotation_api.get_auth_token(
+            base_url, username=login, password=password
+        )
         console.print(f"[green]✅ {label} auth OK[/] [dim]({login}@{base_url})[/]")
-        return True
+        return token
     except Exception as exc:
         console.print(f"[red]❌ {label} auth failed[/]: {exc}")
-        return False
-
-
-def auto_skip_boxless(
-    annotation_api_url: str,
-    login: str,
-    password: str,
-    source_api: str,
-    boxless_alert_ids: List[int],
-    console: Console,
-    error_collector: ErrorCollector,
-) -> dict:
-    """
-    Best-effort auto-skip of boxless alerts (#333): park their zero-object
-    lanes via the skip overlay. Never raises — a skip failure must not fail
-    an otherwise successful import.
-    """
-    counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
-    try:
-        auth_token = annotation_api.get_auth_token(
-            annotation_api_url, username=login, password=password
-        )
-        counts = shared.skip_boxless_alerts(
-            annotation_api_url, auth_token, source_api, boxless_alert_ids
-        )
-    except Exception as exc:
-        counts["failed"] = len(boxless_alert_ids)
-        logging.warning("boxless auto-skip aborted: %s", exc)
-    console.print(
-        f"[blue]⏭️  Auto-skipped {counts['skipped']} boxless alert(s) "
-        f"({counts['already_skipped']} already skipped, "
-        f"{counts['failed']} failed): {boxless_alert_ids}[/]"
-    )
-    if counts["failed"] > 0:
-        error_collector.add_warning(
-            f"{counts['failed']} boxless alert(s) could not be auto-skipped; "
-            "their zero-object lanes remain in the queue."
-        )
-    return counts
+        return None
 
 
 def parse_sequence_selection(sequence_arg: str) -> List[int]:
@@ -335,7 +283,7 @@ def parse_sequence_selection(sequence_arg: str) -> List[int]:
 
 
 def main() -> None:
-    """Main execution function with comprehensive error handling and progress tracking."""
+    """Parse argv and the environment into an ImportConfig, then run the import."""
     parser = make_cli_parser()
     args = parser.parse_args()
 
@@ -346,7 +294,6 @@ def main() -> None:
         level=args.loglevel.upper(),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    logger = logging.getLogger(__name__)
 
     # bucket-copy derives its source bucket from the French deployment's
     # config (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
@@ -372,38 +319,8 @@ def main() -> None:
     # Get source_api from alert API URL
     source_api = get_source_api_from_url(args.alert_api_url)
 
-    # Initialize components
-    worker_config = WorkerConfig(args.max_workers)
     console = Console()
-    suppress_logs = args.loglevel != "debug"  # Suppress logs unless in debug mode
-    step_manager = StepManager(console, show_timing=True)
-    error_collector = ErrorCollector()
 
-    # Initialize comprehensive statistics
-    stats = {
-        # Import statistics (Step 1)
-        "records_fetched": 0,
-        "sequences_attempted_import": 0,
-        "sequences_import_successful": 0,
-        "sequences_import_failed": 0,
-        "sequences_skipped": 0,
-        "sequences_refreshed": 0,
-        "refresh_failures": 0,
-        "refresh_skipped": 0,
-        "detections_skipped": 0,
-        "detections_attempted_import": 0,
-        "detections_import_successful": 0,
-        "detections_import_failed": 0,
-        # Annotation statistics (Step 4)
-        "total_sequences_for_annotation": 0,
-        "annotations_successful": 0,
-        "annotations_failed": 0,
-        "annotations_created": 0,
-        "sequences_rolled_back": 0,
-    }
-
-    # Initialize organization early to avoid reference errors in exception handlers
-    organization = shared.getenv_with_fallback("ALERT_API_LOGIN") or "unknown"
     selected_sequence_list: List[int] = []
     sequence_list_source = "CLI input"
 
@@ -432,7 +349,7 @@ def main() -> None:
     target_login, target_password = shared.get_annotation_credentials(
         args.annotation_api_url
     )
-    target_ok = test_annotation_credentials(
+    annotation_api_token = authenticate_annotation_api(
         args.annotation_api_url,
         target_login,
         target_password,
@@ -440,509 +357,38 @@ def main() -> None:
         console,
     )
 
-    if not target_ok:
+    if annotation_api_token is None:
         console.print("[red]❌ Aborting due to authentication failure[/]")
         sys.exit(1)
 
-    # Print header
-    console.print()
-    console.print(
-        Panel(
-            "[bold blue]Alert API Data Import & Processing[/]",
-            title="🔥 Pyronear Data Import",
-            border_style="blue",
-            padding=(0, 2),
-        )
+    if not shared.validate_available_env_variables():
+        console.print("[red]❌ Missing required environment variables for alert API[/]")
+        sys.exit(1)
+
+    config = ImportConfig(
+        alert_api_url=args.alert_api_url,
+        login=shared.getenv_with_fallback("ALERT_API_LOGIN") or "",
+        password=shared.getenv_with_fallback("ALERT_API_PASSWORD") or "",
+        admin_login=shared.getenv_with_fallback("ALERT_API_ADMIN_LOGIN") or "",
+        admin_password=shared.getenv_with_fallback("ALERT_API_ADMIN_PASSWORD") or "",
+        annotation_api_url=args.annotation_api_url,
+        annotation_api_token=annotation_api_token,
+        date_from=args.date_from,
+        date_end=args.date_end,
+        source_api=source_api,
+        image_transfer=args.image_transfer,
+        max_workers=args.max_workers,
+        frames_limit=args.frames_limit,
+        max_sequences=max_sequences,
+        dry_run=args.dry_run,
+        # The CLI is the interactive caller: it wants the rich progress output
+        # that the worker suppresses.
+        quiet=False,
+        selected_sequence_ids=selected_sequence_list or None,
     )
 
-    if args.loglevel == "debug":
-        console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
-        console.print(
-            f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
-        )
-        console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
-
-    try:
-        # Step 1: Fetch alert API data
-        successfully_imported_sequence_ids = []
-        step_manager.start_step(
-            1,
-            "Alert API Data Import",
-            f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
-        )
-
-        if not shared.validate_available_env_variables():
-            console.print(
-                "[red]❌ Missing required environment variables for alert API[/]"
-            )
-            step_manager.complete_step(False, "Missing environment variables")
-            sys.exit(1)
-
-        # Get alert API credentials
-        alert_api_login = shared.getenv_with_fallback("ALERT_API_LOGIN")
-        alert_api_password = shared.getenv_with_fallback("ALERT_API_PASSWORD")
-        alert_api_admin_login = shared.getenv_with_fallback("ALERT_API_ADMIN_LOGIN")
-        alert_api_admin_password = shared.getenv_with_fallback(
-            "ALERT_API_ADMIN_PASSWORD"
-        )
-
-        if not all(
-            [
-                alert_api_login,
-                alert_api_password,
-                alert_api_admin_login,
-                alert_api_admin_password,
-            ]
-        ):
-            error_collector.add_error("Missing alert API credentials")
-            step_manager.complete_step(False, "Missing alert API credentials")
-            sys.exit(1)
-
-        # Get access tokens with progress display
-        auth_start_time = time.time()
-        with console.status(
-            f"[bold blue]🔐 Authenticating with alert API ({organization})...",
-            spinner="dots",
-        ) as status:
-            try:
-                status.update(f"[bold blue]🔐 Getting {organization} access token...")
-                access_token = alert_api_client.get_api_access_token(
-                    api_endpoint=args.alert_api_url,
-                    username=alert_api_login,
-                    password=alert_api_password,
-                )
-
-                status.update("[bold blue]🔐 Getting admin access token...")
-                access_token_admin = alert_api_client.get_api_access_token(
-                    api_endpoint=args.alert_api_url,
-                    username=alert_api_admin_login,
-                    password=alert_api_admin_password,
-                )
-
-                auth_duration = time.time() - auth_start_time
-                console.print(
-                    f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]"
-                )
-
-            except Exception as e:
-                error_collector.add_error(f"Authentication failed: {e}")
-                step_manager.complete_step(False, f"Authentication failed: {e}")
-                sys.exit(1)
-
-        # Fetch alert API records
-        try:
-            records = fetch_all_sequences_within(
-                date_from=args.date_from,
-                date_end=args.date_end,
-                detections_limit=args.frames_limit,
-                detections_order_by="asc",
-                api_endpoint=args.alert_api_url,
-                access_token=access_token,
-                access_token_admin=access_token_admin,
-                worker_config=worker_config,
-                selected_sequence_list=selected_sequence_list or None,
-                max_sequences=max_sequences,
-                suppress_logs=suppress_logs,
-                console=console,
-                error_collector=error_collector,
-                organization=organization,
-                risk_score="extreme",
-            )
-        except Exception as e:
-            error_collector.add_error(f"Alert API data fetching failed: {e}")
-            step_manager.complete_step(False, f"Alert API data fetching failed: {e}")
-            error_collector.print_summary(console, "Alert API Data Fetching Errors")
-            sys.exit(1)
-
-        records, split_stats = object_split.split_all_records(records)
-        console.print(
-            f"[blue]🔀 Object split: {split_stats['alert_api_sequences']} alert sequence(s) → "
-            f"{split_stats['objects']} object sequence(s) "
-            f"({split_stats['sibling_objects']} sibling(s), "
-            f"{split_stats['fallback_sequences']} fallback, "
-            f"{split_stats['cross_deduped_siblings']} cross-deduped, "
-            f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
-        )
-        # Anomaly, not a routine stat: printed only when it fires, so a dropped
-        # verdict stays distinguishable from an alert API that sends no score.
-        if split_stats["dropped_temporal_scores"]:
-            console.print(
-                f"[yellow]⚠️  {split_stats['dropped_temporal_scores']} scored alert "
-                "sequence(s) had no identifiable primary object (no bbox-sourced box "
-                "in the imported window); their temporal model score was dropped "
-                "rather than attributed to an arbitrary object[/]"
-            )
-
-        # Boxless alerts import as zero-object lanes the classify page cannot
-        # act on (#333); they are auto-skipped after annotation creation below.
-        boxless_alert_ids = sorted(shared.boxless_platform_alert_ids(records))
-
-        if not records and not args.dry_run:
-            step_manager.complete_step(False, "No records fetched from alert API")
-            sys.exit(0)
-
-        # Post to annotation API (if not dry run)
-        if not args.dry_run:
-            console.print(
-                f"[blue]🚀 Posting {len(records)} records to annotation API...[/]"
-            )
-
-            try:
-                result = shared.post_records_to_annotation_api(
-                    args.annotation_api_url,
-                    records,
-                    max_workers=worker_config.api_posting,
-                    max_detection_workers=worker_config.detection_per_sequence,
-                    suppress_logs=suppress_logs,
-                    source_api=source_api,
-                    force_url=(args.image_transfer == "url"),
-                )
-
-                # Capture import statistics in main stats and get successfully imported sequence IDs
-                stats["records_fetched"] = len(records)
-                stats["sequences_attempted_import"] = result["total_sequences"]
-                stats["sequences_import_successful"] = result["successful_sequences"]
-                stats["sequences_import_failed"] = result["failed_sequences"]
-                stats["detections_attempted_import"] = result["total_detections"]
-                stats["detections_import_successful"] = result["successful_detections"]
-                stats["detections_import_failed"] = result["failed_detections"]
-                stats["sequences_skipped"] = result.get("skipped_sequences", 0)
-                stats["sequences_refreshed"] = result.get("refreshed_sequences", 0)
-                stats["refresh_failures"] = result.get("refresh_failures", 0)
-                stats["refresh_skipped"] = result.get("refresh_skipped", 0)
-                if stats["refresh_failures"]:
-                    # Feed the exit code and the ❌ summary: a backfill whose
-                    # refreshes all failed must not report success.
-                    error_collector.add_error(
-                        f"{stats['refresh_failures']} temporal score refresh(es) failed"
-                    )
-                stats["detections_skipped"] = result.get("skipped_detections", 0)
-                successfully_imported_sequence_ids = result["successful_sequence_ids"]
-
-                # Prepare step completion stats for display
-                step_stats = {
-                    "Records fetched": len(records),
-                    "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
-                    "Sequences skipped": result.get("skipped_sequences", 0),
-                    "Detections skipped": result.get("skipped_detections", 0),
-                    "Detections posted": f"{result['successful_detections']}/{result['total_detections']}",
-                }
-
-                step_success = (
-                    result["failed_sequences"] == 0 and result["failed_detections"] == 0
-                )
-                step_message = (
-                    "Alert API data successfully imported"
-                    if step_success
-                    else "Alert API data imported with some failures"
-                )
-
-                step_manager.complete_step(step_success, step_message, step_stats)
-
-                if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
-                    error_collector.add_warning(
-                        f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import. "
-                        "Enable --loglevel debug to see per-sequence errors."
-                    )
-
-            except Exception as e:
-                error_collector.add_error(f"Failed to post data to annotation API: {e}")
-                step_manager.complete_step(
-                    False, f"Failed to post data to annotation API: {e}"
-                )
-                error_collector.print_summary(console, "Alert API Data Import Errors")
-                sys.exit(1)
-        else:
-            # For dry run, capture what would have been imported but don't set sequence IDs
-            stats["records_fetched"] = len(records)
-            step_stats = {"Records that would be posted": len(records)}
-            step_manager.complete_step(
-                True, "DRY RUN: Alert API data fetch completed", step_stats
-            )
-
-        # Step 2: Prepare sequences for annotation generation
-        step_manager.start_step(
-            2,
-            "Sequence Preparation",
-            f"Preparing successfully imported {organization} sequences for annotation generation",
-        )
-
-        # Use only successfully imported sequences for annotation processing
-        sequence_ids = successfully_imported_sequence_ids
-
-        if not sequence_ids:
-            step_message = "No sequences successfully imported - nothing to process for annotation generation"
-            step_manager.complete_step(True, step_message)
-
-            # Boxless alerts from a previous run over this range may still
-            # need parking (an earlier skip failed, or the range predates the
-            # auto-skip feature); their lanes already exist, so skip works.
-            if boxless_alert_ids and not args.dry_run:
-                auto_skip_boxless(
-                    args.annotation_api_url,
-                    target_login,
-                    target_password,
-                    source_api,
-                    boxless_alert_ids,
-                    console,
-                    error_collector,
-                )
-
-            # Show final summary with zero processing and exit gracefully.
-            # A pure backfill lands here: every sequence already existed, so
-            # nothing was "imported". This path exits before the detailed
-            # summary below, so the refresh counts must be reported here or
-            # they are invisible in exactly the run that produced them.
-            refresh_note = ""
-            title = f"⚠️ Processing Complete - {organization} - No Annotations Generated"
-            if (
-                stats["sequences_refreshed"]
-                or stats["refresh_failures"]
-                or stats["refresh_skipped"]
-            ):
-                refresh_note = (
-                    f"\n\n[green]Temporal scores refreshed: "
-                    f"{stats['sequences_refreshed']}[/]"
-                )
-                if stats["refresh_skipped"]:
-                    refresh_note += (
-                        f"\n[yellow]Skipped (score not determinable this run, "
-                        f"existing values left intact): "
-                        f"{stats['refresh_skipped']}[/]"
-                    )
-                if stats["refresh_failures"]:
-                    refresh_note += (
-                        f"\n[red]Refresh failures: {stats['refresh_failures']}[/]"
-                    )
-                # Only a run that actually refreshed something may claim success;
-                # 0 refreshed with N failures is a failed backfill, not a green one.
-                if stats["refresh_failures"]:
-                    title = (
-                        f"❌ Processing Complete - {organization} - "
-                        f"{stats['refresh_failures']} Refresh Failure(s)"
-                    )
-                elif stats["sequences_refreshed"]:
-                    title = (
-                        f"✅ Processing Complete - {organization} - "
-                        f"{stats['sequences_refreshed']} Temporal Score(s) Refreshed"
-                    )
-            console.print()
-            panel = Panel(
-                f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
-                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]"
-                + refresh_note,
-                title=title,
-                border_style="yellow",
-                padding=(1, 2),
-            )
-            console.print(panel)
-            sys.exit(1 if stats["refresh_failures"] else 0)
-
-        stats["total_sequences_for_annotation"] = len(sequence_ids)
-        step_stats = {"Successfully imported sequences": len(sequence_ids)}
-        step_manager.complete_step(
-            True,
-            f"Prepared {len(sequence_ids)} sequences for annotation generation",
-            step_stats,
-        )
-
-        # Step 3: Create sequence annotations with auto-generation
-        step_manager.start_step(
-            3,
-            "Sequence Annotation Creation",
-            f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
-        )
-
-        alert_api_seq_results = []
-        annotation_auth_token = None
-        if not args.dry_run:
-            alert_api_seq_results = [
-                r for r in result.get("sequence_results", []) if not r.get("skipped")
-            ]
-            # Captured here because the collection loop below rebinds `result`.
-            annotation_auth_token = result["auth_token"]
-
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=worker_config.annotation_processing
-        ) as executor:
-            # Submit all sequence annotation tasks
-            future_to_sequence_id = {
-                executor.submit(
-                    annotate_split_sequence,
-                    seq_result=seq_result,
-                    annotation_api_url=args.annotation_api_url,
-                    auth_token=annotation_auth_token,
-                    dry_run=args.dry_run,
-                ): seq_result["sequence_id"]
-                for seq_result in alert_api_seq_results
-            }
-
-            # Collect results with progress tracking
-            with LogSuppressor(suppress=suppress_logs):
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold blue]Creating sequence annotations"),
-                    BarColumn(bar_width=40),
-                    TaskProgressColumn(),
-                    console=Console(),
-                    transient=True,
-                ) as progress_bar:
-                    task = progress_bar.add_task(
-                        "Processing sequences", total=len(future_to_sequence_id)
-                    )
-                    for future in concurrent.futures.as_completed(
-                        future_to_sequence_id
-                    ):
-                        sequence_id = future_to_sequence_id[future]
-                        try:
-                            result = future.result()
-
-                            # Update annotation statistics
-                            if result["errors"]:
-                                stats["annotations_failed"] += 1
-                                for error in result["errors"]:
-                                    error_collector.add_error(
-                                        f"Sequence {sequence_id}: {error}"
-                                    )
-                                    if "rolled back" in error:
-                                        stats["sequences_rolled_back"] += 1
-                            else:
-                                stats["annotations_successful"] += 1
-
-                            if result["annotation_created"]:
-                                stats["annotations_created"] += 1
-
-                            # Log progress (suppressed unless debug)
-                            logger.debug(
-                                f"Sequence {sequence_id}: "
-                                f"annotation={'✓' if result['annotation_created'] else '✗'}, "
-                                f"stage={result['final_stage'] or 'failed'}"
-                            )
-                            progress_bar.advance(task)
-
-                        except Exception as e:
-                            error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
-                            error_collector.add_error(error_msg)
-                            stats["annotations_failed"] += 1
-                            progress_bar.advance(task)
-
-        # Complete Step 3 with annotation statistics
-        step_3_success = stats["annotations_failed"] == 0
-        final_stats = {
-            "Sequences processed": stats["total_sequences_for_annotation"],
-            "Annotations successful": stats["annotations_successful"],
-            "Annotations failed": stats["annotations_failed"],
-            "Annotations created": stats["annotations_created"],
-        }
-
-        step_3_message = (
-            "All sequence annotations created successfully"
-            if step_3_success
-            else f"{stats['annotations_failed']} annotation(s) failed"
-        )
-        if args.dry_run:
-            step_3_message = "DRY RUN: " + step_3_message
-
-        step_manager.complete_step(step_3_success, step_3_message, final_stats)
-
-        # Auto-skip boxless alerts (#333): their lanes exist now (sequence +
-        # annotation) but have zero objects, so park them via the skip overlay
-        # instead of leaving dead lanes in the classify queue.
-        skip_counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
-        if boxless_alert_ids and not args.dry_run:
-            skip_counts = auto_skip_boxless(
-                args.annotation_api_url,
-                target_login,
-                target_password,
-                source_api,
-                boxless_alert_ids,
-                console,
-                error_collector,
-            )
-
-        # Show any accumulated errors/warnings
-        if error_collector.has_issues():
-            error_collector.print_summary(console, "Processing Summary")
-
-        # Enhanced final summary panel with import and annotation breakdown
-        console.print()
-
-        # Determine overall success (critical failures, not including expected duplicates)
-        has_critical_failures = (
-            stats["annotations_failed"] > 0 or error_collector.get_error_count() > 0
-        )
-
-        success = not has_critical_failures
-        style = "green" if success else "red"
-        icon = "✅" if success else "❌"
-
-        # Build comprehensive summary
-        summary_parts = []
-
-        # Alert API Import Section
-        if not args.dry_run:
-            import_section = f"""[bold cyan]ALERT API IMPORT:[/]
-• Records fetched: {stats['records_fetched']}
-• Sequences attempted: {stats['sequences_attempted_import']}
-• Successfully imported: {stats['sequences_import_successful']}
-• Skipped (already imported): {stats['sequences_skipped']} sequences / {stats['detections_skipped']} detections
-• Failed: {stats['sequences_import_failed']}"""
-            if stats["sequences_refreshed"] or stats["refresh_failures"]:
-                import_section += (
-                    f"\n• Temporal scores refreshed: {stats['sequences_refreshed']}"
-                )
-            if stats["refresh_failures"]:
-                import_section += (
-                    f"\n• [yellow]Refresh failures: {stats['refresh_failures']}[/]"
-                )
-            if stats["sequences_rolled_back"] > 0:
-                import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
-            summary_parts.append(import_section)
-
-        # Annotation Generation Section
-        annotation_section = f"""[bold blue]ANNOTATION GENERATION:[/]
-• Sequences processed: {stats['total_sequences_for_annotation']}
-• Annotations successful: {stats['annotations_successful']}
-• Annotations failed: {stats['annotations_failed']}
-• Annotations created: {stats['annotations_created']}"""
-        if boxless_alert_ids:
-            annotation_section += (
-                f"\n• Boxless alerts auto-skipped: {skip_counts['skipped']} "
-                f"(+{skip_counts['already_skipped']} already skipped, "
-                f"{skip_counts['failed']} failed): {boxless_alert_ids}"
-            )
-        summary_parts.append(annotation_section)
-
-        # Join sections
-        summary_text = "\n\n".join(summary_parts)
-
-        # Add dry run notice
-        if args.dry_run:
-            summary_text += "\n\n[yellow]DRY RUN: No actual changes were made[/]"
-
-        panel = Panel(
-            summary_text,
-            title=f"{icon} Processing Complete - {organization}",
-            border_style=style,
-            padding=(1, 2),
-        )
-        console.print(panel)
-
-        # Exit with appropriate code (only exit with error for critical failures)
-        if has_critical_failures:
-            sys.exit(1)
-        else:
-            sys.exit(0)
-
-    except KeyboardInterrupt:
-        console.print("\n[yellow]⚠️  Processing interrupted by user[/]")
-        error_collector.print_summary(console, "Errors Before Interruption")
-        sys.exit(1)
-    except Exception as e:
-        error_collector.add_error(f"Unexpected error during processing: {e}")
-        console.print(f"\n[red]❌ Unexpected error during processing: {e}[/]")
-        error_collector.print_summary(console, "Critical Processing Errors")
-        sys.exit(1)
+    result = run_import(config)
+    sys.exit(0 if result.ok else 1)
 
 
 if __name__ == "__main__":

@@ -337,4 +337,13 @@ export const QUERY_KEYS = {
   USERS: ['users'],
   USER: (id: number) => ['users', id],
   ANNOTATORS: ['annotators'],
+  CONNECTORS: ['connectors'],
+  CONNECTOR_ORGANIZATIONS: (id: number) => ['connectors', id, 'organizations'],
+  CONNECTOR_COVERAGE: (id: number, from: string, to: string) => [
+    'connectors',
+    id,
+    'coverage',
+    from,
+    to,
+  ],
 } as const;

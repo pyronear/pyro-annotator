@@ -1,0 +1,311 @@
+"""Verify: authenticate, discover organizations idempotently, and probe whether
+the credential actually sees more than one organization's sequences."""
+
+import time
+from datetime import date, datetime
+
+import pytest
+from cryptography.fernet import Fernet
+from sqlmodel import select
+
+from app.core.config import settings
+from app.models import AlertApiConnector, AlertApiConnectorOrganization, SourceApi
+from app.services import connector_verify
+from app.services.connector_verify import check_connector_credentials, verify_connector
+from app.services.secrets import encrypt_secret
+
+ORGS = [
+    {"id": 1, "name": "Ardeche"},
+    {"id": 2, "name": "Aveyron"},
+    {"id": 3, "name": "Gard"},
+]
+CAMERAS = [
+    {"id": 10, "name": "cam-a", "organization_id": 1},
+    {"id": 20, "name": "cam-b", "organization_id": 2},
+]
+SEQUENCES = [
+    {"id": 100, "camera_id": 10},
+    {"id": 101, "camera_id": 20},
+    {"id": 102, "camera_id": 10},
+]
+
+
+@pytest.fixture
+def secret_key(monkeypatch):
+    monkeypatch.setattr(
+        settings, "CONNECTOR_SECRET_KEY", Fernet.generate_key().decode()
+    )
+
+
+@pytest.fixture
+def alert_api(monkeypatch):
+    """Stub the alert API client at the seam connector_verify imports it from."""
+
+    def fake_token(api_endpoint, username, password):
+        if password != "good":
+            raise RuntimeError("401 Unauthorized")
+        return "tok"
+
+    monkeypatch.setattr(
+        connector_verify.alert_api_client, "get_api_access_token", fake_token
+    )
+    monkeypatch.setattr(
+        connector_verify.alert_api_client, "list_organizations", lambda **kw: ORGS
+    )
+    monkeypatch.setattr(
+        connector_verify.alert_api_client, "list_cameras", lambda **kw: CAMERAS
+    )
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_sequences_for_date",
+        lambda **kw: SEQUENCES,
+    )
+
+
+async def _connector(session, password="good"):
+    connector = AlertApiConnector(
+        name="Test",
+        base_url="https://a.example",
+        source_api=SourceApi.PYRONEAR_FRENCH_API,
+        login="admin",
+        password_encrypted=encrypt_secret(password),
+    )
+    session.add(connector)
+    await session.commit()
+    await session.refresh(connector)
+    return connector
+
+
+async def test_discovers_and_persists_organizations(
+    async_session, alert_api, secret_key
+):
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is True
+    assert {org.organization_id for org in result.organizations} == {1, 2, 3}
+    rows = (
+        (await async_session.execute(select(AlertApiConnectorOrganization)))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 3
+    assert all(row.is_enabled is False for row in rows)
+
+
+async def test_rediscovery_is_idempotent_and_preserves_enabled(
+    async_session, alert_api, secret_key
+):
+    connector = await _connector(async_session)
+    await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    row = (
+        (
+            await async_session.execute(
+                select(AlertApiConnectorOrganization).where(
+                    AlertApiConnectorOrganization.organization_id == 2
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    row.is_enabled = True
+    row.enabled_at = datetime(2026, 8, 1)
+    async_session.add(row)
+    await async_session.commit()
+
+    await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    rows = (
+        (await async_session.execute(select(AlertApiConnectorOrganization)))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 3, "re-verifying must not duplicate organizations"
+    assert [r.is_enabled for r in rows if r.organization_id == 2] == [True]
+
+
+async def test_reports_organizations_seen_in_sample(
+    async_session, alert_api, secret_key
+):
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    # Sequences came from cameras in organizations 1 and 2, out of 3 known.
+    assert result.organizations_seen_in_sample == 2
+    assert result.organizations_total == 3
+    assert result.sample_date == date(2026, 8, 5)
+
+
+async def test_bad_credentials_record_error_and_do_not_raise(
+    async_session, alert_api, secret_key
+):
+    connector = await _connector(async_session, password="bad")
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert result.error
+    # Refresh explicitly: verify_connector commits, and reading an expired
+    # attribute would trigger a sync lazy load, which async SQLAlchemy forbids
+    # (MissingGreenlet).
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None
+
+
+async def test_success_clears_previous_error(async_session, alert_api, secret_key):
+    connector = await _connector(async_session)
+    connector.last_verify_error = "stale failure"
+    async_session.add(connector)
+    await async_session.commit()
+
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is True
+    await async_session.refresh(connector)
+    assert connector.last_verify_error is None
+    assert connector.last_verified_at is not None
+
+
+async def test_error_message_never_contains_the_password(
+    async_session, alert_api, secret_key
+):
+    connector = await _connector(async_session, password="bad")
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+    assert "bad" not in (result.error or "")
+
+
+async def test_malformed_probe_response_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """`api_get` only raises on unparsable JSON, so a non-2xx response with a
+    valid JSON error body (e.g. an expired-token 401) comes back as a dict
+    where a list is expected. That must fail like any other verify error, not
+    raise a TypeError out of the org-upsert loop."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Not authenticated"},
+    )
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert result.error
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None
+
+
+async def test_insufficient_scope_detail_reaches_the_operator(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """Connectors need an admin-scoped alert-API credential, and nothing in the
+    UI says so. A non-admin account authenticates fine and then gets
+    `{"detail": "Incompatible token scope."}` from `/organizations/` (verified
+    against the real alert API, 2026-08-07) — so that detail is the only signal
+    telling the operator which credential to swap in. Reporting a bare
+    "unexpected response shape" throws it away."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Incompatible token scope."},
+    )
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert "Incompatible token scope." in (result.error or "")
+
+
+async def test_probe_timeout_records_error_and_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """A host that black-holes packets must not hang verify forever: the probe
+    is wrapped in asyncio.wait_for, and the resulting TimeoutError must be
+    caught by the same `except Exception` as any other verify failure rather
+    than propagating out of verify_connector."""
+    monkeypatch.setattr(connector_verify, "_PROBE_TIMEOUT_SECONDS", 0.05)
+
+    def slow(**kw):
+        time.sleep(0.2)
+        return CAMERAS
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_cameras", slow)
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert "Timeout" in (result.error or "")
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None
+
+
+# --- check_connector_credentials: the stateless pre-save credential check ---
+
+
+async def test_credentials_ok_reports_organization_count(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is True
+    assert result.error is None
+    assert result.organizations_total == 3
+
+
+async def test_credentials_bad_password_reports_error(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "bad")
+    assert result.ok is False
+    assert "401" in (result.error or "")
+
+
+async def test_credentials_org_scoped_account_reports_scope_detail(
+    alert_api, monkeypatch
+):
+    """The failure mode operators actually hit (verified against production
+    2026-08-07): a non-admin credential authenticates, then /organizations/
+    answers {"detail": "Incompatible token scope."}. That detail must reach
+    the operator."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Incompatible token scope."},
+    )
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is False
+    assert "Incompatible token scope." in (result.error or "")
+
+
+async def test_credentials_never_echo_the_password(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "bad")
+    assert "bad" not in (result.error or "")
+
+
+async def test_credentials_timeout_is_bounded(alert_api, monkeypatch):
+    monkeypatch.setattr(connector_verify, "_TEST_TIMEOUT_SECONDS", 0.05)
+
+    def slow(**kw):
+        time.sleep(0.2)
+        return ORGS
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_organizations", slow)
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is False
+    assert "Timeout" in (result.error or "")
+
+
+async def test_connection_error_during_probe_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    def boom(**kw):
+        raise ConnectionError("network unreachable")
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_cameras", boom)
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert result.error
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None

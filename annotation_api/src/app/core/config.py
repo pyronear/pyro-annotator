@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     ANNOTATOR_LOGIN: str = os.environ.get("ANNOTATOR_LOGIN", "admin")
     ANNOTATOR_PASSWORD: str = os.environ.get("ANNOTATOR_PASSWORD", "admin")
 
+    # Connector credentials: Fernet key used to encrypt alert-API passwords at
+    # rest. Generate with: python -c "from cryptography.fernet import Fernet;
+    # print(Fernet.generate_key().decode())". Empty means connectors are
+    # disabled (create/update 400s, worker skips) — existing deployments that
+    # never set it keep working untouched.
+    CONNECTOR_SECRET_KEY: str = os.environ.get("CONNECTOR_SECRET_KEY", "")
+    # Where the worker reaches the annotation API to POST imported records.
+    # Not a secret.
+    ANNOTATION_API_INTERNAL_URL: str = os.environ.get(
+        "ANNOTATION_API_INTERNAL_URL", "http://annotation_api:5050"
+    )
+
     # Serving / DB pool sizing.
     #
     # Each uvicorn worker is a separate process with its own SQLAlchemy pool,
