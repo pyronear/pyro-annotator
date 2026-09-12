@@ -556,6 +556,73 @@ async def test_export_alerts_omits_unsure_lanes(
     assert [o["sequence_id"] for o in items[0]["objects"]] == [sure_seq]
 
 
+@pytest.mark.asyncio
+async def test_export_alerts_excludes_non_wildfire_smoke(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """Non-wildfire smoke drops its whole alert, siblings included.
+
+    Lanes of one alert share their frames, so keeping a false-positive or
+    wildfire sibling would export images holding visible, unlabeled
+    industrial/other smoke.
+    """
+
+    async def seed_alert(
+        platform_alert_id: int,
+        *,
+        smoke_type: Optional[str],
+        is_unsure: bool = False,
+    ) -> None:
+        """One FP lane plus one smoke lane of the given type on one alert."""
+        fp_seq = await create_lane(
+            authenticated_client,
+            platform_alert_id=platform_alert_id,
+            alert_api_id=platform_alert_id,
+        )
+        fp_det = await create_frame(
+            authenticated_client, sequence_id=fp_seq, alert_api_id=1
+        )
+        await annotate_lane(
+            authenticated_client,
+            sequence_id=fp_seq,
+            detection_ids=[fp_det],
+            is_smoke=False,
+            false_positive_types=["antenna"],
+        )
+        smoke_seq = await create_lane(
+            authenticated_client,
+            platform_alert_id=platform_alert_id,
+            alert_api_id=1000000000000 + platform_alert_id,
+        )
+        smoke_det = await create_frame(
+            authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+        )
+        await annotate_lane(
+            authenticated_client,
+            sequence_id=smoke_seq,
+            detection_ids=[smoke_det],
+            is_smoke=True,
+            smoke_type=smoke_type,
+            is_unsure=is_unsure,
+        )
+
+    await seed_alert(7401, smoke_type="wildfire")
+    await seed_alert(7402, smoke_type="industrial")
+    await seed_alert(7403, smoke_type="other")
+    # Unsure lanes never export, but their smoke is still in the frames the
+    # sure sibling would ship, so the alert goes too.
+    await seed_alert(7404, smoke_type="industrial", is_unsure=True)
+
+    resp = await authenticated_client.get("/export/alerts")
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [7401]
+    # The wildfire alert keeps both of its lanes.
+    assert len(items[0]["objects"]) == 2
+
+
 async def seed_minimal_fp_alert(client: AsyncClient, *, platform_alert_id: int) -> int:
     """Smallest finished alert: one FP lane, one frame. Returns sequence id."""
     seq_id = await create_lane(

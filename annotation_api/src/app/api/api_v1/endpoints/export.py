@@ -26,6 +26,12 @@ from app.services.storage import s3_service
 
 router = APIRouter()
 
+# Smoke the dataset does not train on. Derived from the enum so a new smoke
+# type is excluded by default rather than silently exported.
+NON_WILDFIRE_SMOKE_TYPES = [
+    st.value for st in SmokeType if st is not SmokeType.WILDFIRE
+]
+
 
 class BoxExport(BaseModel):
     """One annotated box. Exactly one of smoke_type / false_positive_types is set."""
@@ -138,7 +144,9 @@ def _fp_lane_bboxes_by_detection(
     description=(
         "Alert-centric export of finished annotation work for ML training. "
         "Only alerts whose every lane is at stage annotated are returned; "
-        "unsure lanes are omitted. Keyset-paginated via cursor."
+        "unsure lanes are omitted. Alerts carrying any non-wildfire smoke "
+        "(industrial, other) are excluded entirely. Keyset-paginated via "
+        "cursor."
     ),
 )
 async def export_alerts(
@@ -176,7 +184,11 @@ async def export_alerts(
     ),
     smoke_types: Optional[List[SmokeType]] = Query(
         None,
-        description="Keep alerts with at least one lane containing any of these smoke types",
+        description=(
+            "Keep alerts with at least one lane containing any of these smoke "
+            "types. Only wildfire is ever exported, so any other value "
+            "matches nothing."
+        ),
     ),
     false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None,
@@ -250,6 +262,19 @@ async def export_alerts(
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(annotated_lanes == total_lanes)
         .having(exported_lanes > 0)
+        # Wildfire smoke only: one lane annotated industrial or other drops
+        # the whole alert, not just that lane. Lanes of an alert share their
+        # frames, so exporting a sibling would ship images with visible,
+        # unlabeled non-wildfire smoke. Spans ALL lanes, unsure included, for
+        # the same reason. bool_or is NULL when no lane matches, and
+        # `IS NOT TRUE` keeps those groups.
+        .having(
+            func.bool_or(
+                SequenceAnnotation.smoke_types.op("?|")(
+                    cast(NON_WILDFIRE_SMOKE_TYPES, ARRAY(String))
+                )
+            ).is_not(True)
+        )
         .order_by(Sequence.source_api, Sequence.platform_alert_id)
         .limit(limit)
     )
