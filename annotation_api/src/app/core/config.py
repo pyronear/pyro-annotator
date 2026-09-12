@@ -101,13 +101,11 @@ class Settings(BaseSettings):
     AUTOANNOTATE_MODEL_PATH: str = os.environ.get(
         "AUTOANNOTATE_MODEL_PATH", "/app/models"
     )
-    AUTOANNOTATE_MODEL_NAME: str = os.environ.get(
-        "AUTOANNOTATE_MODEL_NAME", "yolo11s_sensitive-detector"
-    )
+    AUTOANNOTATE_MODEL_NAME: str = os.environ.get("AUTOANNOTATE_MODEL_NAME", "yolov11s")
     AUTOANNOTATE_MODEL_VERSION: str = os.environ.get(
-        "AUTOANNOTATE_MODEL_VERSION", "onnx-main"
+        "AUTOANNOTATE_MODEL_VERSION", "onnx-v8.2.0"
     )
-    AUTOANNOTATE_CONF: float = float(os.environ.get("AUTOANNOTATE_CONF", "0.01"))
+    AUTOANNOTATE_CONF: float = float(os.environ.get("AUTOANNOTATE_CONF", "0.05"))
     AUTOANNOTATE_IOU: float = float(os.environ.get("AUTOANNOTATE_IOU", "0.0"))
     AUTOANNOTATE_IMGSZ: int = int(os.environ.get("AUTOANNOTATE_IMGSZ", "1024"))
     # Clustering thresholds for the gap-fill anchor (mirror the retired file-based auto-annotate script):
