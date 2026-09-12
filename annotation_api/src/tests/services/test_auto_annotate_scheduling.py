@@ -23,9 +23,15 @@ async def _lane(
     has_smoke=False,
     has_missed_smoke=False,
     is_unsure=False,
+    smoke_types=None,
     source_api=SourceApi.PYRONEAR_FRENCH_API,
 ):
-    """Insert a sequence, plus an annotation when stage is given."""
+    """Insert a sequence, plus an annotation when stage is given.
+
+    ``has_smoke`` defaults its type to wildfire: only wildfire localizes, so a
+    lane meant to reach the queue must carry it. Pass ``smoke_types`` to model
+    an industrial or other-smoke lane.
+    """
     seq = Sequence(
         source_api=source_api,
         alert_api_id=alert_api_id,
@@ -48,6 +54,11 @@ async def _lane(
                 sequence_id=seq.id,
                 has_smoke=has_smoke,
                 has_false_positives=not has_smoke,
+                smoke_types=(
+                    smoke_types
+                    if smoke_types is not None
+                    else (["wildfire"] if has_smoke else [])
+                ),
                 has_missed_smoke=has_missed_smoke,
                 is_unsure=is_unsure,
                 annotation={"sequences_bbox": []},
@@ -297,3 +308,31 @@ async def test_blocked_alert_still_enqueues_its_smoke_lane(async_session):
     )
     await schedule_pending_auto_annotate(async_session)
     assert await _enqueued_ids(async_session) == {smoke.id}
+
+
+async def test_industrial_smoke_lane_is_not_enqueued(async_session):
+    """Only wildfire is boxed: an industrial lane is done at classify."""
+    lane = await _lane(
+        async_session,
+        alert_api_id=910,
+        platform_alert_id=910,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        smoke_types=["industrial"],
+    )
+    assert await schedule_pending_auto_annotate(async_session) == []
+    assert lane.id not in await _enqueued_ids(async_session)
+
+
+async def test_missed_smoke_lane_is_enqueued_whatever_its_type(async_session):
+    """Smoke no track covers has no type yet, so it localizes regardless."""
+    lane = await _lane(
+        async_session,
+        alert_api_id=911,
+        platform_alert_id=911,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        has_missed_smoke=True,
+        smoke_types=["industrial"],
+    )
+    assert await schedule_pending_auto_annotate(async_session) == [lane.id]

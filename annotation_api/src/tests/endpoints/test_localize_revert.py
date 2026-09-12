@@ -80,6 +80,7 @@ async def _annotate_lane(
     sequence_id: int,
     detection_id: int,
     is_smoke: bool = True,
+    smoke_type: str = "wildfire",
     is_unsure: bool = False,
     stage: str = "seq_annotation_done",
 ) -> int:
@@ -92,6 +93,9 @@ async def _annotate_lane(
             "sequences_bbox": [
                 {
                     "is_smoke": is_smoke,
+                    # only wildfire localizes, so a smoke lane bound for the
+                    # queue must carry a type the rule accepts
+                    **({"smoke_type": smoke_type} if is_smoke else {}),
                     "false_positive_types": [] if is_smoke else ["antenna"],
                     "bboxes": [
                         {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}

@@ -58,7 +58,13 @@ async def _lane(
                 annotation={"sequences_bbox": []},
                 processing_stage=stage,
                 created_at=recorded_at,
-                smoke_types=smoke_types or [],
+                # only wildfire localizes: a lane meant to reach the queue
+                # must carry it, so has_smoke defaults its type
+                smoke_types=(
+                    smoke_types
+                    if smoke_types is not None
+                    else (["wildfire"] if has_smoke else [])
+                ),
             )
         )
     await session.commit()

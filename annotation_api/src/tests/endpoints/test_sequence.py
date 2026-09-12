@@ -2200,7 +2200,9 @@ async def test_needs_localization_filter(
 ):
     now = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
 
-    async def make(alert_api_id, *, has_smoke, has_missed_smoke, is_unsure):
+    async def make(
+        alert_api_id, *, has_smoke, has_missed_smoke, is_unsure, smoke_types=None
+    ):
         seq = Sequence(
             source_api=SourceApi.PYRONEAR_FRENCH_API,
             alert_api_id=alert_api_id,
@@ -2222,6 +2224,12 @@ async def test_needs_localization_filter(
                 sequence_id=seq.id,
                 has_smoke=has_smoke,
                 has_false_positives=not has_smoke,
+                # only wildfire localizes
+                smoke_types=(
+                    smoke_types
+                    if smoke_types is not None
+                    else (["wildfire"] if has_smoke else [])
+                ),
                 has_missed_smoke=has_missed_smoke,
                 is_unsure=is_unsure,
                 annotation={"sequences_bbox": []},
@@ -2236,6 +2244,13 @@ async def test_needs_localization_filter(
     missed = await make(9002, has_smoke=False, has_missed_smoke=True, is_unsure=False)
     fp = await make(9003, has_smoke=False, has_missed_smoke=False, is_unsure=False)
     unsure = await make(9004, has_smoke=True, has_missed_smoke=False, is_unsure=True)
+    industrial = await make(
+        9006,
+        has_smoke=True,
+        has_missed_smoke=False,
+        is_unsure=False,
+        smoke_types=["industrial"],
+    )
 
     # No-annotation sequence: should be excluded from both filters
     no_ann = Sequence(
@@ -2266,7 +2281,7 @@ async def test_needs_localization_filter(
         "/sequences", params={"needs_localization": False}
     )
     ids = {item["id"] for item in resp.json()["items"]}
-    assert ids == {fp.id, unsure.id}
+    assert ids == {fp.id, unsure.id, industrial.id}
 
 
 @pytest.mark.asyncio

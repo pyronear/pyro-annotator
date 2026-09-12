@@ -74,6 +74,7 @@ async def _create_sequence_annotation(
     stage: str,
     has_missed_smoke: bool = False,
     is_unsure: bool = False,
+    smoke_type: str = "wildfire",
 ):
     payload = {
         "sequence_id": sequence_id,
@@ -83,6 +84,9 @@ async def _create_sequence_annotation(
             "sequences_bbox": [
                 {
                     "is_smoke": is_smoke,
+                    # only wildfire localizes, so a lane bound for the queue
+                    # must carry a type the rule accepts
+                    **({"smoke_type": smoke_type} if is_smoke else {}),
                     "false_positive_types": [] if is_smoke else ["antenna"],
                     "bboxes": [
                         {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}

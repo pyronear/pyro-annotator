@@ -5,11 +5,20 @@
 
 """Localization rule (spec: multi-object alert collocation, sub-project 1).
 
-A lane needs localization when it has smoke anywhere — its own tracked object
-(has_smoke) or smoke outside any proposed track (has_missed_smoke) — and is
-not unsure:
+A lane needs localization when it carries WILDFIRE smoke on its own tracked
+object, or smoke outside any proposed track (has_missed_smoke), and is not
+unsure:
 
-    (has_smoke OR has_missed_smoke) AND NOT is_unsure
+    ((has_smoke AND wildfire in smoke_types) OR has_missed_smoke)
+        AND NOT is_unsure
+
+Only wildfire is boxed. Industrial and other smoke are classified and done —
+they are not training targets for the detector, so spending localization
+effort on them buys nothing.
+
+``has_missed_smoke`` localizes whatever its type: the annotator flagged smoke
+no proposed track covers, so nothing has assigned it a type yet. An empty
+``smoke_types`` means UNKNOWN, not wildfire, and does not localize on its own.
 
 Single source of truth for the auto-annotate sweep, the localization queue,
 the submit exit guard, and the GET /sequences needs_localization filter. The
@@ -21,22 +30,45 @@ The module also owns the complementary question of whether a lane is SETTLED
 work; being unsettled is about what a lane does to its siblings.
 """
 
-from sqlalchemy import and_, or_
+from collections.abc import Iterable
 
-from app.models import SequenceAnnotationProcessingStage
+from sqlalchemy import and_, func, or_
+
+from app.models import SequenceAnnotationProcessingStage, SmokeType
 
 
 def needs_localization(
-    has_smoke: bool, has_missed_smoke: bool, is_unsure: bool
+    has_smoke: bool,
+    has_missed_smoke: bool,
+    is_unsure: bool,
+    smoke_types: Iterable[str] | None,
 ) -> bool:
-    """Python form of the rule."""
-    return (has_smoke or has_missed_smoke) and not is_unsure
+    """Python form of the rule.
+
+    ``smoke_types`` has no default on purpose: a caller that forgets it fails
+    loudly instead of silently reverting to the any-smoke behaviour.
+    """
+    has_wildfire = SmokeType.WILDFIRE.value in (smoke_types or ())
+    return ((has_smoke and has_wildfire) or has_missed_smoke) and not is_unsure
 
 
 def needs_localization_clause(ann):
-    """SQL form of the rule over a (possibly aliased) SequenceAnnotation."""
+    """SQL form of the rule over a (possibly aliased) SequenceAnnotation.
+
+    ``@>`` is the JSONB containment operator, served by the GIN index on
+    smoke_types (see SequenceAnnotation.__table_args__). Wrapped in
+    ``coalesce`` because the column is nullable and NULL @> x is NULL, which
+    would drop the row from an OR instead of reading as false.
+    """
+    has_wildfire = func.coalesce(
+        ann.smoke_types.op("@>")(func.jsonb_build_array(SmokeType.WILDFIRE.value)),
+        False,
+    )
     return and_(
-        or_(ann.has_smoke.is_(True), ann.has_missed_smoke.is_(True)),
+        or_(
+            and_(ann.has_smoke.is_(True), has_wildfire),
+            ann.has_missed_smoke.is_(True),
+        ),
         ann.is_unsure.is_(False),
     )
 

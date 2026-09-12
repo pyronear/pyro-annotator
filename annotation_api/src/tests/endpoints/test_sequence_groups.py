@@ -16,7 +16,6 @@ The two seeded sequences have non-overlapping bboxes, so they never share
 a group organically.
 """
 
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -500,32 +499,35 @@ def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    ("stage", "has_smoke", "has_missed_smoke", "is_unsure", "expected"),
+    ("stage", "has_smoke", "has_missed_smoke", "is_unsure", "smoke_types", "expected"),
     [
         # Classification finishes here for anything that owes localization.
-        ("SEQ_ANNOTATION_DONE", True, False, False, True),
-        ("SEQ_ANNOTATION_DONE", False, False, True, True),  # unsure, parked
+        ("SEQ_ANNOTATION_DONE", True, False, False, ["wildfire"], True),
+        ("SEQ_ANNOTATION_DONE", False, False, True, [], True),  # unsure, parked
         # Two-lane exit: these never visit SEQ_ANNOTATION_DONE, so ANNOTATED
-        # is their only chance to propagate (#258).
-        ("ANNOTATED", False, False, False, True),  # FP-only exit
-        ("ANNOTATED", False, False, True, True),  # deferred-unsure exit
+        # is their only chance to propagate (#258). Non-wildfire smoke now
+        # exits the same way, since only wildfire is boxed.
+        ("ANNOTATED", False, False, False, [], True),  # FP-only exit
+        ("ANNOTATED", False, False, True, [], True),  # deferred-unsure exit
+        ("ANNOTATED", True, False, False, ["industrial"], True),  # industrial exit
         # Reached ANNOTATED through localization — already propagated on the
         # way past SEQ_ANNOTATION_DONE, must not fire twice.
-        ("ANNOTATED", True, False, False, False),
-        ("ANNOTATED", False, True, False, False),
+        ("ANNOTATED", True, False, False, ["wildfire"], False),
+        ("ANNOTATED", False, True, False, [], False),
         # Not a classification exit at all.
-        ("READY_TO_ANNOTATE", False, False, False, False),
-        ("IMPORTED", True, False, False, False),
+        ("READY_TO_ANNOTATE", False, False, False, [], False),
+        ("IMPORTED", True, False, False, ["wildfire"], False),
     ],
 )
 def test_is_classification_exit(
-    stage, has_smoke, has_missed_smoke, is_unsure, expected
+    stage, has_smoke, has_missed_smoke, is_unsure, smoke_types, expected
 ):
     annotation = SequenceAnnotation(
         sequence_id=1,
         has_smoke=has_smoke,
         has_missed_smoke=has_missed_smoke,
         has_false_positives=not has_smoke,
+        smoke_types=smoke_types,
         is_unsure=is_unsure,
         annotation={"sequences_bbox": []},
         processing_stage=SequenceAnnotationProcessingStage[stage],
@@ -903,33 +905,25 @@ async def test_propagation_skips_locked_members(
     seq 2's reviewed work."""
     await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
 
-    # Seq 2's only frame (detection 3) is localized first: a smoke lane cannot
-    # be created at annotated without that (issue #346), and this lane is
-    # supposed to represent finished, reviewed work worth protecting.
-    localize = await authenticated_client.post(
-        "/annotations/detections/",
-        data={
-            "detection_id": "3",
-            "annotation": json.dumps(
-                {
-                    "annotation": [
-                        {
-                            "xyxyn": [0.1, 0.1, 0.4, 0.4],
-                            "class_name": "smoke",
-                            "smoke_type": "industrial",
-                        }
-                    ]
-                }
-            ),
-            "processing_stage": "annotated",
-        },
+    # Seeded straight into the session rather than posted: the test needs seq 2
+    # to ALREADY hold reviewed work, and creating it through the endpoint would
+    # itself fan out to seq 1 (an industrial lane exits at annotated, which is
+    # its classification exit) and pre-empt the trigger below.
+    locked_payload = _annotation_payload(stage="annotated", smoke_type="industrial")
+    sequence_session.add(
+        SequenceAnnotation(
+            sequence_id=2,
+            has_smoke=True,
+            has_false_positives=False,
+            false_positive_types=[],
+            smoke_types=["industrial"],
+            has_missed_smoke=False,
+            is_unsure=False,
+            annotation=locked_payload["annotation"],
+            processing_stage=SequenceAnnotationProcessingStage.ANNOTATED,
+        )
     )
-    assert localize.status_code == 201, localize.text
-
-    locked = _annotation_payload(stage="annotated", smoke_type="industrial")
-    locked["sequence_id"] = 2
-    resp = await authenticated_client.post("/annotations/sequences/", json=locked)
-    assert resp.status_code == 201
+    await sequence_session.commit()
 
     trigger = _annotation_payload(stage="seq_annotation_done", smoke_type="wildfire")
     trigger["sequence_id"] = 1
