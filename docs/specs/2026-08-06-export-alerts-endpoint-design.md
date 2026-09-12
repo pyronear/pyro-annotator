@@ -44,6 +44,11 @@ An alert is exported **only when finished**:
 - Lanes with `is_unsure = true` are **silently omitted** from `objects`. An alert
   whose lanes are all unsure is not exported at all. (Same rationale as the previous
   exporter: unsure lanes are not training data.)
+- Alerts carrying **non-wildfire smoke** (`industrial`, `other`) are excluded
+  whole — the offending lane and all of its siblings. Dropping only the lane is not
+  enough: lanes of one alert share their frames, so an exported FP or wildfire
+  sibling would ship images with visible, unlabeled smoke in them. The check spans
+  every lane, unsure ones included, for the same reason. Added 2026-09-12.
 - No parameter loosens this rule.
 
 Skipped alerts (a row in the `alert_skips` overlay,
@@ -211,7 +216,7 @@ back later is non-breaking; none has a consumer today.
 | `recorded_at_gte` | `datetime` | — | Alert `recorded_at` ≥ value. |
 | `recorded_at_lte` | `datetime` | — | Alert `recorded_at` ≤ value. |
 | `annotation_updated_gte` | `datetime` | — | Alert `last_annotated_at` ≥ value — the incremental-sync watermark. |
-| `smoke_types` | `List[SmokeType]` | — | Keep alerts with at least one exported lane containing any of these smoke types. |
+| `smoke_types` | `List[SmokeType]` | — | Keep alerts with at least one exported lane containing any of these smoke types. Only `wildfire` is ever exported, so any other value matches nothing. |
 | `false_positive_types` | `List[FalsePositiveType]` | — | Keep alerts with at least one exported lane containing any of these FP types. |
 
 Notes:
@@ -320,3 +325,8 @@ consumer — it depends on:
 Two properties it relies on beyond the field list: sibling lanes of one alert share
 identical frame images, and an alert's lanes never mix `record_kind` in practice (the
 importer handles the mixed case, but its box-selection rule assumes it is rare).
+
+The wildfire-only rule is **not additive**: alerts that used to export because their
+smoke sibling was industrial or other now disappear. A re-import after 2026-09-12
+therefore sees fewer alerts than the run before it, and downstream datasets built on
+the old export hold sequences the export no longer produces.
