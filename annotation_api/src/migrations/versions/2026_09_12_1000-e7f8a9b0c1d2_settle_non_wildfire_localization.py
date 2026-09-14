@@ -24,6 +24,10 @@ depends_on = None
 # so a later change to the rule cannot silently rewrite what this migration did.
 # has_missed_smoke still localizes whatever its type, so those lanes stay put.
 # An empty smoke_types means UNKNOWN and is left alone for a human to type.
+#
+# jsonb_typeof guards the length call: the column is JSONB, so a None written
+# through the ORM lands as JSON `null`, which passes `IS NOT NULL` and would
+# make jsonb_array_length raise "cannot get array length of a scalar".
 SETTLE = """
     UPDATE sequences_annotations
     SET processing_stage = 'ANNOTATED'
@@ -31,7 +35,7 @@ SETTLE = """
       AND has_smoke IS TRUE
       AND COALESCE(has_missed_smoke, FALSE) IS FALSE
       AND COALESCE(is_unsure, FALSE) IS FALSE
-      AND smoke_types IS NOT NULL
+      AND jsonb_typeof(smoke_types) = 'array'
       AND jsonb_array_length(smoke_types) > 0
       AND NOT (smoke_types @> '["wildfire"]'::jsonb)
 """
