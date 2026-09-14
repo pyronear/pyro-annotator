@@ -1,11 +1,28 @@
-import { LocalizationQueueLane, QueueOrderBy } from '@/types/api';
+import { LocalizationQueueLane, QueueOrderBy, SequenceBbox } from '@/types/api';
+
+/**
+ * Smoke types a set of edited bboxes carries. Mirrors the backend's
+ * `derive_smoke_types`: only typed smoke clusters count, deduplicated.
+ *
+ * The classify screens need this before saving, because the submit stage now
+ * depends on the type and the server-derived value only comes back after the
+ * write.
+ */
+export function deriveSmokeTypes(bboxes: SequenceBbox[]): string[] {
+  return [
+    ...new Set(
+      bboxes.filter(b => b.is_smoke && b.smoke_type).map(b => b.smoke_type as string)
+    ),
+  ];
+}
 
 /**
  * Stage to write at classify submit (spec: smoke-localization entry point;
  * amended by 2026-08-05 unsure lanes gate the localize queue).
  *
- * FP-only lanes (no smoke, no missed smoke, not unsure) exit the pipeline
- * immediately. Smoke / missed-smoke lanes park at seq_annotation_done.
+ * Lanes owing no localization (no smoke, no missed smoke, not unsure — and,
+ * since only wildfire is boxed, non-wildfire smoke too) exit the pipeline
+ * immediately. Wildfire / missed-smoke lanes park at seq_annotation_done.
  *
  * An unsure lane parks at seq_annotation_done — where it withholds its whole
  * alert from localization — until it is explicitly deferred ("Undecidable for
@@ -22,35 +39,50 @@ export function determineClassifySubmitStage(args: {
   isUnsure: boolean;
   hasSmoke: boolean;
   hasMissedSmoke: boolean;
+  smokeTypes: string[];
   /** `laneNeedsLocalization()` over the lane's pre-edit flags. */
   previouslyNeededLocalization: boolean;
   deferred?: boolean;
 }): 'annotated' | 'seq_annotation_done' {
   if (args.isUnsure) return args.deferred ? 'annotated' : 'seq_annotation_done';
+  const owesLocalization = laneNeedsLocalization({
+    has_smoke: args.hasSmoke,
+    has_missed_smoke: args.hasMissedSmoke,
+    is_unsure: false,
+    smoke_types: args.smokeTypes,
+  });
   if (args.currentStage === 'annotated') {
-    return (args.hasSmoke || args.hasMissedSmoke) && !args.previouslyNeededLocalization
+    return owesLocalization && !args.previouslyNeededLocalization
       ? 'seq_annotation_done'
       : 'annotated';
   }
-  if (!args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
-  return 'seq_annotation_done';
+  return owesLocalization ? 'seq_annotation_done' : 'annotated';
 }
 
 /**
  * Whether a lane needs localization. Mirrors the backend rule in
  * annotation_api/src/app/services/localization_rule.py:
  *
- *     (has_smoke OR has_missed_smoke) AND NOT is_unsure
+ *     ((has_smoke AND wildfire in smoke_types) OR has_missed_smoke)
+ *         AND NOT is_unsure
  *
- * Accepts just the three flags (a `Pick` of `LocalizationQueueLane`) so a
- * `SequenceAnnotation` (which carries the same three booleans but not the
- * rest of the queue-lane shape) can be checked directly, e.g. from
- * `AlertLane.annotation` on the collocated localize page.
+ * Only wildfire is boxed; industrial and other smoke are done at classify.
+ * Missed smoke localizes whatever its type, because nothing has typed it yet.
+ * An absent or empty `smoke_types` reads as UNKNOWN, never as wildfire.
+ *
+ * Accepts just the four fields (a `Pick` of `LocalizationQueueLane`) so a
+ * `SequenceAnnotation` (which carries the same fields but not the rest of the
+ * queue-lane shape) can be checked directly, e.g. from `AlertLane.annotation`
+ * on the collocated localize page.
  */
 export function laneNeedsLocalization(
-  lane: Pick<LocalizationQueueLane, 'has_smoke' | 'has_missed_smoke' | 'is_unsure'>
+  lane: Pick<
+    LocalizationQueueLane,
+    'has_smoke' | 'has_missed_smoke' | 'is_unsure' | 'smoke_types'
+  >
 ): boolean {
-  return (lane.has_smoke || lane.has_missed_smoke) && !lane.is_unsure;
+  const hasWildfire = (lane.smoke_types ?? []).includes('wildfire');
+  return ((lane.has_smoke && hasWildfire) || lane.has_missed_smoke) && !lane.is_unsure;
 }
 
 /** Next unfinished smoke lane of an alert, walking in lane order. */

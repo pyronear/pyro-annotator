@@ -1514,7 +1514,8 @@ describe('ClassifyAlertPage done mode', () => {
     expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(
       201,
       expect.objectContaining({
-        processing_stage: 'seq_annotation_done',
+        // industrial owes no localization, so classify is its exit
+        processing_stage: 'annotated',
         is_unsure: false,
       })
     );
