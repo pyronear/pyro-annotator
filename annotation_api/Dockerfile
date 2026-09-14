@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Bake the auto-annotate ONNX model into the image (see AUTOANNOTATE_MODEL_PATH)
 RUN mkdir -p /app/models \
-    && curl -fsSL "https://huggingface.co/pyronear/yolo11s_sensitive-detector/resolve/main/onnx_cpu.tar.gz" \
+    && curl -fsSL "https://huggingface.co/pyronear/yolov11s/resolve/v8.2.0/onnx_cpu.tar.gz" \
         -o /tmp/model.tar.gz \
     && tar -xzf /tmp/model.tar.gz -C /app/models \
     && rm /tmp/model.tar.gz
