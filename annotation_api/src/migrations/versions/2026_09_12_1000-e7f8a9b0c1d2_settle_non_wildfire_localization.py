@@ -25,18 +25,29 @@ depends_on = None
 # has_missed_smoke still localizes whatever its type, so those lanes stay put.
 # An empty smoke_types means UNKNOWN and is left alone for a human to type.
 #
-# jsonb_typeof guards the length call: the column is JSONB, so a None written
-# through the ORM lands as JSON `null`, which passes `IS NOT NULL` and would
-# make jsonb_array_length raise "cannot get array length of a scalar".
+# The column is JSONB, so a None written through the ORM lands as JSON `null`,
+# not SQL NULL. Both tests below are operators rather than functions on
+# purpose: jsonb_array_length would raise "cannot get array length of a
+# scalar" on such a row, and a jsonb_typeof guard beside it does NOT prevent
+# that -- a WHERE clause has no guaranteed evaluation order, so Postgres is
+# free to run the length call first. `<> '[]'` compares and cannot throw.
+#
+# updated_at moves with the stage: settling an alert's last unfinished lane
+# makes that alert newly exportable, and /export/alerts derives
+# last_annotated_at from greatest(coalesce(updated_at, created_at), ...) and
+# filters incremental pulls on it. Leaving the timestamp behind would hide the
+# newly complete alert from every consumer whose watermark is already past the
+# original classification.
 SETTLE = """
     UPDATE sequences_annotations
-    SET processing_stage = 'ANNOTATED'
+    SET processing_stage = 'ANNOTATED',
+        updated_at = NOW() AT TIME ZONE 'UTC'
     WHERE processing_stage = 'SEQ_ANNOTATION_DONE'
       AND has_smoke IS TRUE
       AND COALESCE(has_missed_smoke, FALSE) IS FALSE
       AND COALESCE(is_unsure, FALSE) IS FALSE
       AND jsonb_typeof(smoke_types) = 'array'
-      AND jsonb_array_length(smoke_types) > 0
+      AND smoke_types <> '[]'::jsonb
       AND NOT (smoke_types @> '["wildfire"]'::jsonb)
 """
 
