@@ -10,9 +10,7 @@ import { LocalizationQueueLane, QueueOrderBy, SequenceBbox } from '@/types/api';
  */
 export function deriveSmokeTypes(bboxes: SequenceBbox[]): string[] {
   return [
-    ...new Set(
-      bboxes.filter(b => b.is_smoke && b.smoke_type).map(b => b.smoke_type as string)
-    ),
+    ...new Set(bboxes.filter(b => b.is_smoke && b.smoke_type).map(b => b.smoke_type as string)),
   ];
 }
 
@@ -76,10 +74,7 @@ export function determineClassifySubmitStage(args: {
  * on the collocated localize page.
  */
 export function laneNeedsLocalization(
-  lane: Pick<
-    LocalizationQueueLane,
-    'has_smoke' | 'has_missed_smoke' | 'is_unsure' | 'smoke_types'
-  >
+  lane: Pick<LocalizationQueueLane, 'has_smoke' | 'has_missed_smoke' | 'is_unsure' | 'smoke_types'>
 ): boolean {
   const hasWildfire = (lane.smoke_types ?? []).includes('wildfire');
   return ((lane.has_smoke && hasWildfire) || lane.has_missed_smoke) && !lane.is_unsure;
