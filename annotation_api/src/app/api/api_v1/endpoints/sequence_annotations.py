@@ -1213,17 +1213,18 @@ async def _propagate_to_group_if_validated(
             await annotations.record_contribution(fanned_anno_id, current_user_id)
 
         # A member landing at ANNOTATED is finished, exactly as a hand-classified
-        # FP lane is — give it the same detection annotations the classify
-        # endpoints create on that transition. Smoke members don't need this:
-        # they get theirs from `auto_annotate_sequence` once their alert
-        # completes. The flags are known by construction here: member_stage is
-        # ANNOTATED only for an FP-only, not-unsure fan-out.
+        # lane is — give it the same detection annotations the classify
+        # endpoints create on that transition. Wildfire members don't need
+        # this: they get theirs from `auto_annotate_sequence` once their alert
+        # completes. The real label flags go through so a non-wildfire smoke
+        # member gets exactly what a hand-classified one does (nothing), not
+        # an FP lane's empty annotated rows.
         if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
             await auto_create_detection_annotations(
                 sequence_id=member_id,
-                has_smoke=False,
+                has_smoke=smoke_type is not None,
                 has_missed_smoke=False,
-                has_false_positives=True,
+                has_false_positives=fp_type is not None,
                 session=session,
                 user_id=current_user_id,
             )
@@ -1864,16 +1865,16 @@ async def bulk_annotate_sequences(
             )
 
         # A sequence landing at ANNOTATED is finished, exactly as a
-        # hand-classified FP lane is — give it the same detection annotations
-        # the classify endpoints create on that transition. The flags are
-        # known by construction: member_stage is ANNOTATED only for an
-        # FP-only, not-unsure label.
+        # hand-classified lane is — give it the same detection annotations
+        # the classify endpoints create on that transition. The real label
+        # flags go through so a non-wildfire smoke label gets exactly what a
+        # hand-classified one does (nothing), not an FP lane's empty rows.
         if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
             await auto_create_detection_annotations(
                 sequence_id=sid,
-                has_smoke=False,
+                has_smoke=payload.smoke_type is not None,
                 has_missed_smoke=False,
-                has_false_positives=True,
+                has_false_positives=payload.false_positive_type is not None,
                 session=session,
                 user_id=current_user.id,
             )
