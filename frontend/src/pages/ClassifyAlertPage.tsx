@@ -36,6 +36,7 @@ import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
 import {
   determineClassifySubmitStage,
+  deriveSmokeTypes,
   laneNeedsLocalization,
 } from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
@@ -752,6 +753,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               isUnsure: unsure,
               hasSmoke: hasSmokeNow,
               hasMissedSmoke: hasMissedSmokeForLane,
+              smokeTypes: unsure ? [] : deriveSmokeTypes(bboxes),
               // Covers #289's deferred-unsure case too: a lane that loaded
               // deferred-unsure was is_unsure pre-edit, so it did not need
               // localization before this edit.
@@ -798,6 +800,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             isUnsure: unsure,
             hasSmoke,
             hasMissedSmoke: hasMissedSmokeForLane,
+            smokeTypes: unsure ? [] : deriveSmokeTypes(bboxes),
             previouslyNeededLocalization: laneNeedsLocalization(lane.annotation),
           }),
         });

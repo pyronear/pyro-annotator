@@ -9,6 +9,7 @@ import { useSequenceStore } from '@/store/useSequenceStore';
 import { getAnnotationProgress, isAnnotationComplete } from '@/utils/annotation/progressUtils';
 import {
   determineClassifySubmitStage,
+  deriveSmokeTypes,
   laneNeedsLocalization,
 } from '@/utils/annotation/localizeUtils';
 import {
@@ -225,6 +226,7 @@ export default function AnnotationInterface({ mode }: AnnotationInterfaceProps =
           isUnsure,
           hasSmoke: hasSmokeNow,
           hasMissedSmoke: hasMissedSmokeNow,
+          smokeTypes: isUnsure ? [] : deriveSmokeTypes(updatedBboxes),
           previouslyNeededLocalization: annotation ? laneNeedsLocalization(annotation) : false,
         }),
         // Update derived fields - all false for unsure sequences

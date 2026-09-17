@@ -115,7 +115,7 @@ Writes `<dataset>/overlays/`: one contact sheet per object under `smoke/` and `f
 
 **Backend data flow**: Alert API → ingestion scripts → annotation_api DB → frontend UI → human annotations
 
-**Processing stages** (sequence): `IMPORTED` → `READY_TO_ANNOTATE` → `SEQ_ANNOTATION_DONE` → `ANNOTATED`. Two-lane exit: FP-only lanes jump straight to `ANNOTATED` at classify submit; smoke lanes park at `SEQ_ANNOTATION_DONE`, get auto-annotated per alert once every sibling (shared `platform_alert_id`) is classified, and reach `ANNOTATED` via the Smoke Localization submit (see `docs/specs/2026-07-28-smoke-localization-entry-point-design.md`).
+**Processing stages** (sequence): `IMPORTED` → `READY_TO_ANNOTATE` → `SEQ_ANNOTATION_DONE` → `ANNOTATED`. Two-lane exit: lanes owing no localization (FP-only, and industrial/other smoke since only wildfire is boxed) jump straight to `ANNOTATED` at classify submit; wildfire and missed-smoke lanes park at `SEQ_ANNOTATION_DONE`, get auto-annotated per alert once every sibling (shared `platform_alert_id`) is classified, and reach `ANNOTATED` via the Smoke Localization submit (see `docs/specs/2026-07-28-smoke-localization-entry-point-design.md`).
 
 **Backend patterns**: CRUD modules per entity, Pydantic schemas separate from SQLModel, dependency injection, fastapi-pagination, IoU-based annotation generation service.
 

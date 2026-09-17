@@ -63,7 +63,13 @@ async def _lane(
                 annotation={"sequences_bbox": []},
                 processing_stage=stage,
                 created_at=recorded_at,
-                smoke_types=smoke_types or [],
+                # only wildfire localizes: a lane meant to reach the queue
+                # must carry it, so has_smoke defaults its type
+                smoke_types=(
+                    smoke_types
+                    if smoke_types is not None
+                    else (["wildfire"] if has_smoke else [])
+                ),
             )
         )
     for i in range(n_detections):
@@ -257,6 +263,65 @@ async def test_azimuth_comes_from_primary_lane(
     assert resp.status_code == 200
     (item,) = resp.json()["items"]
     assert item["azimuth"] == 143
+
+
+@pytest.mark.asyncio
+async def test_industrial_only_alert_stays_out(
+    authenticated_client: AsyncClient, async_session
+):
+    """Only wildfire is boxed: an alert whose smoke is all industrial/other
+    never enters the queue, even fully classified and auto-annotated."""
+    await _lane(
+        async_session,
+        alert_api_id=930,
+        platform_alert_id=930,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=2,
+        smoke_types=["industrial"],
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_wildfire_lane_with_industrial_sibling_surfaces(
+    authenticated_client: AsyncClient, async_session
+):
+    """The rule is per lane: an industrial sibling neither blocks the alert
+    nor counts as a lane to box."""
+    await _lane(
+        async_session,
+        alert_api_id=931,
+        platform_alert_id=931,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=2,
+        smoke_types=["wildfire"],
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_931_001,
+        platform_alert_id=931,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=2,
+        smoke_types=["industrial"],
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    (item,) = data["items"]
+    assert item["platform_alert_id"] == 931
+    assert sorted(lane["smoke_types"] for lane in item["lanes"]) == [
+        ["industrial"],
+        ["wildfire"],
+    ]
 
 
 @pytest.mark.asyncio

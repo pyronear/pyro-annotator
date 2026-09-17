@@ -391,6 +391,7 @@ async def create_sequence_annotation(
             derive_has_smoke(create_data.annotation),
             create_data.has_missed_smoke,
             create_data.is_unsure,
+            derive_smoke_types(create_data.annotation),
         ):
             await assert_localization_complete(
                 create_data.sequence_id, annotations.session
@@ -759,6 +760,11 @@ async def apply_annotation_update(
     target_is_unsure = (
         payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
     )
+    target_smoke_types = (
+        derive_smoke_types(payload.annotation)
+        if payload.annotation is not None
+        else existing.smoke_types
+    )
     # Guard every path into ANNOTATED, not just seq_annotation_done ->
     # ANNOTATED (issue #346): a bulk stage rewrite or an ad-hoc PATCH from
     # ready_to_annotate would otherwise slip an unlocalized smoke lane into
@@ -769,7 +775,10 @@ async def apply_annotation_update(
         existing.processing_stage != SequenceAnnotationProcessingStage.ANNOTATED
         and target_processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
         and needs_localization(
-            target_has_smoke, target_has_missed_smoke, target_is_unsure
+            target_has_smoke,
+            target_has_missed_smoke,
+            target_is_unsure,
+            target_smoke_types,
         )
     ):
         await assert_localization_complete(existing.sequence_id, session)
@@ -787,7 +796,10 @@ async def apply_annotation_update(
         and target_processing_stage
         == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
         and needs_localization(
-            target_has_smoke, target_has_missed_smoke, target_is_unsure
+            target_has_smoke,
+            target_has_missed_smoke,
+            target_is_unsure,
+            target_smoke_types,
         )
     )
 
@@ -982,13 +994,23 @@ def _labeled_member_stage(
     stamped across many sequences — the group fan-out and bulk-annotate.
 
     Mirrors the two-lane exit a human classification takes (frontend:
-    `determineClassifySubmitStage`): a smoke label still owes localization
-    work, and an unsure write still gates its alert, so both park at
-    SEQ_ANNOTATION_DONE. An FP-only label owes nothing and exits at
-    ANNOTATED — `schedule_pending_auto_annotate` only advances lanes
-    matching the localization rule, so parking an FP member at
-    SEQ_ANNOTATION_DONE would strand it in no queue at all."""
-    if smoke_type is not None or is_unsure:
+    `determineClassifySubmitStage`): a label that owes localization work, and
+    an unsure write that still gates its alert, park at SEQ_ANNOTATION_DONE.
+    Anything owing nothing exits at ANNOTATED — `schedule_pending_auto_annotate`
+    only advances lanes matching the localization rule, so parking such a
+    member at SEQ_ANNOTATION_DONE would strand it in no queue at all. That
+    covers an FP-only label and, since only wildfire is boxed, industrial and
+    other smoke too; the decision is read off the rule rather than restated
+    here so the two cannot drift.
+    """
+    owes_localization = needs_localization(
+        smoke_type is not None,
+        False,
+        # unsure parks for its own reason, handled below
+        False,
+        [smoke_type.value] if smoke_type is not None else [],
+    )
+    if owes_localization or is_unsure:
         return SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
     return SequenceAnnotationProcessingStage.ANNOTATED
 
@@ -1018,7 +1040,10 @@ def _is_classification_exit(annotation: SequenceAnnotation) -> bool:
     if stage != SequenceAnnotationProcessingStage.ANNOTATED:
         return False
     return not needs_localization(
-        annotation.has_smoke, annotation.has_missed_smoke, annotation.is_unsure
+        annotation.has_smoke,
+        annotation.has_missed_smoke,
+        annotation.is_unsure,
+        annotation.smoke_types,
     )
 
 
@@ -1188,17 +1213,18 @@ async def _propagate_to_group_if_validated(
             await annotations.record_contribution(fanned_anno_id, current_user_id)
 
         # A member landing at ANNOTATED is finished, exactly as a hand-classified
-        # FP lane is — give it the same detection annotations the classify
-        # endpoints create on that transition. Smoke members don't need this:
-        # they get theirs from `auto_annotate_sequence` once their alert
-        # completes. The flags are known by construction here: member_stage is
-        # ANNOTATED only for an FP-only, not-unsure fan-out.
+        # lane is — give it the same detection annotations the classify
+        # endpoints create on that transition. Wildfire members don't need
+        # this: they get theirs from `auto_annotate_sequence` once their alert
+        # completes. The real label flags go through so a non-wildfire smoke
+        # member gets exactly what a hand-classified one does (nothing), not
+        # an FP lane's empty annotated rows.
         if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
             await auto_create_detection_annotations(
                 sequence_id=member_id,
-                has_smoke=False,
+                has_smoke=smoke_type is not None,
                 has_missed_smoke=False,
-                has_false_positives=True,
+                has_false_positives=fp_type is not None,
                 session=session,
                 user_id=current_user_id,
             )
@@ -1568,7 +1594,9 @@ async def localize_revert(
     not_localized_ids = [
         aid
         for aid, (ann, _seq) in by_id.items()
-        if not needs_localization(ann.has_smoke, ann.has_missed_smoke, ann.is_unsure)
+        if not needs_localization(
+            ann.has_smoke, ann.has_missed_smoke, ann.is_unsure, ann.smoke_types
+        )
     ]
     if not_localized_ids:
         raise HTTPException(
@@ -1837,16 +1865,16 @@ async def bulk_annotate_sequences(
             )
 
         # A sequence landing at ANNOTATED is finished, exactly as a
-        # hand-classified FP lane is — give it the same detection annotations
-        # the classify endpoints create on that transition. The flags are
-        # known by construction: member_stage is ANNOTATED only for an
-        # FP-only, not-unsure label.
+        # hand-classified lane is — give it the same detection annotations
+        # the classify endpoints create on that transition. The real label
+        # flags go through so a non-wildfire smoke label gets exactly what a
+        # hand-classified one does (nothing), not an FP lane's empty rows.
         if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
             await auto_create_detection_annotations(
                 sequence_id=sid,
-                has_smoke=False,
+                has_smoke=payload.smoke_type is not None,
                 has_missed_smoke=False,
-                has_false_positives=True,
+                has_false_positives=payload.false_positive_type is not None,
                 session=session,
                 user_id=current_user.id,
             )

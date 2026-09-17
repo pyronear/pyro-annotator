@@ -14,6 +14,7 @@ const lane = (id: number, over: Partial<LocalizationQueueLane> = {}): Localizati
   sequence_id: id,
   alert_api_id: id,
   has_smoke: true,
+  smoke_types: ['wildfire'],
   has_missed_smoke: false,
   is_unsure: false,
   processing_stage: 'seq_annotation_done',
@@ -30,6 +31,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: true,
+        smokeTypes: ['wildfire'],
         hasMissedSmoke: false,
         previouslyNeededLocalization: true,
       })
@@ -41,6 +43,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'ready_to_annotate',
         isUnsure: false,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -52,7 +55,44 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'ready_to_annotate',
         isUnsure: false,
         hasSmoke: true,
+        smokeTypes: ['wildfire'],
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('non-wildfire smoke fast-paths to annotated: only wildfire is boxed', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'ready_to_annotate',
+        isUnsure: false,
+        hasSmoke: true,
+        smokeTypes: ['industrial'],
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
+
+  it('smoke with no type yet fast-paths: empty types read as UNKNOWN', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'ready_to_annotate',
+        isUnsure: false,
+        hasSmoke: true,
+        smokeTypes: [],
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
+
+  it('industrial smoke with missed smoke still parks: missed smoke has no type', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'ready_to_annotate',
+        isUnsure: false,
+        hasSmoke: true,
+        smokeTypes: ['industrial'],
+        hasMissedSmoke: true,
         previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
@@ -63,6 +103,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'ready_to_annotate',
         isUnsure: false,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: true,
         previouslyNeededLocalization: false,
       })
@@ -74,6 +115,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'ready_to_annotate',
         isUnsure: true,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -85,6 +127,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'seq_annotation_done',
         isUnsure: true,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
         deferred: true,
@@ -97,6 +140,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'seq_annotation_done',
         isUnsure: true,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
         deferred: false,
@@ -109,6 +153,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: true,
+        smokeTypes: ['wildfire'],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -120,6 +165,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: true,
         previouslyNeededLocalization: false,
       })
@@ -131,6 +177,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -142,6 +189,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: true,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -156,6 +204,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: true,
+        smokeTypes: ['wildfire'],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })
@@ -167,6 +216,7 @@ describe('determineClassifySubmitStage', () => {
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: false,
+        smokeTypes: [],
         hasMissedSmoke: false,
         previouslyNeededLocalization: false,
       })

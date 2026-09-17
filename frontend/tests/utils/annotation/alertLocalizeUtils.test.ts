@@ -52,6 +52,9 @@ const makeLane = (
             has_smoke: true,
             has_missed_smoke: false,
             is_unsure: false,
+            // only wildfire localizes, so a lane meant to be workable
+            // must carry it
+            smoke_types: ['wildfire'],
             processing_stage: 'seq_annotation_done',
             ...overrides,
           } as SequenceAnnotation),
