@@ -33,7 +33,7 @@ Arguments:
   --source-api (str): source_api tag for imported data (required for an alert API URL other than alertapi/apicenia)
   --annotation-api-url (str): Annotation API URL (default: http://localhost:5050)
   --max-sequences (int): Maximum number of sequences to import per day (default: 0, 0 = no cap)
-  --frames-limit (int): Maximum number of images to import per sequence (default: 30)
+  --frames-limit (int): First N images of each sequence, scored and imported (default: 20)
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
   --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
   --min-temporal-score (float): Import only sequences the temporal model scores above this (e.g. 0.1; off by default)
@@ -176,9 +176,9 @@ def make_cli_parser() -> argparse.ArgumentParser:
     # Alert API fetching options
     parser.add_argument(
         "--frames-limit",
-        help="Maximum number of images to import per sequence",
+        help="First N images of each sequence (oldest first); both scored and imported",
         type=int,
-        default=30,
+        default=20,
     )
     parser.add_argument(
         "--sequence-list",

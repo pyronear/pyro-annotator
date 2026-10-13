@@ -89,7 +89,7 @@ make import-alert-api DATE_FROM=2024-01-01 DATE_END=2024-01-02
 
 The import object-splits each alert sequence from the alert API's own boxes and writes one annotation track per object client-side (no pyro-engine/pyro-dataset involved).
 
-The range is processed **one day at a time**: a day is fetched, scored, imported and annotated before the next day starts (nothing is downloaded ahead). A failed day is logged, the run continues, and exits 1 at the end. `MAX_SEQUENCES` is a per-day cap.
+The range is processed **one day at a time**: a day is fetched, scored, imported and annotated before the next day starts (nothing is downloaded ahead). A failed day is logged, the run continues, and exits 1 at the end. `MAX_SEQUENCES` is a per-day cap. Only the first `FRAMES_LIMIT` images (default 20) of each sequence are scored and imported.
 
 Before importing, each sequence's fetched frames go through the released `pyronear/temporal-model` (HF release `TEMPORAL_MODEL_VERSION`, default `v0.4.0`; torch deps in the opt-in `uv` group `temporal`), and only sequences scoring above `MIN_TEMPORAL_SCORE` (default `0.1`; empty disables) are imported.
 

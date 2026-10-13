@@ -107,6 +107,7 @@ migrate-up:
 # ALERT_API_URL: any alert API; SOURCE_API (pyronear_french/api_cenia/
 # alert_wildfire) is required unless it is alertapi or apicenia.
 # REMOTE_API: the annotation API the data is written to.
+# FRAMES_LIMIT: first N images of each sequence, scored and imported.
 # MIN_TEMPORAL_SCORE: run the temporal model (TEMPORAL_MODEL_VERSION, a
 # pyronear/temporal-model HuggingFace release) on each sequence and import only
 # those scoring above it (empty disables the filter and the torch install).
@@ -117,6 +118,7 @@ IMAGE_TRANSFER ?=
 ALERT_API_URL ?= https://alertapi.pyronear.org
 SOURCE_API ?=
 MIN_TEMPORAL_SCORE ?= 0.1
+FRAMES_LIMIT ?= 20
 TEMPORAL_MODEL_VERSION ?= v0.4.0
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
@@ -130,6 +132,7 @@ import-alert-api:
 		--annotation-api-url $(REMOTE_API) \
 		$(if $(MIN_TEMPORAL_SCORE),--min-temporal-score $(MIN_TEMPORAL_SCORE) --temporal-model-version $(TEMPORAL_MODEL_VERSION)) \
 		--max-sequences $(MAX_SEQUENCES) \
+		--frames-limit $(FRAMES_LIMIT) \
 		--max-workers $(MAX_WORKERS) \
 		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)
