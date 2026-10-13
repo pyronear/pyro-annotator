@@ -113,6 +113,15 @@ docker compose -f docker-compose.server.yml -p pyro-annotator down   # container
 docker compose -f docker-compose.server.yml up -d --build            # volumes are pinned
 ```
 
+The first deploy after the MinIO → RustFS switch needs `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` renamed to `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` in `.env`
+(compose refuses to start without them), and `--remove-orphans` so the old `minio`
+container releases port 4566:
+
+```bash
+docker compose -f docker-compose.server.yml up -d --build --remove-orphans
+```
+
 ## Verification
 
 - `curl http://162.19.113.48:5050/status` succeeds from outside.

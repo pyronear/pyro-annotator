@@ -154,6 +154,7 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 
 **Services won't start:**
 - Ensure ports 3000, 5050, 5432, 4566, and 9001 are available
+- Coming from the MinIO stack: run `docker compose up -d --remove-orphans` once so the old `minio` container frees port 4566. Its objects are not migrated to RustFS; use `docker compose down -v` for a clean slate or re-import
 - Check logs: `docker compose logs [service_name]`
 - Rebuild images: `docker compose build --no-cache`
 

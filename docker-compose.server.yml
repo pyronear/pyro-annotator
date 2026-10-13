@@ -31,8 +31,8 @@ services:
       - "4566:4566"
     environment:
       - RUSTFS_ADDRESS=0.0.0.0:4566
-      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
-      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}
     volumes:
       - rustfs_data:/data
     healthcheck:
@@ -48,8 +48,8 @@ services:
       rustfs:
         condition: service_healthy
     environment:
-      - AWS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY}
-      - AWS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY}
+      - AWS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}
+      - AWS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}
       - AWS_DEFAULT_REGION=us-east-1
     entrypoint: >
       /bin/sh -c "aws --endpoint-url http://rustfs:4566 s3api head-bucket --bucket ${S3_BUCKET_NAME}
