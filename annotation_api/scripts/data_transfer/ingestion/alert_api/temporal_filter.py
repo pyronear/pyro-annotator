@@ -77,6 +77,9 @@ def filter_records(
     logged: the filter's job is to keep noise out, so failing closed is safe —
     re-running the import picks it up.
     """
+    if not records:
+        return [], {}
+
     by_sequence: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
     for record in records:
         by_sequence[record["sequence_id"]].append(record)

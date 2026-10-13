@@ -376,8 +376,6 @@ def main() -> int:
     parser = make_cli_parser()
     args = parser.parse_args()
 
-    max_sequences = args.max_sequences
-
     # Setup logging
     logging.basicConfig(
         level=args.loglevel.upper(),
@@ -432,13 +430,8 @@ def main() -> int:
             logging.error(exc)
             return 1
 
+    # --max-sequences is applied per day by the fetch, after this filter.
     if selected_sequence_list:
-        if max_sequences and len(selected_sequence_list) > max_sequences:
-            console.print(
-                f"[blue]ℹ️  Restricting to first {max_sequences} of "
-                f"{len(selected_sequence_list)} provided sequence alert_api_id(s)[/]"
-            )
-            selected_sequence_list = selected_sequence_list[:max_sequences]
         console.print(
             f"[blue]ℹ️  Restricting to {len(selected_sequence_list)} sequence alert_api_id(s) ({sequence_list_source})[/]"
         )
