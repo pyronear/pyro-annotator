@@ -1,7 +1,9 @@
 """
 CLI script for end-to-end alert API data import and processing.
 
-This script provides a streamlined workflow to fetch alert API data and generate annotations:
+This script provides a streamlined workflow to fetch alert API data and generate annotations.
+The date range is processed one day at a time: every step below runs for a day
+before the next day is fetched. A failed day is reported and the run moves on.
 1. Fetch sequences and detections from the Pyronear alert API
 2. Split each alert sequence into one object sequence per detected object
    (sibling objects sharing the same set of frames). Sequences where no object
@@ -30,7 +32,7 @@ Arguments:
   --alert-api-url (str): Alert API URL, any deployment (default: https://alertapi.pyronear.org)
   --source-api (str): source_api tag for imported data (required for an alert API URL other than alertapi/apicenia)
   --annotation-api-url (str): Annotation API URL (default: http://localhost:5050)
-  --max-sequences (int): Maximum number of sequences to import (default: 0, 0 = no cap)
+  --max-sequences (int): Maximum number of sequences to import per day (default: 0, 0 = no cap)
   --frames-limit (int): Maximum number of images to import per sequence (default: 30)
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
   --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
@@ -74,7 +76,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import List
 
 from dotenv import load_dotenv
@@ -91,7 +93,7 @@ from rich.progress import (
 # Import new modular components
 from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
-from .sequence_fetching import fetch_all_sequences_within
+from .sequence_fetching import fetch_all_sequences_within, get_dates_within
 from . import object_split
 from . import temporal_filter
 from .annotation_management import (
@@ -166,7 +168,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--max-sequences",
-        help="Maximum number of sequences to import from the alert API (0 = no cap)",
+        help="Maximum number of sequences to import per day from the alert API (0 = no cap)",
         type=int,
         default=0,
     )
@@ -369,8 +371,8 @@ def parse_sequence_selection(sequence_arg: str) -> List[int]:
     return sequence_ids
 
 
-def main() -> None:
-    """Main execution function with comprehensive error handling and progress tracking."""
+def main() -> int:
+    """Parse args, run one-time checks, then import day by day."""
     parser = make_cli_parser()
     args = parser.parse_args()
 
@@ -381,7 +383,6 @@ def main() -> None:
         level=args.loglevel.upper(),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    logger = logging.getLogger(__name__)
 
     # bucket-copy derives its source bucket from the French deployment's
     # config (PLATFORM_SERVER_NAME), so it cannot work against any other API.
@@ -402,44 +403,19 @@ def main() -> None:
 
     # Validate arguments
     if not validate_args(args):
-        sys.exit(1)
+        return 1
 
     source_api = resolve_source_api(args.alert_api_url, args.source_api)
     if source_api is None:
         logging.error(
             f"--source-api is required for an unknown alert API URL ({args.alert_api_url})"
         )
-        sys.exit(1)
+        return 1
 
     # Initialize components
     worker_config = WorkerConfig(args.max_workers)
     console = Console()
     suppress_logs = args.loglevel != "debug"  # Suppress logs unless in debug mode
-    step_manager = StepManager(console, show_timing=True)
-    error_collector = ErrorCollector()
-
-    # Initialize comprehensive statistics
-    stats = {
-        # Import statistics (Step 1)
-        "records_fetched": 0,
-        "sequences_attempted_import": 0,
-        "sequences_import_successful": 0,
-        "sequences_import_failed": 0,
-        "sequences_skipped": 0,
-        "sequences_refreshed": 0,
-        "refresh_failures": 0,
-        "refresh_skipped": 0,
-        "detections_skipped": 0,
-        "detections_attempted_import": 0,
-        "detections_import_successful": 0,
-        "detections_import_failed": 0,
-        # Annotation statistics (Step 4)
-        "total_sequences_for_annotation": 0,
-        "annotations_successful": 0,
-        "annotations_failed": 0,
-        "annotations_created": 0,
-        "sequences_rolled_back": 0,
-    }
 
     # Initialize organization early to avoid reference errors in exception handlers
     organization = shared.getenv_with_fallback("ALERT_API_LOGIN") or "unknown"
@@ -454,7 +430,7 @@ def main() -> None:
             selected_sequence_list = parse_sequence_selection(args.sequence_list)
         except ValueError as exc:
             logging.error(exc)
-            sys.exit(1)
+            return 1
 
     if selected_sequence_list:
         if max_sequences and len(selected_sequence_list) > max_sequences:
@@ -481,7 +457,7 @@ def main() -> None:
 
     if not target_ok:
         console.print("[red]❌ Aborting due to authentication failure[/]")
-        sys.exit(1)
+        return 1
 
     # Print header
     console.print()
@@ -501,13 +477,85 @@ def main() -> None:
         )
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
 
+    # One day at a time: fetch, score, import and annotate a day before
+    # touching the next, so nothing is downloaded ahead and a long range can be
+    # interrupted without losing finished days.
+    failed_days = []
+    for day in get_dates_within(args.date_from, args.date_end):
+        console.rule(f"[bold]📅 {day}")
+        code = import_day(
+            args,
+            day,
+            source_api=source_api,
+            organization=organization,
+            selected_sequence_list=selected_sequence_list,
+            target_login=target_login,
+            target_password=target_password,
+            worker_config=worker_config,
+            console=console,
+            suppress_logs=suppress_logs,
+        )
+        if code != 0:
+            failed_days.append(day)
+
+    if failed_days:
+        console.print(
+            f"[red]❌ {len(failed_days)} day(s) failed: "
+            f"{', '.join(str(d) for d in failed_days)}[/]"
+        )
+        return 1
+    return 0
+
+
+def import_day(
+    args: argparse.Namespace,
+    day: date,
+    *,
+    source_api: str,
+    organization: str,
+    selected_sequence_list: List[int],
+    target_login: str,
+    target_password: str,
+    worker_config: WorkerConfig,
+    console: Console,
+    suppress_logs: bool,
+) -> int:
+    """Fetch, score, import and annotate one day. Returns an exit code."""
+    logger = logging.getLogger(__name__)
+    max_sequences = args.max_sequences
+    step_manager = StepManager(console, show_timing=True)
+    error_collector = ErrorCollector()
+
+    # Initialize comprehensive statistics
+    stats = {
+        # Import statistics (Step 1)
+        "records_fetched": 0,
+        "sequences_attempted_import": 0,
+        "sequences_import_successful": 0,
+        "sequences_import_failed": 0,
+        "sequences_skipped": 0,
+        "sequences_refreshed": 0,
+        "refresh_failures": 0,
+        "refresh_skipped": 0,
+        "detections_skipped": 0,
+        "detections_attempted_import": 0,
+        "detections_import_successful": 0,
+        "detections_import_failed": 0,
+        # Annotation statistics (Step 4)
+        "total_sequences_for_annotation": 0,
+        "annotations_successful": 0,
+        "annotations_failed": 0,
+        "annotations_created": 0,
+        "sequences_rolled_back": 0,
+    }
+
     try:
         # Step 1: Fetch alert API data
         successfully_imported_sequence_ids = []
         step_manager.start_step(
             1,
             "Alert API Data Import",
-            f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
+            f"Fetching {organization} data for {day} using {worker_config.base_workers} workers",
         )
 
         if not shared.validate_available_env_variables():
@@ -515,7 +563,7 @@ def main() -> None:
                 "[red]❌ Missing required environment variables for alert API[/]"
             )
             step_manager.complete_step(False, "Missing environment variables")
-            sys.exit(1)
+            return 1
 
         # Get alert API credentials
         alert_api_login = shared.getenv_with_fallback("ALERT_API_LOGIN")
@@ -535,7 +583,7 @@ def main() -> None:
         ):
             error_collector.add_error("Missing alert API credentials")
             step_manager.complete_step(False, "Missing alert API credentials")
-            sys.exit(1)
+            return 1
 
         # Get access tokens with progress display
         auth_start_time = time.time()
@@ -566,13 +614,13 @@ def main() -> None:
             except Exception as e:
                 error_collector.add_error(f"Authentication failed: {e}")
                 step_manager.complete_step(False, f"Authentication failed: {e}")
-                sys.exit(1)
+                return 1
 
         # Fetch alert API records
         try:
             records = fetch_all_sequences_within(
-                date_from=args.date_from,
-                date_end=args.date_end,
+                date_from=day,
+                date_end=day,
                 detections_limit=args.frames_limit,
                 detections_order_by="asc",
                 api_endpoint=args.alert_api_url,
@@ -591,7 +639,7 @@ def main() -> None:
             error_collector.add_error(f"Alert API data fetching failed: {e}")
             step_manager.complete_step(False, f"Alert API data fetching failed: {e}")
             error_collector.print_summary(console, "Alert API Data Fetching Errors")
-            sys.exit(1)
+            return 1
 
         if args.min_temporal_score is not None:
             records, _ = temporal_filter.filter_records(
@@ -626,7 +674,7 @@ def main() -> None:
 
         if not records and not args.dry_run:
             step_manager.complete_step(False, "No records fetched from alert API")
-            sys.exit(0)
+            return 0
 
         # Post to annotation API (if not dry run)
         if not args.dry_run:
@@ -698,7 +746,7 @@ def main() -> None:
                     False, f"Failed to post data to annotation API: {e}"
                 )
                 error_collector.print_summary(console, "Alert API Data Import Errors")
-                sys.exit(1)
+                return 1
         else:
             # For dry run, capture what would have been imported but don't set sequence IDs
             stats["records_fetched"] = len(records)
@@ -783,7 +831,7 @@ def main() -> None:
                 padding=(1, 2),
             )
             console.print(panel)
-            sys.exit(1 if stats["refresh_failures"] else 0)
+            return 1 if stats["refresh_failures"] else 0
 
         stats["total_sequences_for_annotation"] = len(sequence_ids)
         step_stats = {"Successfully imported sequences": len(sequence_ids)}
@@ -977,20 +1025,23 @@ def main() -> None:
 
         # Exit with appropriate code (only exit with error for critical failures)
         if has_critical_failures:
-            sys.exit(1)
+            return 1
         else:
-            sys.exit(0)
+            return 0
 
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️  Processing interrupted by user[/]")
         error_collector.print_summary(console, "Errors Before Interruption")
-        sys.exit(1)
+        raise
     except Exception as e:
         error_collector.add_error(f"Unexpected error during processing: {e}")
         console.print(f"\n[red]❌ Unexpected error during processing: {e}[/]")
         error_collector.print_summary(console, "Critical Processing Errors")
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(1)

@@ -11,6 +11,7 @@ Needs the optional deps: `uv sync --group temporal`.
 """
 
 import concurrent.futures
+import functools
 import logging
 import tempfile
 from collections import defaultdict
@@ -24,6 +25,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 HF_REPO = "pyronear/temporal-model"
 
 
+@functools.lru_cache(maxsize=1)
 def load_model(version: str):
     # Lazy: torch is only needed when the filter is on.
     from huggingface_hub import hf_hub_download
