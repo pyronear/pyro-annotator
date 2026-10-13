@@ -27,7 +27,8 @@ Usage:
 Arguments:
   --date-from (date): Start date for sequences (YYYY-MM-DD format)
   --date-end (date): End date for sequences (YYYY-MM-DD format, defaults to today)
-  --alert-api-url (str): Alert API URL (default: https://alertapi.pyronear.org)
+  --alert-api-url (str): Alert API URL, any deployment (default: https://alertapi.pyronear.org)
+  --source-api (str): source_api tag for imported data (required for an alert API URL other than alertapi/apicenia)
   --annotation-api-url (str): Annotation API URL (default: http://localhost:5050)
   --max-sequences (int): Maximum number of sequences to import (default: 0, 0 = no cap)
   --frames-limit (int): Maximum number of images to import per sequence (default: 30)
@@ -100,8 +101,15 @@ from .annotation_management import (
 from . import shared
 from . import client as alert_api_client
 from app.clients import annotation_api
+from app.models import SourceApi
 
 load_dotenv()
+
+FRENCH_ALERT_API_URL = "https://alertapi.pyronear.org"
+KNOWN_SOURCE_APIS = {
+    FRENCH_ALERT_API_URL: "pyronear_french",
+    "https://apicenia.pyronear.org": "api_cenia",
+}
 
 
 def make_cli_parser() -> argparse.ArgumentParser:
@@ -134,10 +142,21 @@ def make_cli_parser() -> argparse.ArgumentParser:
     # API configuration
     parser.add_argument(
         "--alert-api-url",
-        help="Alert API URL (alertapi.pyronear.org for Pyronear French, apicenia.pyronear.org for CENIA)",
-        type=str,
-        choices=["https://alertapi.pyronear.org", "https://apicenia.pyronear.org"],
-        default="https://alertapi.pyronear.org",
+        help=(
+            "Alert API URL (e.g. https://alertapi.pyronear.org for Pyronear French, "
+            "https://apicenia.pyronear.org for CENIA, or any self-hosted alert API)"
+        ),
+        type=lambda url: url.rstrip("/"),
+        default=FRENCH_ALERT_API_URL,
+    )
+    parser.add_argument(
+        "--source-api",
+        help=(
+            "source_api tag stored on imported sequences. Derived from the known "
+            "alert API URLs; required for any other URL."
+        ),
+        choices=[source.value for source in SourceApi],
+        default=None,
     )
     parser.add_argument(
         "--annotation-api-url",
@@ -225,21 +244,18 @@ def make_cli_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def get_source_api_from_url(url: str) -> str:
-    """
-    Map alert API URL to source_api enum value.
+def resolve_source_api(alert_api_url: str, source_api: str | None) -> str | None:
+    """source_api for the DB: explicit flag wins, else the known URL's tag.
 
-    Args:
-        url: Alert API URL
-
-    Returns:
-        source_api enum value for the database
+    None for an unknown URL without the flag: guessing would tag a foreign
+    deployment's data as French.
     """
-    url_to_source_api = {
-        "https://alertapi.pyronear.org": "pyronear_french",
-        "https://apicenia.pyronear.org": "api_cenia",
-    }
-    return url_to_source_api.get(url, "pyronear_french")
+    return source_api or KNOWN_SOURCE_APIS.get(alert_api_url)
+
+
+def default_image_transfer(alert_api_url: str) -> str:
+    # The server's bucket-copy reads the French alert API's buckets only.
+    return "bucket-copy" if alert_api_url == FRENCH_ALERT_API_URL else "url"
 
 
 def validate_args(args: argparse.Namespace) -> bool:
@@ -368,18 +384,18 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     # bucket-copy derives its source bucket from the French deployment's
-    # config (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
-    is_cenia = "apicenia" in args.alert_api_url
+    # config (PLATFORM_SERVER_NAME), so it cannot work against any other API.
+    is_french = args.alert_api_url == FRENCH_ALERT_API_URL
     if args.image_transfer is None:
-        args.image_transfer = "url" if is_cenia else "bucket-copy"
-        if is_cenia:
+        args.image_transfer = default_image_transfer(args.alert_api_url)
+        if not is_french:
             logging.info(
-                "Auto-selected --image-transfer url for the CENIA alert API "
+                "Auto-selected --image-transfer url for a non-French alert API "
                 "(bucket-copy only works against the French alert API's buckets)"
             )
-    elif args.image_transfer == "bucket-copy" and is_cenia:
+    elif args.image_transfer == "bucket-copy" and not is_french:
         logging.warning(
-            "--image-transfer bucket-copy against the CENIA alert API will fail: "
+            "--image-transfer bucket-copy against a non-French alert API will fail: "
             "the annotation API copies from the French alert API's buckets. "
             "Every detection will error and its sequence will be rolled back."
         )
@@ -388,8 +404,12 @@ def main() -> None:
     if not validate_args(args):
         sys.exit(1)
 
-    # Get source_api from alert API URL
-    source_api = get_source_api_from_url(args.alert_api_url)
+    source_api = resolve_source_api(args.alert_api_url, args.source_api)
+    if source_api is None:
+        logging.error(
+            f"--source-api is required for an unknown alert API URL ({args.alert_api_url})"
+        )
+        sys.exit(1)
 
     # Initialize components
     worker_config = WorkerConfig(args.max_workers)
