@@ -102,7 +102,7 @@ migrate-up:
 # Requires ALERT_API_LOGIN/PASSWORD, ALERT_API_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
 # Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20] [IMAGE_TRANSFER=url]
 # Set IMAGE_TRANSFER=url when the target annotation API can't reach the alert
-# API's S3 bucket (e.g. local dev with LocalStack); unset keeps the script's
+# API's S3 bucket (e.g. local dev with RustFS); unset keeps the script's
 # per-source default (bucket-copy for the French alert API, url for CENIA).
 DATE_END ?= $(DATE_FROM)
 IMAGE_TRANSFER ?=

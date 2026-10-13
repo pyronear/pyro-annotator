@@ -28,7 +28,7 @@ Once running, access the services at:
 - **Backend API**: http://localhost:5050
 - **API Documentation**: http://localhost:5050/docs
 - **PostgreSQL Database**: localhost:5432
-- **MinIO S3**: http://localhost:4566 (console at http://localhost:9001, login `fake`/`fakefake`)
+- **RustFS S3**: http://localhost:4566 (console at http://localhost:9001, login `fake`/`fakefake`)
 
 ## Main Workflow
 

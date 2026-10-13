@@ -7,7 +7,7 @@ The Pyronear Annotation API is a FastAPI-based backend service for wildfire prev
 - **Framework**: FastAPI with Python 3.11+
 - **Package Manager**: uv (fast Python package installer and resolver)
 - **Database**: PostgreSQL with SQLModel/SQLAlchemy
-- **Storage**: S3-compatible storage (AWS S3/LocalStack)
+- **Storage**: S3-compatible storage (AWS S3/RustFS)
 - **Authentication**: JWT-based authentication
 - **Container**: Docker with multi-stage builds
 - **Quality Tools**: Ruff (linting/formatting), MyPy (type checking), Pytest (testing)
@@ -116,11 +116,11 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Docker Volume Persistence
 - **PostgreSQL**: Data persists in `postgres_data` named volume
-- **LocalStack S3**: objects live in LocalStack process memory (`PERSISTENCE=1` is Pro-only) and do NOT survive container restart — the dev/test stack is ephemeral by design; the root compose stack uses MinIO for durable S3
+- **RustFS S3**: objects persist in the `rustfs_data` named volume
 - **Preserving data**: Use `make stop` to stop containers while keeping volumes
 - **Reset volumes**: Use `make clean` (runs `docker compose down -v`) to remove all data
 - **Backup volumes**: Use `docker volume` commands or Docker Desktop
-- **LocalStack init**: Buckets are created only if they don't exist (idempotent initialization)
+- **RustFS init**: the `rustfs-init` one-shot creates the bucket only if it doesn't exist (idempotent initialization)
 - Note: docker-compose-dev.yml used for testing runs ephemeral (no persistent volumes)
 
 ## Environment Configuration
