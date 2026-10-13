@@ -89,6 +89,8 @@ make import-alert-api DATE_FROM=2024-01-01 DATE_END=2024-01-02
 
 The import object-splits each alert sequence from the alert API's own boxes and writes one annotation track per object client-side (no pyro-engine/pyro-dataset involved).
 
+Before importing, the make target runs the released `pyronear/temporal-model` (HF, torch, `uv` group `temporal`) on each sequence's fetched frames and keeps only those scoring above `MIN_TEMPORAL_SCORE` (default `0.1`; empty disables). Chile/CENIA into a local stack: `make import-alert-api DATE_FROM=... ALERT_API_URL=https://apicenia.pyronear.org REMOTE_API=http://localhost:5050`.
+
 ### Alert Export
 
 ```bash

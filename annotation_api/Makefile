@@ -104,16 +104,24 @@ migrate-up:
 # Set IMAGE_TRANSFER=url when the target annotation API can't reach the alert
 # API's S3 bucket (e.g. local dev with LocalStack); unset keeps the script's
 # per-source default (bucket-copy for the French alert API, url for CENIA).
+# MIN_TEMPORAL_SCORE: run the temporal model on each sequence and import only
+# those scoring above it (empty disables the filter and the torch install).
+# Chile/CENIA into a local stack:
+#   make import-alert-api DATE_FROM=... ALERT_API_URL=https://apicenia.pyronear.org REMOTE_API=http://localhost:5050
 DATE_END ?= $(DATE_FROM)
 IMAGE_TRANSFER ?=
+ALERT_API_URL ?= https://alertapi.pyronear.org
+MIN_TEMPORAL_SCORE ?= 0.1
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
 		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
 	fi
-	uv run python -m scripts.data_transfer.ingestion.alert_api.import \
+	uv run $(if $(MIN_TEMPORAL_SCORE),--group temporal) python -m scripts.data_transfer.ingestion.alert_api.import \
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
+		--alert-api-url $(ALERT_API_URL) \
 		--annotation-api-url $(REMOTE_API) \
+		$(if $(MIN_TEMPORAL_SCORE),--min-temporal-score $(MIN_TEMPORAL_SCORE)) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--max-workers $(MAX_WORKERS) \
 		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \

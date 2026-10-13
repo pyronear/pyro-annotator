@@ -33,6 +33,8 @@ Arguments:
   --frames-limit (int): Maximum number of images to import per sequence (default: 30)
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
   --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
+  --min-temporal-score (float): Import only sequences the temporal model scores above this (e.g. 0.1; off by default)
+  --temporal-model-version (str): pyronear/temporal-model HuggingFace release (default: v0.4.0)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
@@ -90,6 +92,7 @@ from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
 from .sequence_fetching import fetch_all_sequences_within
 from . import object_split
+from . import temporal_filter
 from .annotation_management import (
     valid_date,
     annotate_split_sequence,
@@ -180,6 +183,22 @@ def make_cli_parser() -> argparse.ArgumentParser:
         type=str,
         choices=["bucket-copy", "url"],
         default=None,
+    )
+    parser.add_argument(
+        "--min-temporal-score",
+        help=(
+            "Run the temporal model on each fetched sequence and import only "
+            "those scoring above this value (e.g. 0.1). Off by default. "
+            "Needs `uv sync --group temporal`."
+        ),
+        type=float,
+        default=None,
+    )
+    parser.add_argument(
+        "--temporal-model-version",
+        help="pyronear/temporal-model release on HuggingFace (default: v0.4.0)",
+        type=str,
+        default="v0.4.0",
     )
     parser.add_argument(
         "--dry-run",
@@ -553,6 +572,14 @@ def main() -> None:
             step_manager.complete_step(False, f"Alert API data fetching failed: {e}")
             error_collector.print_summary(console, "Alert API Data Fetching Errors")
             sys.exit(1)
+
+        if args.min_temporal_score is not None:
+            records, _ = temporal_filter.filter_records(
+                records,
+                threshold=args.min_temporal_score,
+                model_version=args.temporal_model_version,
+                console=console,
+            )
 
         records, split_stats = object_split.split_all_records(records)
         console.print(
