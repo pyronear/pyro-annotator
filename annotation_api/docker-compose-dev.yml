@@ -16,26 +16,33 @@ services:
       timeout: 20s
       retries: 10
 
-  # ref link: https://github.com/localstack/localstack/blob/master/docker-compose.yml
-  localstack:
-    image: localstack/localstack:1.4.0
+  rustfs:
+    image: rustfs/rustfs:1.0.0
     ports:
       - 4566:4566
-    # environment variables details: https://docs.localstack.cloud/references/configuration/
     environment:
-      - EDGE_PORT=4566
-      - SERVICES=s3
-    volumes:
-      - ./scripts/localstack:/etc/localstack/init/ready.d
+      - RUSTFS_ADDRESS=0.0.0.0:4566
+      - RUSTFS_ACCESS_KEY=fake
+      - RUSTFS_SECRET_KEY=fakefake
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "awslocal --endpoint-url=http://localhost:4566 s3 ls s3://admin",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/health/ready"]
       interval: 10s
       timeout: 20s
       retries: 10
+
+  # One-shot bucket bootstrap: the API only checks its bucket, it never creates it.
+  rustfs-init:
+    image: amazon/aws-cli:2.37.0
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID=fake
+      - AWS_SECRET_ACCESS_KEY=fakefake
+      - AWS_DEFAULT_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "aws --endpoint-url http://rustfs:4566 s3api head-bucket --bucket annotation-api
+      || aws --endpoint-url http://rustfs:4566 s3 mb s3://annotation-api"
 
   backend:
     build:
@@ -45,8 +52,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      localstack:
+      rustfs:
         condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
     ports:
       - "5050:5050"
     environment:
@@ -56,9 +65,9 @@ services:
       # DB
       - POSTGRES_URL=postgresql+asyncpg://dummy_pg_user:dummy_pg_pwd@db/dummy_pg_db
       # S3
-      - S3_ENDPOINT_URL=http://localstack:4566
+      - S3_ENDPOINT_URL=http://rustfs:4566
       - S3_ACCESS_KEY=fake
-      - S3_SECRET_KEY=fake
+      - S3_SECRET_KEY=fakefake
       - S3_REGION=us-east-1
       - S3_PROXY_URL=http://localhost:4566
       - SERVER_NAME=habile

@@ -18,7 +18,7 @@ Usage:
   uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --date-end 2024-01-02
 
   # Route images via the /from-url endpoint (needed when the annotation API
-  # can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
+  # can't reach the alert API's S3 bucket, e.g. local dev with RustFS)
   uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --image-transfer url
 
   # Dry run to preview what would be processed
@@ -175,7 +175,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
             "for the French alert API, url for CENIA (the server can only "
             "bucket-copy from the French alert API's buckets). 'url' is also "
             "required for local dev where the annotation API can't reach the "
-            "alert API bucket (e.g. LocalStack)."
+            "alert API bucket (e.g. RustFS)."
         ),
         type=str,
         choices=["bucket-copy", "url"],

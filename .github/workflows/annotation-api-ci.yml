@@ -40,7 +40,7 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
     
-    # postgres and localstack are pulled by `docker compose up` in `make test`.
+    # postgres, rustfs and aws-cli are pulled by `docker compose up` in `make test`.
     # We used to tarball them into an actions/cache here, but this workflow only
     # runs on pull_request, so every cache it wrote was scoped to that PR's merge
     # ref and no other PR could read it - main never populated the key. It cost

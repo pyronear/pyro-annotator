@@ -28,7 +28,7 @@ Once running, access the services at:
 - **Backend API**: http://localhost:5050
 - **API Documentation**: http://localhost:5050/docs
 - **PostgreSQL Database**: localhost:5432
-- **MinIO S3**: http://localhost:4566 (console at http://localhost:9001, login `fake`/`fakefake`)
+- **RustFS S3**: http://localhost:4566 (console at http://localhost:9001, login `fake`/`fakefake`)
 
 ## Main Workflow
 
@@ -154,6 +154,7 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 
 **Services won't start:**
 - Ensure ports 3000, 5050, 5432, 4566, and 9001 are available
+- Coming from the MinIO stack: run `docker compose up -d --remove-orphans` once so the old `minio` container frees port 4566. Its objects are not migrated to RustFS; use `docker compose down -v` for a clean slate or re-import
 - Check logs: `docker compose logs [service_name]`
 - Rebuild images: `docker compose build --no-cache`
 
