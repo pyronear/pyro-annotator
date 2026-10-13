@@ -58,18 +58,6 @@ Le premier lancement prend quelques minutes (construction des images). Ensuite :
 - Interface d'annotation : http://localhost:3000
   (identifiant `admin`, mot de passe `admin12345`)
 
-> **Si Docker affiche `pull access denied for minio/minio`** : MinIO ne publie
-> plus ses images. Créez un fichier `docker-compose.override.yml` à la racine
-> avec le contenu suivant, puis relancez `docker compose up -d --build` :
->
-> ```yaml
-> services:
->   minio:
->     image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
->   minio-init:
->     image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
-> ```
-
 ## 4. Configurer les identifiants
 
 Créez le fichier `annotation_api/.env` (il n'est jamais commité) :
@@ -180,4 +168,3 @@ Pyronear France. Pour une instance locale, passez toujours
 | `Target annotation auth failed` | L'API locale n'est pas lancée, ou mauvais identifiants | Vérifier http://localhost:5050/status et `LOCAL_ANNOTATION_*` |
 | `Authentication failed` | Mauvais identifiants CENIA | Vérifier `ALERT_API_*` dans `.env` |
 | `--source-api is required for an unknown alert API URL` | URL d'API d'alerte non reconnue | Ajouter `SOURCE_API=api_cenia` |
-| `pull access denied for minio/minio` | MinIO ne publie plus ses images | Voir l'encadré de l'étape 3 |

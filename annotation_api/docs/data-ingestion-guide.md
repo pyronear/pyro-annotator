@@ -97,7 +97,7 @@ uv run python -m scripts.data_transfer.ingestion.alert_api.import \
   --loglevel info
 
 # Route images via the /from-url endpoint (needed when the annotation API
-# can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
+# can't reach the alert API's S3 bucket, e.g. local dev with RustFS)
 uv run python -m scripts.data_transfer.ingestion.alert_api.import \
   --date-from 2024-01-01 --image-transfer url
 

@@ -16,7 +16,7 @@ no monitoring.
 - **Fresh, empty database** — Alembic creates the schema on API startup; the bootstrap
   admin user comes from `AUTH_USERNAME`/`AUTH_PASSWORD`.
 - **Storage: OVH Object Storage.** The API and worker write to a bucket
-  (`test-annotator`, region `gra`) via an S3 user provisioned for it. MinIO still runs
+  (`test-annotator`, region `gra`) via an S3 user provisioned for it. RustFS still runs
   alongside, unused by the API, while the import tooling is exercised against it; see
   "Storage history" below.
 - **Images built on the server** — `git clone` + `docker compose build` on the box.
@@ -29,8 +29,8 @@ A new standalone compose file, `docker-compose.server.yml`, committed to the rep
 | Service | Host port | Notes |
 |---|---|---|
 | `postgres` | none | never published on the host |
-| `minio` | 4566 | no longer backs the API; kept published for import-tooling work |
-| `minio-init` | none | one-shot bucket bootstrap, as in the dev compose |
+| `rustfs` | 4566 | no longer backs the API; kept published for import-tooling work |
+| `rustfs-init` | none | one-shot bucket bootstrap, as in the dev compose |
 | `annotation_api` | 5050 | Alembic migrate + uvicorn, as in the dev compose |
 | `worker` | none | procrastinate queue worker |
 | `frontend` | 80 | nginx serving the built React app |
@@ -49,7 +49,7 @@ compose file on the server, via compose variable interpolation. A committed
 - `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` — generated
 - `AUTH_USERNAME` / `AUTH_PASSWORD` — bootstrap admin; password generated
 - `JWT_SECRET` — generated
-- `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` — generated (never `fake`/`fakefake` on a
+- `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` — generated (never `fake`/`fakefake` on a
   public IP)
 - `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_REGION` / `S3_BUCKET_NAME`
   — the OVH bucket and the S3 user provisioned for it
@@ -86,12 +86,14 @@ entries pointing at MinIO dropped, since storage is no longer part of this proje
 lifecycle. MinIO itself stays published for now — import tooling is still exercised
 against it — and is removed once that work concludes. Objects written to MinIO before
 the switch were not migrated; that test data was disposable and is being re-imported.
+On 2026-10-13 MinIO was replaced by RustFS (same port, fresh `rustfs_data` volume, no
+migration).
 
 ## Server preparation (one-time)
 
 - Install Ubuntu's own `docker.io` + `docker-compose-v2` packages (Ubuntu 26.04 is too
   new to rely on Docker's upstream apt repo); add `ubuntu` to the `docker` group.
-- `ufw`: allow 22 (SSH), 80 (frontend), 5050 (API), 4566 (MinIO, while in use);
+- `ufw`: allow 22 (SSH), 80 (frontend), 5050 (API), 4566 (RustFS, while in use);
   default deny incoming.
 
 ## Deployment flow
@@ -109,6 +111,15 @@ holding ports 80/5050 while the renamed project tries to bind them:
 ```bash
 docker compose -f docker-compose.server.yml -p pyro-annotator down   # containers only
 docker compose -f docker-compose.server.yml up -d --build            # volumes are pinned
+```
+
+The first deploy after the MinIO → RustFS switch needs `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` renamed to `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` in `.env`
+(compose refuses to start without them), and `--remove-orphans` so the old `minio`
+container releases port 4566:
+
+```bash
+docker compose -f docker-compose.server.yml up -d --build --remove-orphans
 ```
 
 ## Verification
