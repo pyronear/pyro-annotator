@@ -81,13 +81,6 @@ LOCAL_ANNOTATION_PASSWORD=admin12345
 # Remote annotation API (only if REMOTE_API is not localhost)
 # MAIN_ANNOTATION_LOGIN=...
 # MAIN_ANNOTATION_PASSWORD=...
-
-# Dummy values: the script needs them to start but does not use them
-POSTGRES_URL=postgresql://unused@localhost/unused
-S3_ACCESS_KEY=unused
-S3_SECRET_KEY=unused
-S3_REGION=unused
-S3_ENDPOINT_URL=http://localhost:1
 ```
 
 The old names `PLATFORM_LOGIN`, `PLATFORM_ADMIN_LOGIN`, etc. still work but are
@@ -206,7 +199,6 @@ Pyronear's S3 buckets, which it cannot access.
 
 | Message | Cause | Fix |
 |---|---|---|
-| `KeyError: 'POSTGRES_URL'` | `.env` is missing or not in `annotation_api/` | Create `annotation_api/.env` (step 4) and run from `annotation_api/` |
 | `Target annotation auth failed` | The annotation API is not running, or wrong credentials | Check http://localhost:5050/status and `LOCAL_ANNOTATION_*` |
 | `ALERT_API_... is not set` | One of the 4 alert API credentials is missing | Fill in `ALERT_API_*` in `.env` |
 | `Authentication failed` | Wrong alert API credentials | Check `ALERT_API_*` in `.env` |
