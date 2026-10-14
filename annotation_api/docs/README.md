@@ -37,8 +37,8 @@ Welcome to the Pyronear Annotation API documentation. This API provides a compre
 - Batch processing and automation
 - Troubleshooting and error handling
 
-### 🇫🇷 [Tutoriel : importer des alertes](tutoriel-import-alertes.md)
-**Step-by-step import guide (French)**
+### 🚀 [Alert Import Tutorial](alert-import-tutorial.md)
+**Step-by-step import guide**
 - Any alert API into a local or remote annotation API
 - Temporal-model filtering, day-by-day import, parameters and troubleshooting
 

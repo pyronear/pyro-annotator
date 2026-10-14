@@ -14,7 +14,7 @@ The data ingestion system uses a single comprehensive script:
 
 This script provides a complete pipeline from raw alert API data to annotation-ready sequences with proper processing stage management, combining data fetching, object-splitting, and annotation creation into a single, efficient workflow.
 
-A step-by-step tutorial in French (any alert API into a local annotation API) is in [tutoriel-import-alertes.md](tutoriel-import-alertes.md).
+A step-by-step tutorial (any alert API into a local annotation API) is in [alert-import-tutorial.md](alert-import-tutorial.md).
 
 ## Prerequisites
 
