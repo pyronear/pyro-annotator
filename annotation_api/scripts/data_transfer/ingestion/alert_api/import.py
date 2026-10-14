@@ -540,6 +540,7 @@ def import_day(
         "annotations_failed": 0,
         "annotations_created": 0,
         "sequences_rolled_back": 0,
+        "scoring_failures": 0,
     }
 
     try:
@@ -635,12 +636,21 @@ def import_day(
             return 1
 
         if args.min_temporal_score is not None:
-            records, _ = temporal_filter.filter_records(
+            fetched_ids = {r["sequence_id"] for r in records}
+            records, scores = temporal_filter.filter_records(
                 records,
                 threshold=args.min_temporal_score,
                 model_version=args.temporal_model_version,
                 console=console,
             )
+            # An unscored sequence was skipped, not rejected: fail the day so
+            # it gets re-run instead of being silently lost.
+            stats["scoring_failures"] = len(fetched_ids) - len(scores)
+            if stats["scoring_failures"]:
+                error_collector.add_error(
+                    f"{stats['scoring_failures']} sequence(s) could not be "
+                    "temporally scored and were skipped; re-run this day"
+                )
 
         records, split_stats = object_split.split_all_records(records)
         console.print(
@@ -667,7 +677,7 @@ def import_day(
 
         if not records and not args.dry_run:
             step_manager.complete_step(False, "No records fetched from alert API")
-            return 0
+            return 1 if stats["scoring_failures"] else 0
 
         # Post to annotation API (if not dry run)
         if not args.dry_run:
@@ -824,7 +834,7 @@ def import_day(
                 padding=(1, 2),
             )
             console.print(panel)
-            return 1 if stats["refresh_failures"] else 0
+            return 1 if stats["refresh_failures"] or stats["scoring_failures"] else 0
 
         stats["total_sequences_for_annotation"] = len(sequence_ids)
         step_stats = {"Successfully imported sequences": len(sequence_ids)}
