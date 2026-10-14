@@ -2,7 +2,8 @@
 
 This tutorial shows how to pull sequences from a Pyronear alert API, keep only
 the ones the temporal model finds interesting, and import them into a
-pyro-annotator annotation API (for example a local one) to annotate them.
+pyro-annotator annotation API (for example a local one) to annotate them, and
+export the result (annotations and images) to a local folder.
 
 ## What the script does
 
@@ -143,6 +144,38 @@ skipped.
 
 Open the annotation app (http://localhost:3000 for a local one) and log in.
 The imported sequences are in the annotation queue.
+
+## 8. Export the annotations
+
+When you are done annotating, export everything to a local folder (annotations
+and images) to add it to the dataset later. From `annotation_api/`:
+
+```bash
+make export-alerts REMOTE_API=http://localhost:5050 OUTPUT_DIR=outputs/alerts_export
+```
+
+The folder contains:
+
+```
+outputs/alerts_export/
+├── manifest.jsonl     # one line per alert: objects, labels, boxes, scores
+└── images/{source_api}/{alert_id}/{detection_id}.jpg
+```
+
+Each frame in `manifest.jsonl` has an `image_path` that points into `images/`.
+
+- Only **fully annotated** alerts are exported (every object of the alert is
+  done). Alerts still in progress are left out.
+- You can run it again at any time: the manifest is rewritten and only missing
+  images are downloaded.
+
+To check the boxes by eye, draw them on the images:
+
+```bash
+make render-overlays DATASET_DIR=outputs/alerts_export
+```
+
+This writes contact sheets to `outputs/alerts_export/overlays/`.
 
 ## Parameters
 
