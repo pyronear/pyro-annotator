@@ -51,7 +51,7 @@ Skip this step if you import into an annotation API that is already online.
 From the repo root:
 
 ```bash
-docker compose up -d --build
+make up
 ```
 
 The first start takes a few minutes (it builds the images). Then:
@@ -59,6 +59,8 @@ The first start takes a few minutes (it builds the images). Then:
 - API: http://localhost:5050/status should return `{"status":"ok"}`
 - Annotation app: http://localhost:3000
   (login `admin`, password `admin12345`)
+
+To stop it later: `make down` (your data is kept).
 
 ## 4. Set the credentials
 
