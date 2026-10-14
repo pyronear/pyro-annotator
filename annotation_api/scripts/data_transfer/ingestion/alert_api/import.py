@@ -37,7 +37,7 @@ Arguments:
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
   --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
   --min-temporal-score (float): Import only sequences the temporal model scores above this (e.g. 0.1; off by default)
-  --temporal-model-version (str): pyronear/temporal-model HuggingFace release (default: v0.4.0)
+  --temporal-model-version (str): pyronear/temporal-model HuggingFace release (default: v0.6.0)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
@@ -217,9 +217,9 @@ def make_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--temporal-model-version",
-        help="pyronear/temporal-model release on HuggingFace (default: v0.4.0)",
+        help="pyronear/temporal-model release on HuggingFace (default: v0.6.0)",
         type=str,
-        default="v0.4.0",
+        default="v0.6.0",
     )
     parser.add_argument(
         "--dry-run",

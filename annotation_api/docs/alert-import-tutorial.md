@@ -165,7 +165,7 @@ Pass them to `make import-alert-api` as `NAME=value`:
 | `REMOTE_API` | Target annotation API | `https://annotationapi.pyronear.org` |
 | `IMAGE_TRANSFER` | How images reach the annotation API: `url` (the annotation API downloads them) or `bucket-copy` (direct copy between S3 buckets, only between Pyronear France servers) | `bucket-copy` for `alertapi.pyronear.org`, `url` otherwise |
 | `MIN_TEMPORAL_SCORE` | Temporal model threshold. Empty = no filter | `0.1` |
-| `TEMPORAL_MODEL_VERSION` | Model version on HuggingFace | `v0.4.0` |
+| `TEMPORAL_MODEL_VERSION` | Model version on HuggingFace | `v0.6.0` |
 | `FRAMES_LIMIT` | Number of images per sequence (the first ones) | `20` |
 | `MAX_SEQUENCES` | Max sequences per day (0 = no limit) | `0` |
 

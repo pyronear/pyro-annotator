@@ -119,7 +119,7 @@ ALERT_API_URL ?= https://alertapi.pyronear.org
 SOURCE_API ?=
 MIN_TEMPORAL_SCORE ?= 0.1
 FRAMES_LIMIT ?= 20
-TEMPORAL_MODEL_VERSION ?= v0.4.0
+TEMPORAL_MODEL_VERSION ?= v0.6.0
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
