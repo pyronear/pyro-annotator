@@ -34,7 +34,12 @@ class TestSourceApi:
 
     def test_trailing_slash_is_normalized_by_the_parser(self):
         args = importer.make_cli_parser().parse_args(
-            ["--date-from", "2026-10-10", "--alert-api-url", "https://alertapi.pyronear.org/"]
+            [
+                "--date-from",
+                "2026-10-10",
+                "--alert-api-url",
+                "https://alertapi.pyronear.org/",
+            ]
         )
         assert args.alert_api_url == "https://alertapi.pyronear.org"
 
@@ -45,6 +50,24 @@ class TestSourceApi:
         )
         assert importer.default_image_transfer("https://apicenia.pyronear.org") == "url"
         assert importer.default_image_transfer("https://alert.example.cl") == "url"
+
+
+@pytest.mark.parametrize(
+    "value, ok",
+    [
+        ("0.2", True),
+        ("0", True),
+        ("1", True),
+        ("1.5", False),
+        ("-0.1", False),
+        ("nan", False),
+    ],
+)
+def test_temporal_threshold_must_be_a_probability(value, ok):
+    args = importer.make_cli_parser().parse_args(
+        ["--date-from", "2026-10-10", "--min-temporal-score", value]
+    )
+    assert importer.validate_args(args) is ok
 
 
 @pytest.fixture

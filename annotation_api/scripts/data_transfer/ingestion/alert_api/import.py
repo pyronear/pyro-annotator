@@ -278,6 +278,11 @@ def validate_args(args: argparse.Namespace) -> bool:
         logging.error("--max-sequences must be 0 or greater when provided")
         return False
 
+    # `not (0 <= x <= 1)` also rejects nan, which compares false to everything
+    if args.min_temporal_score is not None and not (0 <= args.min_temporal_score <= 1):
+        logging.error("--min-temporal-score must be between 0 and 1")
+        return False
+
     # Validate worker count
     if args.max_workers < 1:
         logging.error("--max-workers must be at least 1")
