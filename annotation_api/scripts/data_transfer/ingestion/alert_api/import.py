@@ -36,7 +36,7 @@ Arguments:
   --frames-limit (int): First N images of each sequence, scored and imported (default: 20)
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
   --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
-  --min-temporal-score (float): Import only sequences the temporal model scores above this (e.g. 0.1; off by default)
+  --min-temporal-score (float): Import only sequences the temporal model scores above this (e.g. 0.2; off by default)
   --temporal-model-version (str): pyronear/temporal-model HuggingFace release (default: v0.6.0)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
@@ -209,7 +209,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--min-temporal-score",
         help=(
             "Run the temporal model on each fetched sequence and import only "
-            "those scoring above this value (e.g. 0.1). Off by default. "
+            "those scoring above this value (e.g. 0.2). Off by default. "
             "Needs `uv sync --group temporal`."
         ),
         type=float,

@@ -137,7 +137,7 @@ uv run python -m scripts.data_transfer.ingestion.alert_api.import \
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
 | `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` for the French alert API, `url` for any other (bucket-copy only works against the French alert API's buckets) | No |
-| `--min-temporal-score` | Import only sequences the temporal model scores above this (e.g. `0.1`). Off by default in the script; `make import-alert-api` passes `0.1` | - | No |
+| `--min-temporal-score` | Import only sequences the temporal model scores above this (e.g. `0.2`). Off by default in the script; `make import-alert-api` passes `0.2` | - | No |
 | `--temporal-model-version` | `pyronear/temporal-model` HuggingFace release | `v0.6.0` | No |
 | `--dry-run` | Preview actions without execution | `false` | No |
 | `--max-workers` | Max workers for parallel processing | `4` | No |

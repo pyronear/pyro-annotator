@@ -13,7 +13,7 @@ For each day of the date range, one day after the other:
 2. for each sequence, it downloads the **first 20 images**;
 3. it runs the **temporal model** (`pyronear/temporal-model`) on these images
    and gets a score between 0 and 1;
-4. it keeps only the sequences with a score **above 0.1**;
+4. it keeps only the sequences with a score **above 0.2**;
 5. it imports these sequences into the annotation API and gets them ready to
    annotate;
 6. it moves on to the next day.
@@ -104,7 +104,7 @@ takes a few minutes. You should see `✅ Target annotation auth OK`, then a line
 like:
 
 ```
-🧠 Temporal filter (> 0.1): kept 2/3 sequence(s) (0 failed to score)
+🧠 Temporal filter (> 0.2): kept 2/3 sequence(s) (0 failed to score)
 ```
 
 ## 6. Import a date range
@@ -182,7 +182,7 @@ Pass them to `make import-alert-api` as `NAME=value`:
 | `SOURCE_API` | Source tag saved on the data: `pyronear_french`, `api_cenia` or `alert_wildfire`. Set automatically for `alertapi.pyronear.org` and `apicenia.pyronear.org`, required for any other URL | from the URL |
 | `REMOTE_API` | Target annotation API | `https://annotationapi.pyronear.org` |
 | `IMAGE_TRANSFER` | How images reach the annotation API: `url` (the annotation API downloads them) or `bucket-copy` (direct copy between S3 buckets, only between Pyronear France servers) | `bucket-copy` for `alertapi.pyronear.org`, `url` otherwise |
-| `MIN_TEMPORAL_SCORE` | Temporal model threshold. Empty = no filter | `0.1` |
+| `MIN_TEMPORAL_SCORE` | Temporal model threshold. Empty = no filter | `0.2` |
 | `TEMPORAL_MODEL_VERSION` | Model version on HuggingFace | `v0.6.0` |
 | `FRAMES_LIMIT` | Number of images per sequence (the first ones) | `20` |
 | `MAX_SEQUENCES` | Max sequences per day (0 = no limit) | `0` |
