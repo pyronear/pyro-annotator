@@ -93,7 +93,7 @@ The range is processed **one day at a time**: a day is fetched, scored, imported
 
 Before importing, each sequence's fetched frames go through the released `pyronear/temporal-model` (HF release `TEMPORAL_MODEL_VERSION`, default `v0.4.0`; torch deps in the opt-in `uv` group `temporal`), and only sequences scoring above `MIN_TEMPORAL_SCORE` (default `0.1`; empty disables) are imported.
 
-All endpoints are configurable: `ALERT_API_URL` (source; any alert API, `SOURCE_API` required unless it is alertapi/apicenia) and `REMOTE_API` (target annotation API). Chile/CENIA into a local stack:
+All endpoints are configurable: `ALERT_API_URL` (source; any alert API, `SOURCE_API` required unless it is alertapi/apicenia) and `REMOTE_API` (target annotation API). Step-by-step tutorial (French): `annotation_api/docs/tutoriel-import-alertes.md`. Another alert API into a local stack (e.g. CENIA):
 
 ```bash
 make import-alert-api DATE_FROM=2026-10-01 DATE_END=2026-10-07 \

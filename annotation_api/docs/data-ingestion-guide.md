@@ -14,6 +14,8 @@ The data ingestion system uses a single comprehensive script:
 
 This script provides a complete pipeline from raw alert API data to annotation-ready sequences with proper processing stage management, combining data fetching, object-splitting, and annotation creation into a single, efficient workflow.
 
+A step-by-step tutorial in French (any alert API into a local annotation API) is in [tutoriel-import-alertes.md](tutoriel-import-alertes.md).
+
 ## Prerequisites
 
 ### System Requirements
@@ -54,10 +56,13 @@ The import script provides a streamlined workflow that combines alert API data f
 
 The script executes the following pipeline:
 
-1. **Fetch Alert API Data**: Retrieves sequences and detections from the alert API for the given date range (chronological order, `risk_score=extreme`)
-2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames). Sequences where no object reaches the spawn threshold are imported whole as a single sequence (fallback); when at least one object qualifies, boxes that never reach the threshold are dropped (same rule as the alert API). The primary object keeps the alert API `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`). Note that splits happen on *spatial* discontinuity, so a single drifting plume with a detection gap can also split into temporally disjoint sibling sequences (no shared frames, hence no cross-object overlay in the UI) — this is intended behavior, mirroring the alert API's association rule
-3. **Import**: Posts the resulting object sequences and their detections to the annotation API
-4. **Annotate**: Writes one `sequences_bbox` track per object directly and sets the sequence annotation to `READY_TO_ANNOTATE`
+The date range is processed **one day at a time**: every step below runs for a day before the next day is fetched, so nothing is downloaded ahead. A failed day is reported, the run moves on, and the script exits 1 at the end.
+
+1. **Fetch Alert API Data**: Retrieves the day's sequences and their first `--frames-limit` images from the alert API (chronological order, `risk_score=extreme`)
+2. **Temporal filter** (optional, `--min-temporal-score`): Runs the released `pyronear/temporal-model` on each sequence's images and keeps only sequences scoring above the threshold. Needs `uv sync --group temporal`
+3. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames). Sequences where no object reaches the spawn threshold are imported whole as a single sequence (fallback); when at least one object qualifies, boxes that never reach the threshold are dropped (same rule as the alert API). The primary object keeps the alert API `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`). Note that splits happen on *spatial* discontinuity, so a single drifting plume with a detection gap can also split into temporally disjoint sibling sequences (no shared frames, hence no cross-object overlay in the UI) — this is intended behavior, mirroring the alert API's association rule
+4. **Import**: Posts the resulting object sequences and their detections to the annotation API
+5. **Annotate**: Writes one `sequences_bbox` track per object directly and sets the sequence annotation to `READY_TO_ANNOTATE`
 
 **Re-running the import**: sequences imported before object-splitting was introduced are never retro-split on a later run — the primary sequence still carries the alert API `alert_api_id`, so it 409-skips as already imported. Only its missing sibling sequences (the synthetic ids) get created when you re-run the import over the same date range.
 
@@ -117,20 +122,23 @@ uv run python -m scripts.data_transfer.ingestion.alert_api.import \
 #### API Configuration
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--alert-api-url` | Alert API base URL | `https://alertapi.pyronear.org` | No |
+| `--alert-api-url` | Alert API base URL (any deployment) | `https://alertapi.pyronear.org` | No |
+| `--source-api` | `source_api` tag stored on imported data (`pyronear_french`/`api_cenia`/`alert_wildfire`) | Derived for alertapi/apicenia | For any other URL |
 | `--annotation-api-url` | Annotation API base URL | `http://localhost:5050` | No |
-| `--max-sequences` | Max sequences to import (`0` = no cap) | `0` | No |
+| `--max-sequences` | Max sequences to import per day (`0` = no cap) | `0` | No |
 
 #### Alert API Fetching Options
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--frames-limit` | Max images to import per sequence | `30` | No |
+| `--frames-limit` | First N images of each sequence, scored and imported | `20` | No |
 | `--sequence-list` | Comma-separated `alert_api_id` list, or path to a file | - | No |
 
 #### Processing Control
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` for the French alert API, `url` for CENIA (bucket-copy only works against the French alert API's buckets) | No |
+| `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` for the French alert API, `url` for any other (bucket-copy only works against the French alert API's buckets) | No |
+| `--min-temporal-score` | Import only sequences the temporal model scores above this (e.g. `0.1`). Off by default in the script; `make import-alert-api` passes `0.1` | - | No |
+| `--temporal-model-version` | `pyronear/temporal-model` HuggingFace release | `v0.4.0` | No |
 | `--dry-run` | Preview actions without execution | `false` | No |
 | `--max-workers` | Max workers for parallel processing | `4` | No |
 | `--loglevel` | Logging level (debug/info/warning/error) | `info` | No |

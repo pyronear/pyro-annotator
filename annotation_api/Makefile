@@ -111,7 +111,7 @@ migrate-up:
 # MIN_TEMPORAL_SCORE: run the temporal model (TEMPORAL_MODEL_VERSION, a
 # pyronear/temporal-model HuggingFace release) on each sequence and import only
 # those scoring above it (empty disables the filter and the torch install).
-# Chile/CENIA into a local stack:
+# Another alert API into a local stack (e.g. CENIA):
 #   make import-alert-api DATE_FROM=... ALERT_API_URL=https://apicenia.pyronear.org REMOTE_API=http://localhost:5050
 DATE_END ?= $(DATE_FROM)
 IMAGE_TRANSFER ?=
