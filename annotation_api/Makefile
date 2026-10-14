@@ -103,18 +103,39 @@ migrate-up:
 # Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20] [IMAGE_TRANSFER=url]
 # Set IMAGE_TRANSFER=url when the target annotation API can't reach the alert
 # API's S3 bucket (e.g. local dev with RustFS); unset keeps the script's
-# per-source default (bucket-copy for the French alert API, url for CENIA).
+# per-source default (bucket-copy for the French alert API, url otherwise).
+# ALERT_API_URL: any alert API; SOURCE_API (pyronear_french/api_cenia/
+# alert_wildfire) is required unless it is alertapi or apicenia.
+# REMOTE_API: the annotation API the data is written to.
+# FRAMES_LIMIT: first N images of each sequence, scored and imported.
+# MIN_TEMPORAL_SCORE: run the temporal model (TEMPORAL_MODEL_VERSION, a
+# pyronear/temporal-model HuggingFace release) on each sequence and import only
+# those scoring above it (empty disables the filter and the torch install).
+# DRY_RUN=1: fetch and score, import nothing.
+# Another alert API into a local stack (e.g. CENIA):
+#   make import-alert-api DATE_FROM=... ALERT_API_URL=https://apicenia.pyronear.org REMOTE_API=http://localhost:5050
 DATE_END ?= $(DATE_FROM)
 IMAGE_TRANSFER ?=
+ALERT_API_URL ?= https://alertapi.pyronear.org
+SOURCE_API ?=
+MIN_TEMPORAL_SCORE ?= 0.2
+FRAMES_LIMIT ?= 20
+TEMPORAL_MODEL_VERSION ?= v0.6.0
+DRY_RUN ?=
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
 		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
 	fi
-	uv run python -m scripts.data_transfer.ingestion.alert_api.import \
+	uv run $(if $(MIN_TEMPORAL_SCORE),--group temporal) python -m scripts.data_transfer.ingestion.alert_api.import \
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
+		--alert-api-url $(ALERT_API_URL) \
+		$(if $(SOURCE_API),--source-api $(SOURCE_API)) \
 		--annotation-api-url $(REMOTE_API) \
+		$(if $(MIN_TEMPORAL_SCORE),--min-temporal-score $(MIN_TEMPORAL_SCORE) --temporal-model-version $(TEMPORAL_MODEL_VERSION)) \
 		--max-sequences $(MAX_SEQUENCES) \
+		--frames-limit $(FRAMES_LIMIT) \
+		$(if $(DRY_RUN),--dry-run) \
 		--max-workers $(MAX_WORKERS) \
 		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)

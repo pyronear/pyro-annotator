@@ -37,6 +37,11 @@ Welcome to the Pyronear Annotation API documentation. This API provides a compre
 - Batch processing and automation
 - Troubleshooting and error handling
 
+### 🚀 [Alert Import Tutorial](alert-import-tutorial.md)
+**Step-by-step import guide**
+- Any alert API into a local or remote annotation API
+- Temporal-model filtering, day-by-day import, parameters and troubleshooting
+
 ### 🤖 [Sequence Annotation Guide](sequence-annotation-guide.md)
 **Automatic annotation generation from AI predictions**
 - Temporal clustering of bounding boxes across time frames

@@ -19,8 +19,9 @@ sometimes materializes the same physical object as its own alert sequence
 too (that sequence's own `bbox` boxes are this one's `others_bboxes`, and vice
 versa); `split_all_records` cross-references sibling groups against every
 other alert sequence's own boxes and drops a sibling that duplicates one,
-but this only catches duplicates within a single run — sequences split across
-a date-range boundary into different runs are not deduplicated.
+but this only catches duplicates within a single run. The import runs one
+day at a time, so sequences on either side of midnight (or of separate runs)
+are not deduplicated against each other.
 """
 
 import logging

@@ -44,6 +44,11 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Temporal-model pre-import filter (import --min-temporal-score). Heavy (torch),
+# so opt-in: `uv sync --group temporal`.
+temporal = [
+    "temporal-model-core[torch] @ git+https://github.com/pyronear/temporal-model.git@b45b0221cb14625d0b48e5e1f7e71465d82efa22#subdirectory=core ; python_version < '3.13'",
+]
 dev = [
     "mypy>=1.10.0",
     "ruff>=0.7.1",
