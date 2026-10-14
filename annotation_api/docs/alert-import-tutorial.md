@@ -90,40 +90,30 @@ S3_ENDPOINT_URL=http://localhost:1
 The old names `PLATFORM_LOGIN`, `PLATFORM_ADMIN_LOGIN`, etc. still work but are
 deprecated: use the `ALERT_API_*` names.
 
-## 5. Install the Python dependencies
+## 5. Test on one day without writing anything
+
+`DRY_RUN=1` fetches and scores the sequences but imports nothing. Use it to
+check that the credentials and the model work. From `annotation_api/`, with
+your alert API URL:
 
 ```bash
 cd annotation_api
-uv sync --group temporal
+make import-alert-api DATE_FROM=2026-10-10 \
+  ALERT_API_URL=https://your-alert-api.example.org SOURCE_API=api_cenia \
+  REMOTE_API=http://localhost:5050 DRY_RUN=1
 ```
 
-The first `sync` downloads PyTorch and takes a few minutes.
-
-## 6. Test on one day without writing anything
-
-`--dry-run` fetches and scores the sequences but imports nothing. Use it to
-check that the credentials and the model work. Replace the URL with your alert
-API:
-
-```bash
-uv run --group temporal python -m scripts.data_transfer.ingestion.alert_api.import \
-  --date-from 2026-10-10 --date-end 2026-10-10 \
-  --alert-api-url https://your-alert-api.example.org \
-  --source-api api_cenia \
-  --annotation-api-url http://localhost:5050 \
-  --min-temporal-score 0.1 --dry-run
-```
-
-On the first run, the model is downloaded from HuggingFace. You should see
-`✅ Target annotation auth OK`, then a line like:
+The first run installs PyTorch and downloads the model from HuggingFace, so it
+takes a few minutes. You should see `✅ Target annotation auth OK`, then a line
+like:
 
 ```
 🧠 Temporal filter (> 0.1): kept 2/3 sequence(s) (0 failed to score)
 ```
 
-## 7. Import a date range
+## 6. Import a date range
 
-Still from `annotation_api/`:
+Same command, without `DRY_RUN`:
 
 ```bash
 make import-alert-api DATE_FROM=2026-10-05 DATE_END=2026-10-11 \
@@ -147,7 +137,7 @@ Just run that day again (`DATE_FROM=2026-10-08 DATE_END=2026-10-08`). Running a
 day that is already imported creates no duplicates: existing sequences are
 skipped.
 
-## 8. Annotate
+## 7. Annotate
 
 Open the annotation app (http://localhost:3000 for a local one) and log in.
 The imported sequences are in the annotation queue.
@@ -168,6 +158,7 @@ Pass them to `make import-alert-api` as `NAME=value`:
 | `TEMPORAL_MODEL_VERSION` | Model version on HuggingFace | `v0.6.0` |
 | `FRAMES_LIMIT` | Number of images per sequence (the first ones) | `20` |
 | `MAX_SEQUENCES` | Max sequences per day (0 = no limit) | `0` |
+| `DRY_RUN` | `1` = fetch and score only, import nothing | empty |
 
 **Warning**: `REMOTE_API` points to the Pyronear France annotation API by
 default. For a local one, always pass `REMOTE_API=http://localhost:5050`.

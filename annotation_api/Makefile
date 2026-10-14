@@ -111,6 +111,7 @@ migrate-up:
 # MIN_TEMPORAL_SCORE: run the temporal model (TEMPORAL_MODEL_VERSION, a
 # pyronear/temporal-model HuggingFace release) on each sequence and import only
 # those scoring above it (empty disables the filter and the torch install).
+# DRY_RUN=1: fetch and score, import nothing.
 # Another alert API into a local stack (e.g. CENIA):
 #   make import-alert-api DATE_FROM=... ALERT_API_URL=https://apicenia.pyronear.org REMOTE_API=http://localhost:5050
 DATE_END ?= $(DATE_FROM)
@@ -120,6 +121,7 @@ SOURCE_API ?=
 MIN_TEMPORAL_SCORE ?= 0.1
 FRAMES_LIMIT ?= 20
 TEMPORAL_MODEL_VERSION ?= v0.6.0
+DRY_RUN ?=
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
@@ -133,6 +135,7 @@ import-alert-api:
 		$(if $(MIN_TEMPORAL_SCORE),--min-temporal-score $(MIN_TEMPORAL_SCORE) --temporal-model-version $(TEMPORAL_MODEL_VERSION)) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--frames-limit $(FRAMES_LIMIT) \
+		$(if $(DRY_RUN),--dry-run) \
 		--max-workers $(MAX_WORKERS) \
 		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)
