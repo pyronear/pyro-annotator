@@ -159,7 +159,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 
 ## Docker
 
-- Multi-stage Dockerfile: Node 18 builder → nginx Alpine runtime.
+- Multi-stage Dockerfile: Node 24.22.1 builder → nginx Alpine runtime.
 - `nginx.conf` handles SPA routing (`try_files`), gzip, cache headers, and a `/health` endpoint.
 - Container port 80, mapped to host 3000 in compose.
 

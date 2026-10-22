@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for PyroAnnotator Frontend
 
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:24.22.1-alpine AS builder
 
 # Accept build arguments
 ARG VITE_API_BASE_URL=http://localhost:5050
