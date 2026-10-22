@@ -15,7 +15,7 @@ React/TypeScript UI for annotating wildfire detection sequences against the Pyro
 
 ## Prerequisites
 
-- Node.js 24.22.1 and npm
+- Node.js 22.23.4 and npm
 - A running annotation API (default `http://localhost:5050`) — see `../annotation_api/`
 
 ## Quick Start
@@ -98,7 +98,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 
 ## Docker
 
-Multi-stage build (Node 24.22.1 → nginx Alpine). Expose container port 80, mapped to host 3000.
+Multi-stage build (Node 22.23.4 → nginx Alpine). Expose container port 80, mapped to host 3000.
 
 ```bash
 docker build -t pyro-annotator-frontend .
