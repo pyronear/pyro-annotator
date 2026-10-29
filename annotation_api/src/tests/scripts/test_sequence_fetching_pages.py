@@ -3,11 +3,13 @@
 The alert API rejects `limit` above 100 on `/sequences/all/fromdate` with a
 422 whose body is a `{"detail": ...}` dict. Returning that dict as data let
 `list.extend` turn it into a phantom "detail" sequence (`'str' object has no
-attribute 'get'` downstream), so the error must be raised instead.
+attribute 'get'` downstream), so the error must be raised and fail the day
+instead of being swallowed into an empty or partial import.
 """
 
 from datetime import date
 
+import pytest
 import requests
 
 from scripts.data_transfer.ingestion.alert_api import client, sequence_fetching
@@ -27,11 +29,12 @@ class _Response:
         return self._payload
 
 
-def test_fetch_returns_no_sequences_when_the_api_rejects_the_request(monkeypatch):
+def test_fetch_fails_the_day_when_the_api_rejects_the_request(monkeypatch):
     detail = {"detail": [{"loc": ["query", "limit"], "msg": "Input should be <= 100"}]}
     monkeypatch.setattr(requests, "get", lambda *a, **k: _Response(422, detail))
 
-    assert sequence_fetching.fetch_sequences_for_date(API, DAY, "token") == []
+    with pytest.raises(Exception, match="API Error: 422"):
+        sequence_fetching.fetch_sequences_for_date(API, DAY, "token")
 
 
 def test_fetch_pages_within_the_alert_api_limit(monkeypatch):

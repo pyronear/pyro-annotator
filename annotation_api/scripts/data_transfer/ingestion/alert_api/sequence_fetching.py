@@ -119,27 +119,25 @@ def fetch_sequences_for_date(
     Returns:
         List of sequence dictionaries for the specified date
     """
+    # Errors propagate: a swallowed failure would import an empty or partial
+    # day while the run still reports success.
     page_size = 100  # the alert API rejects `limit` above 100 (422)
     offset = 0
     sequences: List[Dict[str, Any]] = []
-    try:
-        while True:
-            page = alert_api_client.list_sequences_for_date(
-                api_endpoint=api_endpoint,
-                date=target_date,
-                limit=page_size,
-                offset=offset,
-                access_token=access_token,
-                risk_score=risk_score,
-            )
-            sequences.extend(page)
-            if len(page) < page_size:
-                break
-            offset += page_size
-        return sequences
-    except Exception as e:
-        logging.error(f"Error fetching sequences for date {target_date}: {e}")
-        return sequences
+    while True:
+        page = alert_api_client.list_sequences_for_date(
+            api_endpoint=api_endpoint,
+            date=target_date,
+            limit=page_size,
+            offset=offset,
+            access_token=access_token,
+            risk_score=risk_score,
+        )
+        sequences.extend(page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return sequences
 
 
 def process_single_sequence_detections(
