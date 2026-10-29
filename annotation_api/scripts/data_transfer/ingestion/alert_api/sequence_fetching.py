@@ -119,7 +119,7 @@ def fetch_sequences_for_date(
     Returns:
         List of sequence dictionaries for the specified date
     """
-    page_size = 1000
+    page_size = 100  # the alert API rejects `limit` above 100 (422)
     offset = 0
     sequences: List[Dict[str, Any]] = []
     try:
