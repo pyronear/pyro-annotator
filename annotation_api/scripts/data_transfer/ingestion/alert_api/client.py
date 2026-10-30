@@ -64,6 +64,10 @@ def api_get(route: str, access_token: str):
     headers = make_request_headers(access_token=access_token)
     logging.debug(f"Making an HTTP request to route {route}")
     response = requests.get(route, headers=headers)
+    # A non-2xx body is a `{"detail": ...}` dict; returning it would let callers
+    # silently treat the error as data (e.g. `list.extend(dict)` yields its keys).
+    if not response.ok:
+        raise Exception(f"API Error: {response.status_code} {response.text}")
     try:
         return response.json()
     except Exception:
