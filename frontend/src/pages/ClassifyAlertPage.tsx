@@ -33,6 +33,7 @@ import {
   SequenceBbox,
 } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
+import { readClassifyQueueFilters } from '@/utils/classifyQueueFilters';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
 import {
   determineClassifySubmitStage,
@@ -725,6 +726,23 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const submitLabel = mode === 'done' ? `Save changes (${changedLaneCount})` : 'Submit';
   const submitTitle = mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)';
 
+  // Next alert for continuous flow, within the queue page's filters so the
+  // annotator stays on the organisation they filtered to. Read from storage
+  // rather than the workflow, which is gone after a skip, a reload or a deep link.
+  const fetchNextQueueAlert = async () => {
+    const queue = await apiClient.getClassifyQueue({
+      ...readClassifyQueueFilters(),
+      page: 1,
+      size: 2,
+      // Match the queue page's ordering, or continuous flow
+      // silently advances by recency while the annotator is
+      // working a score-ordered queue.
+      order_by: 'temporal_model_score',
+      order_direction: 'desc',
+    });
+    return queue.items.find(item => item.primary_sequence_id !== sequenceId);
+  };
+
   const submitMutation = useMutation({
     mutationFn: async (): Promise<{ results: ClassifySubmitResult[] }> => {
       if (mode === 'done') {
@@ -884,20 +902,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         // ready_to_annotate), but guard against it anyway.
         if (mode !== 'done') {
           try {
-            const queue = await apiClient.getClassifyQueue({
-              page: 1,
-              size: 2,
-              // Match the queue page's ordering, or continuous flow
-              // silently advances by recency while the annotator is
-              // working a score-ordered queue.
-              order_by: 'temporal_model_score',
-              order_direction: 'desc',
-            });
+            const next = await fetchNextQueueAlert();
             // The user may have navigated elsewhere while the lookup was in
             // flight (unmount / alert switch reset the flag) — don't yank
             // them into another alert.
             if (!advancingRef.current) return;
-            const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
             if (next) {
               clearAnnotationWorkflow();
               showToastNotification('Moving to the next alert in the queue', 'info');
@@ -952,16 +961,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // Same continuous flow as the post-submit advance, but immediate: pull
       // the next alert from the queue, else fall back to the list.
       try {
-        const queue = await apiClient.getClassifyQueue({
-          page: 1,
-          size: 2,
-          // Match the queue page's ordering, or continuous flow
-          // silently advances by recency while the annotator is
-          // working a score-ordered queue.
-          order_by: 'temporal_model_score',
-          order_direction: 'desc',
-        });
-        const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
+        const next = await fetchNextQueueAlert();
         if (next) {
           clearAnnotationWorkflow();
           navigate(classifyDetail(next.primary_sequence_id, false));
