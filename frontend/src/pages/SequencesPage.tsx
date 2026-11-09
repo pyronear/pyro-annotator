@@ -31,6 +31,7 @@ import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { CLASSIFY_QUEUE_FILTERS_KEY } from '@/utils/classifyQueueFilters';
 import { classifyDetail, ROUTES } from '@/utils/routes';
 
 // UI accuracy filter value → classify-done query param.
@@ -87,7 +88,7 @@ export default function SequencesPage({
   };
 
   // Storage key separates done vs queue filters; done filters are shared across stages.
-  const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
+  const storageKey = isReviewPage ? 'filters-classify-done' : CLASSIFY_QUEUE_FILTERS_KEY;
 
   // Use persisted filters hook
   const {
