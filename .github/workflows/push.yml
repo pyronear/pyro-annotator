@@ -4,12 +4,14 @@ name: push
 # - push to main      -> images tagged `latest`
 # - push of a tag v*  -> images tagged with the version, leading `v` stripped
 #                        (git tag v0.2.0 -> docker tag 0.2.0)
+# Only version-shaped tags (vX.Y.Z, optional suffix like -rc1) trigger a build,
+# so a tag such as `vlatest` cannot overwrite `latest`.
 on:
   push:
     branches:
       - main
     tags:
-      - "v*"
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
 env:
   DOCKERHUB_USER: ${{ secrets.DOCKERHUB_LOGIN }}
