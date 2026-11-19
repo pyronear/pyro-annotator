@@ -48,7 +48,7 @@ SAMPLE_URL = (
     "https://github.com/pyronear/pyro-annotator/releases/download/"
     f"sample-data-{SAMPLE_VERSION}/sample-data-{SAMPLE_VERSION}.tar.gz"
 )
-SAMPLE_SHA256 = ""  # set when the release is published
+SAMPLE_SHA256 = "02bd6e2cc21c8750dcfa573881be608efd6ebd2c110e56a5e82cb1383613467b"
 
 LOAD_STATES = ("to_classify", "to_localize", "done")
 SKIP_STATE = "skip"
