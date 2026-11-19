@@ -73,6 +73,14 @@ npm run quality:fix  # Fix all issues
 npm run test         # Vitest
 ```
 
+## Sample data
+
+```bash
+make up && make seed-sample   # from the repo root, no credentials needed
+```
+
+Loads the pinned sample dataset (a GitHub release asset, cached in `./.sample-data/`) into the running stack through the API, each alert in the state `load_states.csv` gives it: `to_classify`, `to_localize` or `done`. Idempotent: no second download, loaded alerts are left alone. The loader is `annotation_api/src/app/cli/seed_sample.py` (under `src/app` so it ships in the image); the scripts that build a new dataset version are in `annotation_api/scripts/sample_data/`. See `annotation_api/docs/sample-data.md`.
+
 ## Data Transfer Scripts
 
 Scripts live in `annotation_api/scripts/data_transfer/ingestion/alert_api/`. Run from `annotation_api/` with `make` targets.

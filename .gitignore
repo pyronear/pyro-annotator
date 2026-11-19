@@ -128,6 +128,7 @@ cache-directory
 runs
 .DS_Store
 **annotation_api/outputs
+.sample-data/
 .claude/
 
 # Superpowers brainstorming sessions

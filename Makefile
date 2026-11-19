@@ -19,3 +19,10 @@ down:
 
 clean:
 	@docker compose down -v
+
+# Load the sample dataset (alerts to classify, to localize and done) into the
+# running stack. Opt-in: run it after `make up`. The archive is downloaded
+# once into ./.sample-data and alerts already loaded are left alone.
+# SEED_ARGS passes options through, e.g. SEED_ARGS="--load-states /sample-data/my_states.csv"
+seed-sample:
+	@docker compose exec annotation_api python -m app.cli.seed_sample $(SEED_ARGS)
