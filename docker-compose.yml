@@ -73,6 +73,9 @@ services:
         condition: service_completed_successfully
     ports:
       - "5050:5050"
+    volumes:
+      # Download cache of `make seed-sample`; survives `make clean`.
+      - ./.sample-data:/sample-data
     environment:
       - SUPPORT_EMAIL=contact@pyronear.org
       # DB
