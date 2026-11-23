@@ -20,6 +20,14 @@ make down
 make clean
 ```
 
+A fresh stack is empty. To fill it with sample alerts in every annotation state, without any credential:
+
+```bash
+make seed-sample
+```
+
+See [annotation_api/docs/sample-data.md](annotation_api/docs/sample-data.md) for what is loaded and how to change it.
+
 ### Service Access
 
 Once running, access the services at:
@@ -48,11 +56,16 @@ All make targets accept variable overrides inline, e.g. `make import-alert-api D
 
 #### A. Annotate Sequences (standard annotator workflow)
 
-This is the main scenario: you do **not** need alert API credentials — only access to the remote annotation API. Ask an admin for `MAIN_ANNOTATION_LOGIN` / `MAIN_ANNOTATION_PASSWORD`.
+This is the main scenario: you need no credentials at all.
 
-**Step 1 — Seed your local API with sequences from the remote API**
+**Step 1 — Fill your local API with the sample dataset**
 
-Seeding a local instance from the remote annotation API is currently unavailable — the old clone-based make target was removed as dead code (it relied on import flags the consolidated import script no longer supports). A standalone sync script is planned to replace it (see issue #174).
+```bash
+make up
+make seed-sample
+```
+
+This loads real, anonymized alerts: some to classify, some to localize, some already done. Details in [annotation_api/docs/sample-data.md](annotation_api/docs/sample-data.md).
 
 **Step 2 — Annotate sequences locally**
 
