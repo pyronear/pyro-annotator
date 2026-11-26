@@ -6,6 +6,7 @@ import {
   rollupOutcomes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { AlertTagPills } from './AlertTagPills';
 import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
 import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
@@ -73,6 +74,10 @@ export function ClassifyDoneTable({ items, onItemClick, sort }: ClassifyDoneTabl
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
             <ColumnHeader
+              label="Tags"
+              tip="Tags on this alert. Hover a tag to read its full name."
+            />
+            <ColumnHeader
               label="Recorded"
               tip="When the alert was recorded"
               sort={
@@ -127,6 +132,9 @@ export function ClassifyDoneTable({ items, onItemClick, sort }: ClassifyDoneTabl
                 </td>
                 <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
+                <td className={CELL_CLASSES}>
+                  <AlertTagPills tags={item.tags ?? []} />
+                </td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {formatDateTime(item.recorded_at)}
                 </td>

@@ -19,6 +19,7 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
 }));
 
 let isManagerValue = false;
+let isAdminValue = false;
 let canLocalizeValue = true;
 
 vi.mock('@/store/useAuthStore', () => ({
@@ -26,12 +27,14 @@ vi.mock('@/store/useAuthStore', () => ({
     user: { username: 'tester' },
     logout: vi.fn(),
     isManager: () => isManagerValue,
+    isAdmin: () => isAdminValue,
     canLocalize: () => canLocalizeValue,
   }),
 }));
 
 beforeEach(() => {
   isManagerValue = false;
+  isAdminValue = false;
   canLocalizeValue = true;
 });
 
@@ -151,6 +154,26 @@ describe('AppLayout sidebar navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
     expect(screen.queryByRole('menuitem', { name: /user management/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Tag Management in the user dropdown for admins', () => {
+    isAdminValue = true;
+    isManagerValue = true;
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
+
+    const tagManagementLink = screen.getByRole('menuitem', { name: /tag management/i });
+    expect(tagManagementLink).toHaveAttribute('href', '/tags');
+  });
+
+  it('does not show Tag Management to managers who are not admins', () => {
+    isManagerValue = true;
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
+
+    expect(screen.queryByRole('menuitem', { name: /tag management/i })).not.toBeInTheDocument();
   });
 
   it('opens the user menu only via the menu button, not the user row', () => {

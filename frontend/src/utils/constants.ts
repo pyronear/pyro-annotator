@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
   ORGANIZATIONS: '/organizations/',
   SOURCE_APIS: '/source-apis/',
   USERS: '/users/',
+  TAGS: '/tags/',
   USERS_ME: '/users/me',
   AUTH_LOGIN: '/auth/login',
   STATUS: '/status',
@@ -335,6 +336,7 @@ export const QUERY_KEYS = {
   SOURCE_APIS: ['source-apis'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   USERS: ['users'],
+  TAGS: ['tags'],
   USER: (id: number) => ['users', id],
   ANNOTATORS: ['annotators'],
 } as const;

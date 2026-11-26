@@ -37,6 +37,7 @@ from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
+from app.crud.crud_alert_tag import AlertTagCRUD
 from app.crud import SequenceCRUD
 from app.db import get_session
 from app.services.alert_skip import alert_skip_exists_clause
@@ -733,6 +734,8 @@ async def get_alert_detail(
             ann_read = None
         lanes.append(AlertLane(sequence=seq_read, annotation=ann_read))
 
+    alert_key = (first_seq.source_api, platform_alert_id)
+    tags = await AlertTagCRUD(session).tag_names_by_alert([alert_key])
     return AlertDetail(
         source_api=first_seq.source_api,
         platform_alert_id=platform_alert_id,
@@ -740,6 +743,7 @@ async def get_alert_detail(
         organisation_name=first_seq.organisation_name,
         recorded_at=min(seq.recorded_at for seq, _ in rows),
         lanes=lanes,
+        tags=tags.get(alert_key, []),
     )
 
 
@@ -1364,7 +1368,17 @@ async def localization_queue(
     items = [item for item in maybe_items if item is not None]
     if skipped:
         await _attach_skip_info(session, items)
+    await _attach_tags(session, items)
     return Page.create(items=items, total=total, params=params)
+
+
+async def _attach_tags(session: AsyncSession, items: list) -> None:
+    """Bulk-attach each queue item's tag names (one query per page)."""
+    tags = await AlertTagCRUD(session).tag_names_by_alert(
+        [(item.source_api, item.platform_alert_id) for item in items]
+    )
+    for item in items:
+        item.tags = tags.get((item.source_api, item.platform_alert_id), [])
 
 
 async def _attach_skip_info(session: AsyncSession, items: list) -> None:
@@ -1606,6 +1620,7 @@ async def classify_queue(
         )
     if skipped:
         await _attach_skip_info(session, items)
+    await _attach_tags(session, items)
     return Page.create(items=items, total=total, params=params)
 
 
@@ -1714,6 +1729,7 @@ async def localize_done_queue(
         item.annotators = merge_annotators(
             annotators_by_seq, [lane.sequence_id for lane in item.lanes]
         )
+    await _attach_tags(session, items)
     return Page.create(items=items, total=total, params=params)
 
 
@@ -1913,6 +1929,7 @@ async def classify_done(
                 ),
             )
         )
+    await _attach_tags(session, items)
     return Page.create(items=items, total=total, params=params)
 
 

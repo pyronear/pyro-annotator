@@ -218,6 +218,8 @@ class LocalizationQueueItem(BaseModel):
     lanes: List[LocalizationQueueLane]
     # Present only on skipped=true queue rows.
     skip: Optional[AlertSkipInfo] = None
+    # Names of the tags the alert carries, ordered by name.
+    tags: List[str] = []
 
 
 class LocalizeDoneQueueItem(BaseModel):
@@ -235,6 +237,8 @@ class LocalizeDoneQueueItem(BaseModel):
     temporal_model_score: Optional[float] = None
     lanes: List[LocalizationQueueLane]
     annotators: List[str] = []
+    # Names of the tags the alert carries, ordered by name.
+    tags: List[str] = []
 
 
 class ClassifyQueueItem(BaseModel):
@@ -255,6 +259,8 @@ class ClassifyQueueItem(BaseModel):
     classified_objects: int
     # Present only on skipped=true queue rows.
     skip: Optional[AlertSkipInfo] = None
+    # Names of the tags the alert carries, ordered by name.
+    tags: List[str] = []
 
 
 class ClassifyDoneLane(BaseModel):
@@ -284,6 +290,8 @@ class ClassifyDoneItem(BaseModel):
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]
     annotators: List[str] = []
+    # Names of the tags the alert carries, ordered by name.
+    tags: List[str] = []
 
 
 class AlertLane(BaseModel):
@@ -302,6 +310,8 @@ class AlertDetail(BaseModel):
     organisation_name: str
     recorded_at: datetime
     lanes: List[AlertLane]
+    # Names of the tags the alert carries, ordered by name.
+    tags: List[str] = []
 
 
 class AddObjectFrame(BaseModel):

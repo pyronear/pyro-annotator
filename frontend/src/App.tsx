@@ -12,6 +12,7 @@ import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
+import TagManagementPage from '@/pages/TagManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
@@ -161,6 +162,7 @@ function App() {
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
+                  <Route path="/tags" element={<TagManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />
                 </Routes>
               </AppLayout>

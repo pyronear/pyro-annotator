@@ -12,6 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Enum as SQLEnum,
 )
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -610,7 +611,10 @@ class Tag(SQLModel, table=True):
     """
 
     __tablename__ = "tags"
-    __table_args__ = (UniqueConstraint("name", name="uq_tag_name"),)
+    # Unique whatever the case: "Org-A" and "org-a" are one tag.
+    __table_args__ = (
+        Index("uq_tag_name_lower", func.lower(text("name")), unique=True),
+    )
 
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
