@@ -992,7 +992,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           'error'
         );
       } else if (missedSmokeReview === null) {
-        showToastNotification('Cannot submit: missed smoke review is required', 'error');
+        showToastNotification('Cannot submit: please verify if we missed any smoke first', 'error');
       } else {
         showToastNotification('Cannot submit: some objects still need classification', 'error');
       }

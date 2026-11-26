@@ -75,7 +75,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-body text-sm font-semibold text-char">Missed smoke?</span>
+        <span className="font-body text-sm font-semibold text-char">Did we miss any smoke?</span>
         <span
           role="radiogroup"
           aria-label="Missed smoke review"

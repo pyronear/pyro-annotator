@@ -23,7 +23,7 @@ describe('DecisionRail', () => {
   it('renders children and the missed-smoke row', () => {
     renderRail();
     expect(screen.getByTestId('row-child')).toBeInTheDocument();
-    expect(screen.getByText('Missed smoke?')).toBeInTheDocument();
+    expect(screen.getByText('Did we miss any smoke?')).toBeInTheDocument();
   });
 
   it('answers yes/no via chips without requiring activation first', () => {
@@ -44,7 +44,7 @@ describe('DecisionRail', () => {
 
   it('clicking the row body activates the missed-smoke section', () => {
     const { onMissedSmokeActivate, onMissedSmokeReviewChange } = renderRail();
-    fireEvent.click(screen.getByText('Missed smoke?'));
+    fireEvent.click(screen.getByText('Did we miss any smoke?'));
     expect(onMissedSmokeActivate).toHaveBeenCalled();
     expect(onMissedSmokeReviewChange).not.toHaveBeenCalled();
   });
