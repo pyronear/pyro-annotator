@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, Trash2, Key, Filter, UserCheck, UserX } from 'lucide-react';
 import { clsx } from 'clsx';
-import { User, UserCreate, UserUpdate, UserPasswordUpdate, UserFilters } from '@/types/api';
+import {
+  RightStatus,
+  User,
+  UserCreate,
+  UserRole,
+  UserUpdate,
+  UserPasswordUpdate,
+  UserFilters,
+} from '@/types/api';
 
 // Error type for mutation errors
 type MutationError = {
@@ -14,9 +22,10 @@ import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { useAuthStore } from '@/store/useAuthStore';
 import PasswordField from '@/components/ui/PasswordField';
 import { formatDate } from '@/utils/datetime';
+import { RIGHT_STATUSES, RIGHT_STATUS_LABELS, ROLE_LABELS, USER_ROLES } from '@/utils/userRights';
 
 export default function UserManagementPage() {
-  const { user: currentUser, isSuperuser } = useAuthStore();
+  const { user: currentUser, isAdmin, isManager } = useAuthStore();
   const queryClient = useQueryClient();
 
   // Filters and pagination
@@ -78,15 +87,15 @@ export default function UserManagementPage() {
     },
   });
 
-  // Check if current user is superuser - AFTER all hooks
-  if (!isSuperuser()) {
+  // Check if current user manages users - AFTER all hooks
+  if (!isManager()) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <UserX className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">Access denied</h3>
           <p className="mt-1 text-sm text-gray-500">
-            You need superuser privileges to access this page.
+            You need the annotation manager or admin role to access this page.
           </p>
         </div>
       </div>
@@ -167,13 +176,15 @@ export default function UserManagementPage() {
             <Filter className="w-4 h-4 mr-2" />
             Filters
           </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create User
-          </button>
+          {isAdmin() && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create User
+            </button>
+          )}
         </div>
       </div>
 
@@ -206,15 +217,15 @@ export default function UserManagementPage() {
               Inactive Only
             </button>
             <button
-              onClick={() => toggleFilter('is_superuser', true)}
+              onClick={() => toggleFilter('role', 'admin')}
               className={clsx(
                 'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.is_superuser === true
+                filters.role === 'admin'
                   ? 'bg-ember-soft text-ember'
                   : 'bg-ash text-haze hover:text-char'
               )}
             >
-              Superusers Only
+              Admins Only
             </button>
           </div>
         </div>
@@ -234,6 +245,9 @@ export default function UserManagementPage() {
                 </th>
                 <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Role
+                </th>
+                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                  Rights
                 </th>
                 <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Created
@@ -273,16 +287,15 @@ export default function UserManagementPage() {
                     <span
                       className={clsx(
                         'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
-                        user.is_superuser ? 'bg-ember-soft text-ember' : 'bg-ash text-haze'
+                        user.role === 'annotator' ? 'bg-ash text-haze' : 'bg-ember-soft text-ember'
                       )}
                     >
-                      {user.is_superuser ? 'Superuser' : 'User'}
+                      {ROLE_LABELS[user.role]}
                     </span>
-                    {user.can_localize && (
-                      <span className="ml-1 inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full bg-pine-soft text-pine">
-                        Localize
-                      </span>
-                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap space-x-1">
+                    <RightBadge label="Classify" status={user.classify_status} />
+                    <RightBadge label="Localize" status={user.localize_status} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-data text-detail text-haze">
                     {formatDate(user.created_at)}
@@ -290,21 +303,25 @@ export default function UserManagementPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                     {!user.is_system && (
                       <>
-                        <button
-                          onClick={() => handleEditUser(user)}
-                          className="text-haze hover:text-char p-1 rounded"
-                          title="Edit user"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleChangePassword(user)}
-                          className="text-haze hover:text-char p-1 rounded"
-                          title="Change password"
-                        >
-                          <Key className="w-4 h-4" />
-                        </button>
-                        {user.id !== currentUser?.id && (
+                        {(isAdmin() || user.role === 'annotator') && (
+                          <button
+                            onClick={() => handleEditUser(user)}
+                            className="text-haze hover:text-char p-1 rounded"
+                            title={isAdmin() ? 'Edit user' : 'Edit rights'}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isAdmin() && (
+                          <button
+                            onClick={() => handleChangePassword(user)}
+                            className="text-haze hover:text-char p-1 rounded"
+                            title="Change password"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isAdmin() && user.id !== currentUser?.id && (
                           <button
                             onClick={() => handleDeleteUser(user)}
                             className="text-haze hover:text-signal p-1 rounded"
@@ -365,6 +382,7 @@ export default function UserManagementPage() {
       {showEditModal && selectedUser && (
         <EditUserModal
           user={selectedUser}
+          canEditAll={isAdmin()}
           onClose={() => {
             setShowEditModal(false);
             setSelectedUser(null);
@@ -421,8 +439,9 @@ function CreateUserModal({
     username: '',
     password: '',
     is_active: true,
-    is_superuser: false,
-    can_localize: false,
+    role: 'annotator',
+    classify_status: 'training',
+    localize_status: 'locked',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -480,36 +499,13 @@ function CreateUserModal({
                 </span>
               </label>
 
-              <label className="flex items-start">
-                <input
-                  type="checkbox"
-                  checked={formData.is_superuser}
-                  onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
-                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2">
-                  <span className="block text-sm text-gray-700">Superuser privileges</span>
-                  <span className="block text-xs text-gray-500">
-                    Full admin: manage users and all permissions (includes localization).
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex items-start">
-                <input
-                  type="checkbox"
-                  checked={formData.can_localize}
-                  onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
-                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2">
-                  <span className="block text-sm text-gray-700">Can localize</span>
-                  <span className="block text-xs text-gray-500">
-                    Can draw smoke boxes in the Localize section. Otherwise the user only
-                    classifies.
-                  </span>
-                </span>
-              </label>
+              <RightsFields
+                role={formData.role}
+                classifyStatus={formData.classify_status}
+                localizeStatus={formData.localize_status}
+                showRole
+                onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
+              />
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -537,12 +533,15 @@ function CreateUserModal({
 
 function EditUserModal({
   user,
+  canEditAll,
   onClose,
   onSubmit,
   isLoading,
   error,
 }: {
   user: User;
+  /** Admin: every field. Annotation manager: the right statuses only. */
+  canEditAll: boolean;
   onClose: () => void;
   onSubmit: (data: UserUpdate) => void;
   isLoading: boolean;
@@ -553,13 +552,22 @@ function EditUserModal({
   const [formData, setFormData] = useState<UserUpdate>({
     username: user.username,
     is_active: user.is_active,
-    is_superuser: user.is_superuser,
-    can_localize: user.can_localize,
+    role: user.role,
+    classify_status: user.classify_status,
+    localize_status: user.localize_status,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    // A manager may only send the right statuses; the API rejects any other field.
+    onSubmit(
+      canEditAll
+        ? formData
+        : {
+            classify_status: formData.classify_status,
+            localize_status: formData.localize_status,
+          }
+    );
   };
 
   return (
@@ -575,63 +583,44 @@ function EditUserModal({
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-              <input
-                type="text"
-                required
-                value={formData.username}
-                onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            {canEditAll && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.username}
+                  onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
 
             <div className="space-y-3">
-              <label className="flex items-start">
-                <input
-                  type="checkbox"
-                  checked={formData.is_active}
-                  onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2">
-                  <span className="block text-sm text-gray-700">Active user</span>
-                  <span className="block text-xs text-gray-500">
-                    Can sign in. Deactivated users keep their history but cannot log in.
+              {canEditAll && (
+                <label className="flex items-start">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="ml-2">
+                    <span className="block text-sm text-gray-700">Active user</span>
+                    <span className="block text-xs text-gray-500">
+                      Can sign in. Deactivated users keep their history but cannot log in.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              )}
 
-              <label className="flex items-start">
-                <input
-                  type="checkbox"
-                  checked={formData.is_superuser}
-                  onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
-                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2">
-                  <span className="block text-sm text-gray-700">Superuser privileges</span>
-                  <span className="block text-xs text-gray-500">
-                    Full admin: manage users and all permissions (includes localization).
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex items-start">
-                <input
-                  type="checkbox"
-                  checked={formData.can_localize}
-                  onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
-                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2">
-                  <span className="block text-sm text-gray-700">Can localize</span>
-                  <span className="block text-xs text-gray-500">
-                    Can draw smoke boxes in the Localize section. Otherwise the user only
-                    classifies.
-                  </span>
-                </span>
-              </label>
+              <RightsFields
+                role={formData.role}
+                classifyStatus={formData.classify_status}
+                localizeStatus={formData.localize_status}
+                showRole={canEditAll}
+                onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
+              />
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -752,6 +741,103 @@ function PasswordChangeModal({
             </div>
           </form>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RightBadge({ label, status }: { label: string; status: RightStatus }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
+        status === 'granted' && 'bg-pine-soft text-pine',
+        status === 'training' && 'bg-ember-soft text-ember',
+        status === 'locked' && 'bg-ash text-haze'
+      )}
+    >
+      {label}: {RIGHT_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function RightsFields({
+  role,
+  classifyStatus,
+  localizeStatus,
+  showRole,
+  onChange,
+}: {
+  role?: UserRole;
+  classifyStatus?: RightStatus;
+  localizeStatus?: RightStatus;
+  showRole: boolean;
+  onChange: (changes: Partial<UserUpdate>) => void;
+}) {
+  const selectClass =
+    'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const id = useId();
+  return (
+    <div className="space-y-3">
+      {showRole && (
+        <div>
+          <label htmlFor={`${id}-role`} className="block text-sm font-medium text-gray-700 mb-1">
+            Role
+          </label>
+          <select
+            id={`${id}-role`}
+            value={role}
+            onChange={e => onChange({ role: e.target.value as UserRole })}
+            className={selectClass}
+          >
+            {USER_ROLES.map(value => (
+              <option key={value} value={value}>
+                {ROLE_LABELS[value]}
+              </option>
+            ))}
+          </select>
+          <span className="block mt-1 text-xs text-gray-500">
+            An annotation manager opens and validates the trainings of annotators. An admin manages
+            every user and has every right.
+          </span>
+        </div>
+      )}
+      <div>
+        <label htmlFor={`${id}-classify`} className="block text-sm font-medium text-gray-700 mb-1">
+          Classify right
+        </label>
+        <select
+          id={`${id}-classify`}
+          value={classifyStatus}
+          onChange={e => onChange({ classify_status: e.target.value as RightStatus })}
+          className={selectClass}
+        >
+          {RIGHT_STATUSES.map(value => (
+            <option key={value} value={value}>
+              {RIGHT_STATUS_LABELS[value]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label htmlFor={`${id}-localize`} className="block text-sm font-medium text-gray-700 mb-1">
+          Localize right
+        </label>
+        <select
+          id={`${id}-localize`}
+          value={localizeStatus}
+          onChange={e => onChange({ localize_status: e.target.value as RightStatus })}
+          className={selectClass}
+        >
+          {RIGHT_STATUSES.map(value => (
+            <option key={value} value={value}>
+              {RIGHT_STATUS_LABELS[value]}
+            </option>
+          ))}
+        </select>
+        <span className="block mt-1 text-xs text-gray-500">
+          Granted lets the user draw smoke boxes in the Localize section.
+        </span>
       </div>
     </div>
   );

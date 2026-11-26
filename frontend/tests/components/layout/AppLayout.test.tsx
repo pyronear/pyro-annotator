@@ -18,20 +18,20 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
   }),
 }));
 
-let isSuperuserValue = false;
+let isManagerValue = false;
 let canLocalizeValue = true;
 
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: () => ({
     user: { username: 'tester' },
     logout: vi.fn(),
-    isSuperuser: () => isSuperuserValue,
+    isManager: () => isManagerValue,
     canLocalize: () => canLocalizeValue,
   }),
 }));
 
 beforeEach(() => {
-  isSuperuserValue = false;
+  isManagerValue = false;
   canLocalizeValue = true;
 });
 
@@ -111,9 +111,7 @@ describe('AppLayout sidebar navigation', () => {
     const classifyHeader = screen.getByText('Classify');
     const objectsLink = screen.getByRole('link', { name: /objects/i });
     const alertsLinks = screen.getAllByRole('link', { name: /alerts/i });
-    const classifyAlertsLink = alertsLinks.find(
-      link => link.getAttribute('href') === '/classify'
-    );
+    const classifyAlertsLink = alertsLinks.find(link => link.getAttribute('href') === '/classify');
 
     expect(classifyAlertsLink).toBeDefined();
     expect(
@@ -137,8 +135,8 @@ describe('AppLayout sidebar navigation', () => {
     expect(menuButton.querySelector('svg.lucide-more-vertical')).toBeInTheDocument();
   });
 
-  it('shows User Management in the user dropdown for superusers', () => {
-    isSuperuserValue = true;
+  it('shows User Management in the user dropdown for managers', () => {
+    isManagerValue = true;
     renderLayout();
 
     fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));

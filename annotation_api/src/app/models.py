@@ -24,6 +24,8 @@ __all__ = [
     "SequenceGroup",
     "User",
     "AnnotationType",
+    "UserRole",
+    "RightStatus",
 ]
 
 # -------------------- ENUMS --------------------
@@ -144,6 +146,27 @@ class AnnotationType(str, Enum):
     WILDFIRE_SMOKE = "wildfire_smoke"  # Confirmed wildfire smoke detection
     OTHER_SMOKE = "other_smoke"  # Smoke from non-wildfire sources (industrial, controlled burns, etc.)
     OTHER = "other"  # Other type of detection or false positive
+
+
+class UserRole(str, Enum):
+    """A user's single role. Each level includes the one below it:
+    annotator < annotation_manager < admin."""
+
+    ANNOTATOR = "annotator"
+    ANNOTATION_MANAGER = "annotation_manager"
+    ADMIN = "admin"
+
+
+class RightStatus(str, Enum):
+    """Where a user stands on one annotation right (classify or localize).
+
+    The right is usable only when GRANTED. LOCKED means the training is not
+    open to the user yet.
+    """
+
+    LOCKED = "locked"
+    TRAINING = "training"
+    GRANTED = "granted"
 
 
 # -------------------- TABLES --------------------
@@ -463,8 +486,20 @@ class User(SQLModel, table=True):
     username: str = Field(max_length=50)
     hashed_password: str
     is_active: bool = Field(default=True)
-    is_superuser: bool = Field(default=False)
-    can_localize: bool = Field(default=False)
+    role: UserRole = Field(
+        default=UserRole.ANNOTATOR,
+        sa_column=Column(SQLEnum(UserRole), nullable=False),
+    )
+    classify_status: RightStatus = Field(
+        default=RightStatus.TRAINING,
+        sa_column=Column(SQLEnum(RightStatus), nullable=False),
+    )
+    localize_status: RightStatus = Field(
+        default=RightStatus.LOCKED,
+        sa_column=Column(SQLEnum(RightStatus), nullable=False),
+    )
+    # Links the account to an OIDC provider later (#412).
+    external_id: Optional[str] = Field(default=None, max_length=255, unique=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
@@ -472,6 +507,23 @@ class User(SQLModel, table=True):
     updated_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == UserRole.ADMIN
+
+    @property
+    def is_manager(self) -> bool:
+        """True for an annotation_manager or an admin (the role is a ladder)."""
+        return self.role in (UserRole.ANNOTATION_MANAGER, UserRole.ADMIN)
+
+    @property
+    def can_classify(self) -> bool:
+        return self.is_admin or self.classify_status == RightStatus.GRANTED
+
+    @property
+    def can_localize(self) -> bool:
+        return self.is_admin or self.localize_status == RightStatus.GRANTED
 
 
 class SequenceAnnotationContribution(SQLModel, table=True):

@@ -20,7 +20,9 @@ class TestCurrentUser:
         assert data["id"] == test_user.id
         assert data["username"] == test_user.username
         assert data["is_active"] == test_user.is_active
-        assert data["is_superuser"] == test_user.is_superuser
+        assert data["role"] == test_user.role.value
+        assert data["can_classify"] is True
+        assert data["can_localize"] is True
         assert "hashed_password" not in data  # Should not expose password
 
     @pytest.mark.asyncio
@@ -113,18 +115,20 @@ class TestListUsers:
         assert test_user.username in usernames
 
     @pytest.mark.asyncio
-    async def test_list_users_filter_superuser(
-        self, authenticated_client: AsyncClient, test_user: User
+    async def test_list_users_filter_role(
+        self, authenticated_client: AsyncClient, test_user: User, regular_user: User
     ):
-        """Test user listing with superuser filter."""
-        response = await authenticated_client.get("/users/?is_superuser=true")
+        """Test user listing with role filter."""
+        response = await authenticated_client.get("/users/?role=admin")
 
         assert response.status_code == 200
         data = response.json()
 
-        # All returned users should be superusers
+        usernames = [user["username"] for user in data["items"]]
+        assert test_user.username in usernames
+        assert regular_user.username not in usernames
         for user in data["items"]:
-            assert user["is_superuser"] is True
+            assert user["role"] == "admin"
 
 
 class TestCreateUser:
@@ -137,7 +141,6 @@ class TestCreateUser:
             "username": "newuser",
             "password": "newpassword123",
             "is_active": True,
-            "is_superuser": False,
         }
 
         response = await authenticated_client.post("/users/", json=user_data)
@@ -146,7 +149,7 @@ class TestCreateUser:
         data = response.json()
         assert data["username"] == user_data["username"]
         assert data["is_active"] == user_data["is_active"]
-        assert data["is_superuser"] == user_data["is_superuser"]
+        assert data["role"] == "annotator"
         assert "hashed_password" not in data
 
     @pytest.mark.asyncio
@@ -428,7 +431,9 @@ class TestWorkerUserProtection:
         [
             {"username": "renamedworker"},
             {"is_active": True},
-            {"is_superuser": True},
+            {"role": "admin"},
+            {"classify_status": "granted"},
+            {"localize_status": "granted"},
             {"is_active": False},  # same value as seeded — still rejected
         ],
     )
@@ -471,7 +476,7 @@ class TestWorkerUserProtection:
             "username": settings.WORKER_USERNAME,
             "password": "password12345",
             "is_active": True,
-            "is_superuser": True,
+            "role": "admin",
         }
 
         response = await authenticated_client.post("/users/", json=user_data)
@@ -514,13 +519,14 @@ class TestWorkerUserProtection:
         assert response.json()["is_system"] is False
 
 
-class TestCanLocalizeField:
-    """The can_localize flag on user CRUD endpoints."""
+class TestUserRights:
+    """Role and per-right status on user CRUD endpoints."""
 
     @pytest.mark.asyncio
-    async def test_create_user_defaults_to_classify_only(
+    async def test_create_user_defaults(
         self, async_client: AsyncClient, auth_token: str
     ):
+        """A new user is an annotator in classify training, localize locked."""
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = await async_client.post(
             "/users/",
@@ -528,10 +534,16 @@ class TestCanLocalizeField:
             headers=headers,
         )
         assert response.status_code == 201
-        assert response.json()["can_localize"] is False
+        data = response.json()
+        assert data["role"] == "annotator"
+        assert data["classify_status"] == "training"
+        assert data["localize_status"] == "locked"
+        assert data["can_classify"] is False
+        assert data["can_localize"] is False
+        assert data["external_id"] is None
 
     @pytest.mark.asyncio
-    async def test_create_user_with_can_localize(
+    async def test_create_user_with_rights(
         self, async_client: AsyncClient, auth_token: str
     ):
         headers = {"Authorization": f"Bearer {auth_token}"}
@@ -540,45 +552,168 @@ class TestCanLocalizeField:
             json={
                 "username": "newlocalizer",
                 "password": "testpassword123",
-                "can_localize": True,
+                "classify_status": "granted",
+                "localize_status": "granted",
             },
             headers=headers,
         )
         assert response.status_code == 201
+        assert response.json()["can_classify"] is True
         assert response.json()["can_localize"] is True
 
     @pytest.mark.asyncio
-    async def test_me_includes_can_localize(
+    async def test_me_includes_rights(
         self, async_client: AsyncClient, regular_user_token: str
     ):
         headers = {"Authorization": f"Bearer {regular_user_token}"}
         response = await async_client.get("/users/me", headers=headers)
         assert response.status_code == 200
-        assert response.json()["can_localize"] is False
+        data = response.json()
+        assert data["can_classify"] is True
+        assert data["can_localize"] is False
 
     @pytest.mark.asyncio
-    async def test_patch_user_can_localize(
+    async def test_admin_can_change_role(
         self, async_client: AsyncClient, auth_token: str, regular_user: User
     ):
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = await async_client.patch(
             f"/users/{regular_user.id}",
-            json={"can_localize": True},
+            json={"role": "annotation_manager"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["role"] == "annotation_manager"
+
+    @pytest.mark.asyncio
+    async def test_invalid_status_rejected(
+        self, async_client: AsyncClient, auth_token: str, regular_user: User
+    ):
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = await async_client.patch(
+            f"/users/{regular_user.id}",
+            json={"localize_status": "maybe"},
+            headers=headers,
+        )
+        assert response.status_code == 422
+
+
+class TestManagerPermissions:
+    """An annotation manager opens and validates trainings of annotators."""
+
+    @pytest.mark.asyncio
+    async def test_manager_opens_and_validates_localize_training(
+        self, async_client: AsyncClient, manager_user_token: str, regular_user: User
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.patch(
+            f"/users/{regular_user.id}",
+            json={"localize_status": "training"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["localize_status"] == "training"
+        assert response.json()["can_localize"] is False
+
+        response = await async_client.patch(
+            f"/users/{regular_user.id}",
+            json={"localize_status": "granted"},
             headers=headers,
         )
         assert response.status_code == 200
         assert response.json()["can_localize"] is True
 
-
-class TestWorkerUserCanLocalizeGuard:
     @pytest.mark.asyncio
-    async def test_cannot_set_can_localize_on_worker_user(
+    async def test_manager_can_list_and_read_users(
+        self, async_client: AsyncClient, manager_user_token: str, regular_user: User
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.get("/users/", headers=headers)
+        assert response.status_code == 200
+        response = await async_client.get(f"/users/{regular_user.id}", headers=headers)
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"role": "admin"},
+            {"username": "renamed"},
+            {"is_active": False},
+            {"localize_status": "granted", "role": "annotation_manager"},
+        ],
+    )
+    async def test_manager_cannot_change_other_fields(
+        self,
+        async_client: AsyncClient,
+        manager_user_token: str,
+        regular_user: User,
+        payload: dict,
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.patch(
+            f"/users/{regular_user.id}", json=payload, headers=headers
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_manager_cannot_edit_admin(
+        self, async_client: AsyncClient, manager_user_token: str, test_user: User
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.patch(
+            f"/users/{test_user.id}",
+            json={"localize_status": "locked"},
+            headers=headers,
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_manager_cannot_edit_self(
+        self, async_client: AsyncClient, manager_user_token: str, manager_user: User
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.patch(
+            f"/users/{manager_user.id}",
+            json={"classify_status": "locked"},
+            headers=headers,
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_manager_cannot_create_or_delete_users(
+        self, async_client: AsyncClient, manager_user_token: str, regular_user: User
+    ):
+        headers = {"Authorization": f"Bearer {manager_user_token}"}
+        response = await async_client.post(
+            "/users/",
+            json={"username": "bymanager", "password": "testpassword123"},
+            headers=headers,
+        )
+        assert response.status_code == 403
+        response = await async_client.delete(
+            f"/users/{regular_user.id}", headers=headers
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_annotator_cannot_list_users(
+        self, async_client: AsyncClient, regular_user_token: str
+    ):
+        headers = {"Authorization": f"Bearer {regular_user_token}"}
+        response = await async_client.get("/users/", headers=headers)
+        assert response.status_code == 403
+
+
+class TestWorkerUserRightsGuard:
+    @pytest.mark.asyncio
+    async def test_cannot_grant_localize_on_worker_user(
         self, async_client: AsyncClient, auth_token: str, worker_user: User
     ):
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = await async_client.patch(
             f"/users/{worker_user.id}",
-            json={"can_localize": True},
+            json={"localize_status": "granted"},
             headers=headers,
         )
         assert response.status_code == 403

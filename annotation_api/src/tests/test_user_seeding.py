@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.crud import UserCRUD
 from app.main import seed_default_users
+from app.models import UserRole
 
 
 @pytest.mark.asyncio
@@ -19,7 +20,9 @@ async def test_seed_creates_login_disabled_worker_user(
     worker = await UserCRUD(async_session).get_by_username(settings.WORKER_USERNAME)
     assert worker is not None
     assert worker.is_active is False
-    assert worker.is_superuser is False
+    assert worker.role == UserRole.ANNOTATOR
+    assert worker.can_classify is False
+    assert worker.can_localize is False
 
 
 @pytest.mark.asyncio

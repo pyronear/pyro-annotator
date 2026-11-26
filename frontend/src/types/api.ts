@@ -541,12 +541,24 @@ export interface SequenceWithDetectionProgress extends Sequence {
 }
 
 // User Management Types
+/** A user's single role. Each level includes the one below it. */
+export type UserRole = 'annotator' | 'annotation_manager' | 'admin';
+
+/** Where a user stands on one annotation right. Usable only when `granted`. */
+export type RightStatus = 'locked' | 'training' | 'granted';
+
 export interface User {
   id: number;
   username: string;
   is_active: boolean;
-  is_superuser: boolean;
+  role: UserRole;
+  classify_status: RightStatus;
+  localize_status: RightStatus;
+  /** Computed by the API: the classify right is usable (granted, or admin). */
+  can_classify: boolean;
+  /** Computed by the API: the localize right is usable (granted, or admin). */
   can_localize: boolean;
+  external_id?: string | null;
   is_system: boolean;
   created_at: string;
   updated_at?: string;
@@ -556,15 +568,17 @@ export interface UserCreate {
   username: string;
   password: string;
   is_active?: boolean;
-  is_superuser?: boolean;
-  can_localize?: boolean;
+  role?: UserRole;
+  classify_status?: RightStatus;
+  localize_status?: RightStatus;
 }
 
 export interface UserUpdate {
   username?: string;
   is_active?: boolean;
-  is_superuser?: boolean;
-  can_localize?: boolean;
+  role?: UserRole;
+  classify_status?: RightStatus;
+  localize_status?: RightStatus;
 }
 
 export interface UserPasswordUpdate {
@@ -583,7 +597,7 @@ export interface LoginResponse {
 
 export interface UserFilters {
   is_active?: boolean;
-  is_superuser?: boolean;
+  role?: UserRole;
   search?: string;
   page?: number;
   size?: number;

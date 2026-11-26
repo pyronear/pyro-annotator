@@ -31,7 +31,6 @@ async def second_user(async_session: AsyncSession) -> User:
         username="seconduser",
         hashed_password="hashed_password_456",
         is_active=True,
-        is_superuser=False,
     )
     async_session.add(user)
     await async_session.commit()
