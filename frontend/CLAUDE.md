@@ -57,6 +57,7 @@ frontend/src/
 ├── services/api.ts              # Axios client (interceptors, JWT)
 ├── store/
 │   ├── useAuthStore.ts          # Token + user (persisted)
+│   ├── useGuideProgressStore.ts # Finished guide trainings per user (persisted, drives the hub's Done ticks)
 │   └── useSequenceStore.ts      # Selection / in-progress sequence state
 ├── types/
 │   ├── api.ts                   # Mirrors backend schemas (Sequence, Detection, *Annotation, enums)
@@ -143,6 +144,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 ## State Management
 
 - **`useAuthStore`** — JWT token, current user. Persisted to localStorage.
+- **`useGuideProgressStore`** — which guide trainings each user finished (keyed by user id). Persisted to localStorage; client-side until #413 records it server-side.
 - **`useSequenceStore`** — selection / in-progress sequence state during an annotation session.
 - **TanStack Query** — all server reads. Query keys live alongside the hooks that own them. Use `invalidateQueries` after mutations rather than manual cache writes.
 - **Local component state** — for transient UI only.

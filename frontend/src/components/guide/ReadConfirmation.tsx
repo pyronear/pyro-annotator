@@ -44,6 +44,8 @@ export interface ReadConfirmationProps {
    * watched the page's video. `hint` says what is still missing.
    */
   requirement?: { met: boolean; hint: string };
+  /** Called once, when the reader confirms: records the module as done. */
+  onConfirm?: () => void;
 }
 
 /**
@@ -57,10 +59,14 @@ export interface ReadConfirmationProps {
  * page can add its own `requirement` (the classification video).
  *
  * The click fires confetti and turns the button into a pine tick, then shows
- * `afterConfirm`. Nothing is persisted yet: recording the training
- * (pyronear/pyro-annotator#413) is meant to hook into `handleConfirm`.
+ * `afterConfirm`, and calls `onConfirm` (the module page records the module
+ * as done there, for the tick on the guide hub).
  */
-export default function ReadConfirmation({ afterConfirm, requirement }: ReadConfirmationProps) {
+export default function ReadConfirmation({
+  afterConfirm,
+  requirement,
+  onConfirm,
+}: ReadConfirmationProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -94,6 +100,7 @@ export default function ReadConfirmation({ afterConfirm, requirement }: ReadConf
   const handleConfirm = () => {
     celebrate(buttonRef.current);
     setConfirmed(true);
+    onConfirm?.();
   };
 
   // The next step renders below the fold on long pages: bring it into view.

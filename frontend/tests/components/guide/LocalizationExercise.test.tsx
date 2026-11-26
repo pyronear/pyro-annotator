@@ -82,8 +82,10 @@ describe('LocalizationExercise', () => {
 
   it('passes with 4 matches out of 5: confetti, then the next step', () => {
     vi.mocked(celebrate).mockClear();
-    render(<LocalizationExercise afterPass={<p>Go localize</p>} />);
+    const onPass = vi.fn();
+    render(<LocalizationExercise afterPass={<p>Go localize</p>} onPass={onPass} />);
     answerAll([true, false, true, true, true]);
+    expect(onPass).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Passed — you're ready to localize!")).toBeInTheDocument();
     expect(screen.getByText('Go localize')).toBeInTheDocument();
     expect(celebrate).toHaveBeenCalledTimes(1);
@@ -91,8 +93,10 @@ describe('LocalizationExercise', () => {
 
   it('fails with 3 matches and offers a fresh attempt', () => {
     vi.mocked(celebrate).mockClear();
-    render(<LocalizationExercise afterPass={<p>Go localize</p>} />);
+    const onPass = vi.fn();
+    render(<LocalizationExercise afterPass={<p>Go localize</p>} onPass={onPass} />);
     answerAll([true, false, true, false, true]);
+    expect(onPass).not.toHaveBeenCalled();
     expect(screen.getByText(/you need 4 matching boxes/i)).toBeInTheDocument();
     expect(screen.queryByText('Go localize')).not.toBeInTheDocument();
     expect(celebrate).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import { StartAnnotating } from '@/components/guide/NextSteps';
 import { LOCALIZATION_MODULE } from '@/components/guide/guideModules';
 import { LOCALIZATION_EXERCISES, PASS_MARK } from '@/components/guide/localizationExercises';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useMarkModuleCompleted } from '@/store/useGuideProgressStore';
 import { ROUTES } from '@/utils/routes';
 
 /**
@@ -13,6 +14,7 @@ import { ROUTES } from '@/utils/routes';
  */
 export default function GuideLocalizationPage() {
   const { canLocalize } = useAuthStore();
+  const markCompleted = useMarkModuleCompleted(LOCALIZATION_MODULE.href);
 
   return (
     <GuideModulePage module={LOCALIZATION_MODULE}>
@@ -22,6 +24,7 @@ export default function GuideLocalizationPage() {
         check it against the expected box. Get {PASS_MARK} of them right to pass.
       </p>
       <LocalizationExercise
+        onPass={markCompleted}
         afterPass={
           // The Localize queue is gated by can_localize; send the others to Classify.
           canLocalize() ? (

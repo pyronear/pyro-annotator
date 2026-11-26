@@ -43,14 +43,17 @@ const percent = (iou: number) => `${Math.round(iou * 100)}%`;
  * box matches when it overlaps the expected one by at least `MATCH_IOU`.
  *
  * `PASS_MARK` matches out of five passes: confetti, then `afterPass`. Fewer
- * offers a fresh attempt. Nothing is persisted yet — recording the training
- * (pyronear/pyro-annotator#413) would hook into the pass.
+ * offers a fresh attempt. `onPass` fires on the pass (the page records the
+ * module as done there, for the tick on the guide hub).
  */
 export default function LocalizationExercise({
   afterPass,
+  onPass,
   exercises = LOCALIZATION_EXERCISES,
 }: {
   afterPass: React.ReactNode;
+  /** Called once the exercise is passed: records the module as done. */
+  onPass?: () => void;
   exercises?: Exercise[];
 }) {
   const [index, setIndex] = useState(0);
@@ -117,6 +120,7 @@ export default function LocalizationExercise({
         results={results}
         passed={passed}
         afterPass={afterPass}
+        onPass={onPass}
         onRestart={restart}
       />
     );
@@ -352,19 +356,25 @@ function ExerciseSummary({
   results,
   passed,
   afterPass,
+  onPass,
   onRestart,
 }: {
   exercises: Exercise[];
   results: ExerciseResult[];
   passed: boolean;
   afterPass: React.ReactNode;
+  onPass?: () => void;
   onRestart: () => void;
 }) {
   const scoreRef = useRef<HTMLDivElement>(null);
   const matches = results.filter(r => r.matched).length;
 
   useEffect(() => {
-    if (passed) celebrate(scoreRef.current);
+    if (!passed) return;
+    celebrate(scoreRef.current);
+    onPass?.();
+    // Once per pass, not on every new `onPass` identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passed]);
 
   return (
