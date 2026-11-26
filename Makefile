@@ -26,3 +26,10 @@ clean:
 # SEED_ARGS passes options through, e.g. SEED_ARGS="--load-states /sample-data/my_states.csv"
 seed-sample:
 	@docker compose exec annotation_api python -m app.cli.seed_sample $(SEED_ARGS)
+	@$(MAKE) --no-print-directory seed-tags
+
+# Dev tags on top of the sample alerts: one tag per organisation, the alerts
+# tagged, two annotator logins with tags, full access for the admin.
+# Run by seed-sample; rerun alone after loading more alerts. Idempotent.
+seed-tags:
+	@docker compose exec annotation_api python -m app.cli.seed_tags

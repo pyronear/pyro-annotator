@@ -34,6 +34,22 @@ auto-annotated them, about 30 seconds per object on a laptop.
 An alert with no wildfire object has nothing to localize: asked for
 `to_localize`, it is loaded as `done`.
 
+## Tags
+
+After the alerts, `make seed-sample` runs `make seed-tags`
+(`src/app/cli/seed_tags.py`), which sets up tags to try scoped access on:
+
+| What | Seeded |
+|---|---|
+| Tags | `org-alpha`, `org-bravo`, `org-charlie`, each on every alert of that organisation |
+| `annotator-alpha` / `annotator12345` | tag `org-alpha` |
+| `annotator-multi` / `annotator12345` | tags `org-bravo` and `org-charlie` |
+| admin | `full_access` on |
+
+Both annotators can classify and localize. The script writes to Postgres
+directly, since the API to tag alerts and users does not exist yet. It is
+idempotent: rerun `make seed-tags` alone to tag alerts loaded since.
+
 ## Changing the distribution
 
 Copy the file, edit the `load_state` column, and point the loader at it:

@@ -79,7 +79,7 @@ npm run test         # Vitest
 make up && make seed-sample   # from the repo root, no credentials needed
 ```
 
-Loads the pinned sample dataset (a GitHub release asset, cached in `./.sample-data/`) into the running stack through the API, each alert in the state `load_states.csv` gives it: `to_classify`, `to_localize` or `done`. Idempotent: no second download, loaded alerts are left alone. The loader is `annotation_api/src/app/cli/seed_sample.py` (under `src/app` so it ships in the image); the scripts that build a new dataset version are in `annotation_api/scripts/sample_data/`. See `annotation_api/docs/sample-data.md`.
+Loads the pinned sample dataset (a GitHub release asset, cached in `./.sample-data/`) into the running stack through the API, each alert in the state `load_states.csv` gives it: `to_classify`, `to_localize` or `done`. Idempotent: no second download, loaded alerts are left alone. It then runs `make seed-tags` (`app/cli/seed_tags.py`): one tag per sample organisation on its alerts, logins `annotator-alpha` and `annotator-multi` (password `annotator12345`) holding tags, `full_access` for the admin. The loader is `annotation_api/src/app/cli/seed_sample.py` (under `src/app` so it ships in the image); the scripts that build a new dataset version are in `annotation_api/scripts/sample_data/`. See `annotation_api/docs/sample-data.md`.
 
 ## Data Transfer Scripts
 
