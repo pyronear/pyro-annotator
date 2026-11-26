@@ -1,12 +1,15 @@
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.core.config import settings
 from app.models import RightStatus, UserRole
+from app.schemas.tag import TagRead
 
 __all__ = [
+    "AlertAccess",
     "UserCreate",
     "UserRead",
     "UserUpdate",
@@ -22,6 +25,16 @@ class UserBase(BaseModel):
     role: UserRole = UserRole.ANNOTATOR
     classify_status: RightStatus = RightStatus.TRAINING
     localize_status: RightStatus = RightStatus.LOCKED
+    # Sees every alert whatever its tags (#400).
+    full_access: bool = False
+
+
+class AlertAccess(str, Enum):
+    """Which alerts a user sees (#401), for filtering the user list."""
+
+    FULL = "full"  # every alert: an admin, or full_access on
+    TAGGED = "tagged"  # only the alerts carrying one of their tags
+    NONE = "none"  # nothing: no full access and no tag
 
 
 class UserCreate(UserBase):
@@ -34,6 +47,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     classify_status: Optional[RightStatus] = None
     localize_status: Optional[RightStatus] = None
+    full_access: Optional[bool] = None
 
 
 class UserPasswordUpdate(BaseModel):
@@ -47,6 +61,9 @@ class UserRead(UserBase):
     external_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Not a column: the endpoints load the tags in one query per page of users
+    # (UserTagCRUD.tags_by_user). Required, so a response cannot drop them.
+    tags: List[TagRead]
 
     @computed_field  # type: ignore[misc]
     @property

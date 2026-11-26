@@ -15,6 +15,9 @@ import {
   UserCreate,
   UserUpdate,
   UserPasswordUpdate,
+  Tag,
+  UserTagsChange,
+  UserTagsChangeResult,
   LoginRequest,
   LoginResponse,
   UserFilters,
@@ -656,6 +659,21 @@ class ApiClient {
 
   async deleteUser(id: number): Promise<void> {
     await this.client.delete(`/users/${id}`);
+  }
+
+  // Tags (admin only)
+  async getTags(): Promise<Tag[]> {
+    const response: AxiosResponse<Tag[]> = await this.client.get(API_ENDPOINTS.TAGS);
+    return response.data;
+  }
+
+  /** Give a tag to some users and take it from others, in one request. */
+  async updateTagUsers(tagId: number, change: UserTagsChange): Promise<UserTagsChangeResult> {
+    const response: AxiosResponse<UserTagsChangeResult> = await this.client.patch(
+      `${API_ENDPOINTS.TAGS}${tagId}/users`,
+      change
+    );
+    return response.data;
   }
 
   // Health check

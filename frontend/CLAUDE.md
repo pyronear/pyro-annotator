@@ -34,7 +34,8 @@ frontend/src/
 │   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip (accept popover's frame strip), ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
-│   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+│   ├── users/                   # User page alert access: UserAccessCell (row popover), BulkTagBar, TagPicker
+│   └── ui/                      # AnchoredPopover (portal, never clipped by a scrolling table), NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas
 │   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
@@ -131,7 +132,7 @@ docker compose build --no-cache
 - Types: `src/types/api.ts` mirrors backend schemas. Backend enums (`SmokeType`, `FalsePositiveType`) are the source of truth — no hardcoded label strings in components.
 - Error type: `ApiError` for typed catch.
 
-Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/sequences`, `/api/v1/annotations/detections`, `/api/v1/auth/login`.
+Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/sequences`, `/api/v1/annotations/detections`, `/api/v1/auth/login`, `/api/v1/users`, `/api/v1/tags` (list, and `PATCH /tags/{id}/users` to give / remove a tag for users).
 
 ## State Management
 
