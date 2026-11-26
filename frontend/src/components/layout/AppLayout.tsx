@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu } from '@headlessui/react';
-import { Menu as MenuIcon, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
+import { Menu as MenuIcon, MoreVertical, X, LogOut, Tag, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -197,7 +197,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 }
 
 function UserSection() {
-  const { user, logout, isManager } = useAuthStore();
+  const { user, logout, isManager, isAdmin } = useAuthStore();
 
   const username = user?.username || 'User';
 
@@ -232,6 +232,23 @@ function UserSection() {
               >
                 <Users className="h-4 w-4 mr-2" />
                 User Management
+              </Link>
+            )}
+          </Menu.Item>
+        )}
+        {/* Tags are managed by admins only, like the backend /tags endpoints. */}
+        {isAdmin() && (
+          <Menu.Item>
+            {({ active }) => (
+              <Link
+                to="/tags"
+                className={clsx(
+                  active && 'bg-gray-100',
+                  'flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-md'
+                )}
+              >
+                <Tag className="h-4 w-4 mr-2" />
+                Tag Management
               </Link>
             )}
           </Menu.Item>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAlertTags } from '@/hooks/useAlertTags';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check } from 'lucide-react';
@@ -13,6 +14,7 @@ import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import type { QueueOrderBy } from '@/types/api';
 
 export default function DetectionAnnotatePage() {
+  const alertTags = useAlertTags();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -175,6 +177,7 @@ export default function DetectionAnnotatePage() {
       ) : (
         <div className={TABLE_CARD_CLASSES}>
           <LocalizeQueueTable
+            alertTags={alertTags}
             items={items}
             onItemClick={handleAlertClick}
             sort={{ orderBy, orderDirection, onSort: handleSort }}

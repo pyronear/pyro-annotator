@@ -112,6 +112,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTagPills } from '@/components/sequences/AlertTagPills';
+import { useAlertTags } from '@/hooks/useAlertTags';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
@@ -200,6 +202,7 @@ interface LocalizeAlertPageProps {
 }
 
 export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {}) {
+  const alertTags = useAlertTags();
   const { sequenceId } = useParams<{ sequenceId: string }>();
   // The editor's object + frame live on a CHILD route of whichever provenance
   // prefix this page is mounted under (see App.tsx), and a parent's useParams
@@ -1894,6 +1897,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         <span className="hidden sm:inline font-data text-detail text-haze shrink-0">
           {formatDateTime(alertDetail.recorded_at)}
         </span>
+        {alertTags && (
+          <div className="hidden lg:block shrink-0">
+            <AlertTagPills tags={alertTags.tagsFor(alertDetail)} tooltip="below" empty={null} />
+          </div>
+        )}
         <span
           className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
             smokeObjectRows.length > 0 && localizedObjectCount === smokeObjectRows.length

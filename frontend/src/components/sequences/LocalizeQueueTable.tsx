@@ -2,6 +2,8 @@ import { LocalizationQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import { deriveSequenceOutcome, formatSmokeType, rollupOutcomes } from '@/utils/modelAccuracy';
+import { AlertTagPills } from './AlertTagPills';
+import type { AlertTagsLookup } from '@/hooks/useAlertTags';
 import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
 import {
@@ -20,6 +22,8 @@ import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
 import type { QueueOrderBy } from '@/types/api';
 
 interface LocalizeQueueTableProps {
+  /** PROTOTYPE: adds a Tags column when supplied. */
+  alertTags?: AlertTagsLookup;
   items: LocalizationQueueItem[];
   onItemClick: (item: LocalizationQueueItem) => void;
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
@@ -71,6 +75,7 @@ export function LocalizeQueueTable({
   skippedView = false,
   onUnskip,
   sort,
+  alertTags,
 }: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -82,6 +87,12 @@ export function LocalizeQueueTable({
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
+            {alertTags && (
+              <ColumnHeader
+                label="Tags"
+                tip="Tags on this alert. Hover a tag to read its full name."
+              />
+            )}
             <ColumnHeader
               label="Recorded"
               tip="When the alert was recorded"
@@ -152,6 +163,11 @@ export function LocalizeQueueTable({
                 </td>
                 <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
+                {alertTags && (
+                  <td className={CELL_CLASSES}>
+                    <AlertTagPills tags={alertTags.tagsFor(item)} />
+                  </td>
+                )}
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {formatDateTime(item.recorded_at)}
                 </td>

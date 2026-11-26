@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAlertTags } from '@/hooks/useAlertTags';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ListChecks, Search } from 'lucide-react';
@@ -50,6 +51,7 @@ export default function SequencesPage({
   defaultProcessingStage = 'ready_to_annotate',
   isReviewPage = false,
 }: SequencesPageProps = {}) {
+  const alertTags = useAlertTags();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { startAnnotationWorkflow } = useSequenceStore();
@@ -581,6 +583,7 @@ export default function SequencesPage({
         ? classifyQueue && (
             <div className={TABLE_CARD_CLASSES}>
               <ClassifyAlertQueueTable
+                alertTags={alertTags}
                 items={classifyQueue.items}
                 onAlertClick={handleAlertClick}
                 sort={{
@@ -604,6 +607,7 @@ export default function SequencesPage({
         : classifyDone && (
             <div className={TABLE_CARD_CLASSES}>
               <ClassifyDoneTable
+                alertTags={alertTags}
                 items={classifyDone.items}
                 onItemClick={handleDoneClick}
                 sort={{
