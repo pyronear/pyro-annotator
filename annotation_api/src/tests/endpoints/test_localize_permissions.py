@@ -1,7 +1,7 @@
-"""Localize-write endpoints require can_localize (or superuser).
+"""Localize-write endpoints require the localize right (or the admin role).
 
-The classify-only representative is `regular_user` (can_localize defaults
-to False); `localizer_user` has can_localize=True.
+The classify-only representative is `regular_user` (localize_status defaults
+to locked); `localizer_user` has localize_status=granted.
 """
 
 import json

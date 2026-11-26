@@ -20,7 +20,10 @@ interface AuthStore {
   initializeAuth: () => void;
 
   // Computed properties
-  isSuperuser: () => boolean;
+  isAdmin: () => boolean;
+  /** annotation_manager or admin: manages the rights of annotators. */
+  isManager: () => boolean;
+  canClassify: () => boolean;
   canLocalize: () => boolean;
 }
 
@@ -143,14 +146,24 @@ export const useAuthStore = create<AuthStore>()(
         },
 
         // Computed properties
-        isSuperuser: () => {
+        isAdmin: () => {
           const { user } = get();
-          return user?.is_superuser || false;
+          return user?.role === 'admin';
+        },
+
+        isManager: () => {
+          const { user } = get();
+          return user?.role === 'admin' || user?.role === 'annotation_manager';
+        },
+
+        canClassify: () => {
+          const { user } = get();
+          return user?.can_classify || false;
         },
 
         canLocalize: () => {
           const { user } = get();
-          return user?.is_superuser || user?.can_localize || false;
+          return user?.can_localize || false;
         },
       }),
       {

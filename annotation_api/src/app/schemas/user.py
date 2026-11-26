@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.core.config import settings
+from app.models import RightStatus, UserRole
 
 __all__ = [
     "UserCreate",
@@ -18,8 +19,9 @@ __all__ = [
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     is_active: bool = True
-    is_superuser: bool = False
-    can_localize: bool = False
+    role: UserRole = UserRole.ANNOTATOR
+    classify_status: RightStatus = RightStatus.TRAINING
+    localize_status: RightStatus = RightStatus.LOCKED
 
 
 class UserCreate(UserBase):
@@ -29,8 +31,9 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     is_active: Optional[bool] = None
-    is_superuser: Optional[bool] = None
-    can_localize: Optional[bool] = None
+    role: Optional[UserRole] = None
+    classify_status: Optional[RightStatus] = None
+    localize_status: Optional[RightStatus] = None
 
 
 class UserPasswordUpdate(BaseModel):
@@ -41,8 +44,25 @@ class UserRead(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    external_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def can_classify(self) -> bool:
+        """The classify right is usable (granted, or the user is an admin)."""
+        return (
+            self.role == UserRole.ADMIN or self.classify_status == RightStatus.GRANTED
+        )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def can_localize(self) -> bool:
+        """The localize right is usable (granted, or the user is an admin)."""
+        return (
+            self.role == UserRole.ADMIN or self.localize_status == RightStatus.GRANTED
+        )
 
     @computed_field  # type: ignore[misc]
     @property

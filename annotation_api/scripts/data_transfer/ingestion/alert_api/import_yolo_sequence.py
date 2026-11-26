@@ -447,7 +447,7 @@ def main() -> None:
 
     if args.sequence_stage == "annotated":
         # The annotated stage writes detection annotations, which require the
-        # can_localize permission (or superuser). Fail fast before creating
+        # localize right (computed as can_localize by /users/me). Fail fast before creating
         # anything rather than 403-ing mid-import with a partial sequence.
         me = requests.get(
             f"{base_url}/api/v1/users/me",
@@ -456,11 +456,11 @@ def main() -> None:
         )
         me.raise_for_status()
         user = me.json()
-        if not (user.get("is_superuser") or user.get("can_localize")):
+        if not user.get("can_localize"):
             raise PermissionError(
-                f"User {user.get('username')!r} lacks the can_localize permission "
+                f"User {user.get('username')!r} lacks the localize right "
                 "required to import with --sequence-stage annotated (it writes "
-                "detection annotations). Ask an admin to grant it from the user "
+                "detection annotations). Ask a manager to grant it from the user "
                 "management page, or use different credentials."
             )
 

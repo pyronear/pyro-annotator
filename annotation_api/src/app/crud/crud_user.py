@@ -6,7 +6,7 @@ from sqlalchemy import select, and_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
-from app.models import User
+from app.models import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate, UserPasswordUpdate
 
 __all__ = ["UserCRUD"]
@@ -29,8 +29,9 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
             username=user_create.username,
             hashed_password=self.get_password_hash(user_create.password),
             is_active=user_create.is_active,
-            is_superuser=user_create.is_superuser,
-            can_localize=user_create.can_localize,
+            role=user_create.role,
+            classify_status=user_create.classify_status,
+            localize_status=user_create.localize_status,
         )
         self.session.add(db_user)
         await self.session.commit()
@@ -115,7 +116,7 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         self,
         search: Optional[str] = None,
         is_active: Optional[bool] = None,
-        is_superuser: Optional[bool] = None,
+        role: Optional[UserRole] = None,
     ):
         """Build query for user search with filters."""
         query = select(User)
@@ -131,9 +132,9 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         if is_active is not None:
             conditions.append(User.is_active == is_active)
 
-        # Add is_superuser filter
-        if is_superuser is not None:
-            conditions.append(User.is_superuser == is_superuser)
+        # Add role filter
+        if role is not None:
+            conditions.append(User.role == role)
 
         # Apply conditions
         if conditions:

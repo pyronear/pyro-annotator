@@ -2,7 +2,7 @@ import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud import UserCRUD
-from app.models import User
+from app.models import RightStatus, User, UserRole
 from app.schemas.user import UserCreate, UserUpdate
 
 
@@ -17,14 +17,15 @@ class TestUserCreation:
             username="testuser",
             password="testpassword123",
             is_active=True,
-            is_superuser=False,
         )
 
         user = await user_crud.create_user(user_create)
 
         assert user.username == user_create.username
         assert user.is_active == user_create.is_active
-        assert user.is_superuser == user_create.is_superuser
+        assert user.role == UserRole.ANNOTATOR
+        assert user.classify_status == RightStatus.TRAINING
+        assert user.localize_status == RightStatus.LOCKED
         assert user.hashed_password != user_create.password  # Should be hashed
         assert len(user.hashed_password) > 0
         assert user.id is not None
@@ -208,7 +209,8 @@ class TestUserUpdates:
         update_data = UserUpdate(
             username="updatedname",
             is_active=False,
-            is_superuser=True,
+            role=UserRole.ADMIN,
+            localize_status=RightStatus.GRANTED,
         )
 
         updated_user = await user_crud.update_user(regular_user.id, update_data)
@@ -216,7 +218,8 @@ class TestUserUpdates:
         assert updated_user is not None
         assert updated_user.username == update_data.username
         assert updated_user.is_active == update_data.is_active
-        assert updated_user.is_superuser == update_data.is_superuser
+        assert updated_user.role == UserRole.ADMIN
+        assert updated_user.localize_status == RightStatus.GRANTED
         assert updated_user.updated_at is not None
 
     @pytest.mark.asyncio

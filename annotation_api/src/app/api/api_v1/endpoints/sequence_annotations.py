@@ -20,6 +20,7 @@ from sqlalchemy import and_, asc, delete, desc, func, select, text, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_annotation_crud
+from app.auth.dependencies import get_current_classifier
 from app.models import User
 from app.crud import DetectionAnnotationCRUD, SequenceAnnotationCRUD
 from app.db import get_session
@@ -1253,7 +1254,7 @@ async def classify_submit(
     payload: ClassifySubmitRequest = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_classifier),
 ) -> ClassifySubmitResponse:
     """Apply every lane's classification decision for one alert in a single
     transaction (spec: multi-object alert collocation). Either every lane
@@ -1715,7 +1716,7 @@ async def bulk_annotate_sequences(
     payload: SequenceAnnotationBulkRequest = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_classifier),
 ) -> SequenceAnnotationBulkResponse:
     # Resolve target group (if provided) and validate membership / conflict.
     group: Optional[SequenceGroup] = None

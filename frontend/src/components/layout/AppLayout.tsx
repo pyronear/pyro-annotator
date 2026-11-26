@@ -8,6 +8,7 @@ import NotificationBadge from '@/components/ui/NotificationBadge';
 import { useAuthStore } from '@/store/useAuthStore';
 import { ROUTES } from '@/utils/routes';
 import logoImg from '@/assets/logo.png';
+import { ROLE_LABELS } from '@/utils/userRights';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -196,7 +197,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 }
 
 function UserSection() {
-  const { user, logout, isSuperuser } = useAuthStore();
+  const { user, logout, isManager } = useAuthStore();
 
   const username = user?.username || 'User';
 
@@ -208,7 +209,9 @@ function UserSection() {
         </div>
         <div className="ml-3 flex-1">
           <p className="text-sm font-medium text-gray-700">{username}</p>
-          <p className="text-xs font-medium text-gray-500">Annotator</p>
+          <p className="text-xs font-medium text-gray-500">
+            {ROLE_LABELS[user?.role ?? 'annotator']}
+          </p>
         </div>
         <Menu.Button className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
           <span className="sr-only">Open user menu</span>
@@ -217,7 +220,7 @@ function UserSection() {
       </div>
 
       <Menu.Items className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-        {isSuperuser() && (
+        {isManager() && (
           <Menu.Item>
             {({ active }) => (
               <Link

@@ -6,11 +6,15 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.auth.dependencies import get_current_active_user, get_current_superuser
+from app.auth.dependencies import (
+    get_current_active_user,
+    get_current_admin,
+    get_current_manager,
+)
 from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import get_session
-from app.models import User
+from app.models import User, UserRole
 from app.schemas.user import (
     ContributorRead,
     UserCreate,
@@ -20,6 +24,9 @@ from app.schemas.user import (
 )
 
 router = APIRouter()
+
+# The fields an annotation manager may change on an annotator.
+MANAGER_EDITABLE_FIELDS = frozenset({"classify_status", "localize_status"})
 
 
 @router.get("/me", response_model=UserRead)
@@ -39,7 +46,7 @@ async def list_annotators(
 ) -> list[User]:
     """Active human users, for the done-pages annotator filter dropdown.
 
-    Open to every authenticated user (unlike the superuser-only user list):
+    Open to every authenticated user (unlike the manager-only user list):
     it exposes only id + username, which annotators already see elsewhere
     (e.g. group review attribution). The seeded worker user is machine
     attribution, not an annotator."""
@@ -55,19 +62,17 @@ async def list_annotators(
 async def list_users(
     search: Optional[str] = Query(None, description="Search in username"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    is_superuser: Optional[bool] = Query(
-        None, description="Filter by superuser status"
-    ),
+    role: Optional[UserRole] = Query(None, description="Filter by role"),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_manager),
 ) -> Page[User]:
     """
     List users with filtering, pagination and search.
 
     - **search**: Search in username field
     - **is_active**: Filter by active/inactive status
-    - **is_superuser**: Filter by superuser status
+    - **role**: Filter by role
     - **page**: Page number (default: 1)
     - **size**: Page size (default: 50, max: 100)
     """
@@ -77,7 +82,7 @@ async def list_users(
     query = user_crud.build_user_search_query(
         search=search,
         is_active=is_active,
-        is_superuser=is_superuser,
+        role=role,
     )
 
     # Add default ordering by created_at desc
@@ -91,7 +96,7 @@ async def list_users(
 async def create_user(
     user_create: UserCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_admin),
 ) -> User:
     """Create a new user (admin only)."""
     if user_create.username == settings.WORKER_USERNAME:
@@ -118,9 +123,9 @@ async def create_user(
 async def get_user(
     user_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_manager),
 ) -> User:
-    """Get a specific user by ID (admin only)."""
+    """Get a specific user by ID (annotation manager or admin)."""
     user_crud = UserCRUD(session)
     user = await user_crud.get_by_id(user_id)
     if not user:
@@ -135,9 +140,14 @@ async def update_user(
     user_id: int,
     user_update: UserUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_manager),
 ) -> User:
-    """Update a user (admin only)."""
+    """Update a user.
+
+    An admin may change every field. An annotation manager may only change
+    the classify and localize statuses of an annotator: opening a training
+    and validating it are manager tasks.
+    """
     user_crud = UserCRUD(session)
 
     target_user = await user_crud.get_by_id(user_id)
@@ -145,9 +155,17 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+    if not current_user.is_admin and (
+        target_user.role != UserRole.ANNOTATOR
+        or user_update.model_fields_set - MANAGER_EDITABLE_FIELDS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Annotation managers can only change the rights of annotators",
+        )
     if target_user.username == settings.WORKER_USERNAME and (
         user_update.model_fields_set
-        & {"username", "is_active", "is_superuser", "can_localize"}
+        & {"username", "is_active", "role", "classify_status", "localize_status"}
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -181,7 +199,7 @@ async def update_user_password(
     user_id: int,
     password_update: UserPasswordUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_admin),
 ) -> User:
     """Update a user's password (admin only)."""
     user_crud = UserCRUD(session)
@@ -198,7 +216,7 @@ async def update_user_password(
 async def delete_user(
     user_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_admin),
 ) -> None:
     """Delete a user (admin only)."""
     # Prevent self-deletion

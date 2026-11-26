@@ -25,6 +25,7 @@ from app.api.api_v1.router import api_router
 from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import get_session
+from app.models import RightStatus, UserRole
 from app.schemas.base import Status
 from app.schemas.user import UserCreate
 from app.services.storage import close_download_client
@@ -48,8 +49,9 @@ async def seed_default_users(session: AsyncSession) -> None:
                 username=settings.AUTH_USERNAME,
                 password=settings.AUTH_PASSWORD,
                 is_active=True,
-                is_superuser=True,
-                can_localize=True,
+                role=UserRole.ADMIN,
+                classify_status=RightStatus.GRANTED,
+                localize_status=RightStatus.GRANTED,
             )
             await user_crud.create_user(admin_create)
             logger.info("Admin user created successfully")
@@ -73,8 +75,9 @@ async def seed_default_users(session: AsyncSession) -> None:
                 # seeded inactive, which login rejects independently).
                 password=secrets.token_urlsafe(32),
                 is_active=False,
-                is_superuser=False,
-                can_localize=False,
+                role=UserRole.ANNOTATOR,
+                classify_status=RightStatus.LOCKED,
+                localize_status=RightStatus.LOCKED,
             )
             await user_crud.create_user(worker_create)
             logger.info("Worker user created successfully")

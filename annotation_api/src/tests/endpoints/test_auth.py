@@ -132,7 +132,7 @@ async def test_regular_user_admin_access_denied(
 
 
 @pytest.mark.asyncio
-async def test_superuser_admin_access_allowed(authenticated_client: AsyncClient):
-    """Test that superusers can access admin-only endpoints."""
+async def test_admin_access_allowed(authenticated_client: AsyncClient):
+    """Test that admins can access admin-only endpoints."""
     response = await authenticated_client.get("/users/")
     assert response.status_code == 200

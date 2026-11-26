@@ -21,7 +21,9 @@ __all__ = [
     "create_access_token",
     "get_current_user",
     "get_current_active_user",
-    "get_current_superuser",
+    "get_current_admin",
+    "get_current_manager",
+    "get_current_classifier",
     "get_current_localizer",
 ]
 
@@ -88,14 +90,36 @@ async def get_current_active_user(
     return current_user
 
 
-async def get_current_superuser(
+def _forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+    )
+
+
+async def get_current_admin(
     current_user: User = Depends(get_current_active_user),
 ) -> User:
-    """Get the current superuser."""
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
-        )
+    """Get the current user if their role is admin."""
+    if not current_user.is_admin:
+        raise _forbidden()
+    return current_user
+
+
+async def get_current_manager(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Get the current user if their role is annotation_manager or admin."""
+    if not current_user.is_manager:
+        raise _forbidden()
+    return current_user
+
+
+async def get_current_classifier(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Get the current user if they may write classification data."""
+    if not current_user.can_classify:
+        raise _forbidden()
     return current_user
 
 
@@ -103,8 +127,6 @@ async def get_current_localizer(
     current_user: User = Depends(get_current_active_user),
 ) -> User:
     """Get the current user if they may write localization data."""
-    if not (current_user.can_localize or current_user.is_superuser):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
-        )
+    if not current_user.can_localize:
+        raise _forbidden()
     return current_user

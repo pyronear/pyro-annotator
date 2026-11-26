@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import engine, get_session
 from app.main import app
-from app.models import Detection, Sequence, User
+from app.models import Detection, RightStatus, Sequence, User, UserRole
 from app.schemas.user import UserCreate
 from app.services.storage import s3_service
 
@@ -217,7 +217,9 @@ async def test_user(async_session: AsyncSession) -> User:
         username=settings.AUTH_USERNAME,
         password=settings.AUTH_PASSWORD,
         is_active=True,
-        is_superuser=True,
+        role=UserRole.ADMIN,
+        classify_status=RightStatus.GRANTED,
+        localize_status=RightStatus.GRANTED,
     )
     user = await user_crud.create_user(user_create)
     return user
@@ -231,7 +233,8 @@ async def regular_user(async_session: AsyncSession) -> User:
         username="regularuser",
         password="testpassword123",
         is_active=True,
-        is_superuser=False,  # Regular user, not admin
+        # Regular annotator, not admin: classifies, does not localize.
+        classify_status=RightStatus.GRANTED,
     )
     user = await user_crud.create_user(user_create)
     return user
@@ -245,8 +248,24 @@ async def localizer_user(async_session: AsyncSession) -> User:
         username="localizeruser",
         password="testpassword123",
         is_active=True,
-        is_superuser=False,
-        can_localize=True,
+        classify_status=RightStatus.GRANTED,
+        localize_status=RightStatus.GRANTED,
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
+async def manager_user(async_session: AsyncSession) -> User:
+    """Create an annotation manager (no admin rights)."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username="manageruser",
+        password="testpassword123",
+        is_active=True,
+        role=UserRole.ANNOTATION_MANAGER,
+        classify_status=RightStatus.GRANTED,
+        localize_status=RightStatus.GRANTED,
     )
     user = await user_crud.create_user(user_create)
     return user
@@ -260,7 +279,6 @@ async def inactive_user(async_session: AsyncSession) -> User:
         username="inactiveuser",
         password="testpassword123",
         is_active=False,  # Inactive user
-        is_superuser=False,
     )
     user = await user_crud.create_user(user_create)
     return user
@@ -274,7 +292,6 @@ async def worker_user(async_session: AsyncSession) -> User:
         username=settings.WORKER_USERNAME,
         password="workerpassword123",
         is_active=False,
-        is_superuser=False,
     )
     user = await user_crud.create_user(user_create)
     return user
@@ -301,6 +318,14 @@ async def localizer_user_token(localizer_user: User) -> str:
     """Generate an authentication token for the localizer user."""
     return create_access_token(
         data={"sub": localizer_user.username, "user_id": localizer_user.id}
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def manager_user_token(manager_user: User) -> str:
+    """Generate an authentication token for the annotation manager."""
+    return create_access_token(
+        data={"sub": manager_user.username, "user_id": manager_user.id}
     )
 
 

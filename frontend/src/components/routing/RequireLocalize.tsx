@@ -4,8 +4,8 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { ROUTES } from '@/utils/routes';
 
 /**
- * Route guard for the Localize section. Classify-only users (no
- * can_localize grant, not superuser) are redirected to the classify queue.
+ * Route guard for the Localize section. Users without the localize right
+ * (localize_status not granted, not admin) are redirected to the classify queue.
  */
 export default function RequireLocalize({ children }: { children: ReactElement }) {
   const { canLocalize } = useAuthStore();
