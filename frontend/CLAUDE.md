@@ -28,7 +28,7 @@ frontend/src/
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
 │   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
-│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it")
+│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it"), LocalizationExercise (images in public/guide/localization/)
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
@@ -45,7 +45,8 @@ frontend/src/
 │   ├── DashboardPage.tsx              # Pipeline dashboard (see docs/specs/2026-07-28-dashboard-taxonomy-redesign-design.md)
 │   ├── GuidePage.tsx                  # User guide hub (/guide): training module cards
 │   ├── GuideBasicsPage.tsx            # Field guide: pipeline + both passes (/guide/how-annotation-works)
-│   ├── GuideComingSoonPage.tsx        # Advanced trainings placeholders (/guide/classification, /guide/localization)
+│   ├── GuideClassificationPage.tsx    # Classification training: video to watch before confirming (/guide/classification)
+│   ├── GuideLocalizationPage.tsx      # Localization training: box 5 reference frames, pass with 4 (/guide/localization)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
@@ -56,6 +57,7 @@ frontend/src/
 ├── services/api.ts              # Axios client (interceptors, JWT)
 ├── store/
 │   ├── useAuthStore.ts          # Token + user (persisted)
+│   ├── useGuideProgressStore.ts # Finished guide trainings per user (persisted, drives the hub's Done ticks)
 │   └── useSequenceStore.ts      # Selection / in-progress sequence state
 ├── types/
 │   ├── api.ts                   # Mirrors backend schemas (Sequence, Detection, *Annotation, enums)
@@ -97,7 +99,8 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 | `/guide/how-annotation-works`             | `GuideBasicsPage`                 |
-| `/guide/classification`, `/guide/localization` | `GuideComingSoonPage`        |
+| `/guide/classification`                    | `GuideClassificationPage`         |
+| `/guide/localization`                      | `GuideLocalizationPage`           |
 
 Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
 redirect permanently — see `src/components/routing/legacyRedirects.tsx`.
@@ -141,6 +144,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 ## State Management
 
 - **`useAuthStore`** — JWT token, current user. Persisted to localStorage.
+- **`useGuideProgressStore`** — which guide trainings each user finished (keyed by user id). Persisted to localStorage; client-side until #413 records it server-side.
 - **`useSequenceStore`** — selection / in-progress sequence state during an annotation session.
 - **TanStack Query** — all server reads. Query keys live alongside the hooks that own them. Use `invalidateQueries` after mutations rather than manual cache writes.
 - **Local component state** — for transient UI only.

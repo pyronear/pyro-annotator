@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import GuideBasicsPage from '@/pages/GuideBasicsPage';
+import { celebrate } from '@/components/guide/celebrate';
+
+vi.mock('@/components/guide/celebrate', () => ({ celebrate: vi.fn() }));
 
 describe('GuideBasicsPage', () => {
   it('renders the field guide with both passes', () => {
@@ -43,12 +46,20 @@ describe('GuideBasicsPage', () => {
     expect(screen.getByText(/no longer part of the normal queue flow/i)).toBeInTheDocument();
   });
 
-  it('ends with the confirmation, which leads to the Classify queue', () => {
+  it('after confirming, points to the advanced trainings instead of a queue', () => {
     render(<GuideBasicsPage />, { wrapper: MemoryRouter });
     fireEvent.click(screen.getByRole('button', { name: 'I have read it' }));
-    expect(screen.getByRole('link', { name: /start classifying/i })).toHaveAttribute(
+
+    expect(celebrate).toHaveBeenCalled();
+    expect(screen.getByTestId('read-tick')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /classification — advanced/i })).toHaveAttribute(
       'href',
-      '/classify'
+      '/guide/classification'
     );
+    expect(screen.getByRole('link', { name: /localization — advanced/i })).toHaveAttribute(
+      'href',
+      '/guide/localization'
+    );
+    expect(screen.queryByRole('link', { name: /start classifying/i })).not.toBeInTheDocument();
   });
 });
