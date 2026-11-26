@@ -50,6 +50,11 @@ interface AlertFrameGridProps {
   cropMode?: boolean;
   /** The `recordedAt` of the one cell to ring-highlight (segment click / `?frame=` deep link arrival). */
   highlightedFrame?: string | null;
+  /**
+   * Extra content laid over a cell, above its image and boxes — the
+   * localization training's per-frame verdict. Nothing by default.
+   */
+  renderCellOverlay?: (frame: AlertFrame) => React.ReactNode;
 }
 
 export function AlertFrameGrid({
@@ -60,6 +65,7 @@ export function AlertFrameGrid({
   cardMinWidth = 220,
   cropMode = false,
   highlightedFrame = null,
+  renderCellOverlay,
 }: AlertFrameGridProps) {
   // Inferred zoom for boxless cells (gap frames, before/after context): the
   // union of the nearest boxed frames on each side, so the eye stays on one
@@ -92,6 +98,7 @@ export function AlertFrameGrid({
             onCellClick(frame.recordedAt, activeCell.laneSequenceId, activeCell.detectionId)
           }
           cellRef={cellRef ? el => cellRef(frame.recordedAt, el) : undefined}
+          overlay={renderCellOverlay?.(frame)}
         />
       ))}
     </div>
@@ -107,6 +114,7 @@ interface AlertFrameCellViewProps {
   highlighted: boolean;
   onClick: (activeCell: AlertFrameCell) => void;
   cellRef?: (el: HTMLDivElement | null) => void;
+  overlay?: React.ReactNode;
 }
 
 function AlertFrameCellView({
@@ -117,6 +125,7 @@ function AlertFrameCellView({
   highlighted,
   onClick,
   cellRef,
+  overlay,
 }: AlertFrameCellViewProps) {
   // Fallback (no active object) prefers a lane that can actually be worked:
   // landing on a false-positive cell would make the whole frame read-only,
@@ -290,6 +299,8 @@ function AlertFrameCellView({
       <div className="absolute bottom-0 left-0 bg-char/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {formatDateTime(frame.recordedAt)}
       </div>
+
+      {overlay}
     </div>
   );
 }

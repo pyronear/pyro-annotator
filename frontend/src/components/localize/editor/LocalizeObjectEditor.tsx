@@ -122,8 +122,11 @@ export interface LocalizeObjectEditorProps {
    * still about the object in front of you.
    */
   onAcceptRemaining: (onAccepted?: () => void) => void;
-  /** Hand this object's classification back to the classify cockpit. */
-  onReclassify: () => void;
+  /**
+   * Hand this object's classification back to the classify cockpit. Omitted
+   * where there is no classify to go back to (the localization training).
+   */
+  onReclassify?: () => void;
   onClose: () => void;
   /**
    * Consume-once viewport rect of the grid cell the opening click came
@@ -818,7 +821,7 @@ export function LocalizeObjectEditor({
             </div>
           )}
 
-          {editable && (
+          {editable && onReclassify && (
             <button
               type="button"
               data-testid="editor-reclassify"

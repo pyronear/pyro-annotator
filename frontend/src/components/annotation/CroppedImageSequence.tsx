@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
 import type { LaneBox } from '@/utils/annotation/quickSubmitUtils';
 import { apiClient } from '@/services/api';
+import { QUERY_KEYS } from '@/utils/constants';
 import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
 
 /** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
@@ -61,6 +63,7 @@ export default function CroppedImageSequence({
   className = '',
   onFrameChange,
 }: CroppedImageSequenceProps) {
+  const queryClient = useQueryClient();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,7 +140,14 @@ export default function CroppedImageSequence({
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
           try {
-            const response = await apiClient.getDetectionImageUrl(bbox.detection_id);
+            // Through the query cache the grid and the editor already fill,
+            // so a URL resolved there is not asked for again.
+            const response = await queryClient.fetchQuery({
+              queryKey: [...QUERY_KEYS.DETECTION_IMAGE, bbox.detection_id],
+              queryFn: () => apiClient.getDetectionImageUrl(bbox.detection_id),
+              staleTime: 5 * 60 * 1000,
+            });
+            if (!response) throw new Error('No image');
             return {
               url: response.url,
               loaded: false,

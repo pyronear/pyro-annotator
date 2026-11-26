@@ -35,7 +35,7 @@ describe('GuidePage (user guide hub)', () => {
 
     const localization = screen.getByRole('link', { name: /localization — advanced/i });
     expect(localization).toHaveAttribute('href', '/guide/localization');
-    expect(localization).toHaveTextContent('~5 min exercise');
+    expect(localization).toHaveTextContent('~10 min, 4 alerts');
   });
 
   it('marks no training as coming soon', () => {

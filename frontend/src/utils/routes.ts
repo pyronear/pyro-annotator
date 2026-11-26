@@ -13,6 +13,7 @@ export const ROUTES = {
   GUIDE_BASICS: '/guide/how-annotation-works',
   GUIDE_CLASSIFICATION: '/guide/classification',
   GUIDE_LOCALIZATION: '/guide/localization',
+  GUIDE_LOCALIZATION_PRACTICE: '/guide/localization/practice',
 } as const;
 
 export function classifyDetail(id: number | string, done = false): string {
