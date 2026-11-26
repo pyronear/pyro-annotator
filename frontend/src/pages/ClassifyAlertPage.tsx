@@ -1250,7 +1250,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               primarySequenceId={primaryLane.sequence.id}
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
-              missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               annotationLoading={isLoading}
               objectOverlays={playerObjectOverlays}
               seekRequest={seekRequest}

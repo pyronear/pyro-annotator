@@ -37,8 +37,6 @@ export interface ClassifyMediaPanelProps {
   primarySequenceId: number;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
-  /** Disables the Yes/No CTAs (e.g. no open lane to carry the flag) — mirrors the rail chips. */
-  missedSmokeDisabled?: boolean;
   annotationLoading: boolean;
   objectOverlays: ObjectOverlay[];
   /** A row-timeline segment click's jump-and-hold, forwarded to the full-frame player only. */
@@ -52,7 +50,6 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   primarySequenceId,
   missedSmokeReview,
   onMissedSmokeReviewChange,
-  missedSmokeDisabled = false,
   annotationLoading,
   objectOverlays,
   seekRequest,
@@ -115,60 +112,6 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
             onToggleFullscreen={toggleFullscreen}
             isFullscreen={isFullscreen}
           />
-          {!isFullscreen && (
-            <div className="mt-6 rounded-card border border-line bg-paper px-[18px] py-3.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-              <p className="flex-1 min-w-[16rem] font-body text-sm text-haze">
-                Every tracked object is boxed — watch the loop for smoke without a box: faint
-                plumes, rising columns, drifting haze.
-              </p>
-              <span
-                role="radiogroup"
-                aria-label="Missed smoke review (player)"
-                className="flex flex-none items-center gap-2"
-              >
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={missedSmokeReview === 'yes'}
-                  disabled={missedSmokeDisabled}
-                  onClick={() => onMissedSmokeReviewChange('yes')}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 font-body text-sm font-semibold transition-colors ${
-                    missedSmokeReview === 'yes'
-                      ? 'border-ember bg-ember-soft text-ember'
-                      : 'border-line bg-paper text-char hover:bg-ash'
-                  } ${missedSmokeDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  Yes
-                  <kbd
-                    aria-hidden="true"
-                    className="px-1 py-0.5 rounded bg-ash font-data text-[10px] font-medium text-haze"
-                  >
-                    Y
-                  </kbd>
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={missedSmokeReview === 'no'}
-                  disabled={missedSmokeDisabled}
-                  onClick={() => onMissedSmokeReviewChange('no')}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 font-body text-sm font-semibold transition-colors ${
-                    missedSmokeReview === 'no'
-                      ? 'border-pine bg-pine text-white'
-                      : 'border-line bg-paper text-char hover:bg-ash'
-                  } ${missedSmokeDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  No
-                  <kbd
-                    aria-hidden="true"
-                    className="px-1 py-0.5 rounded bg-ash font-data text-[10px] font-medium text-haze"
-                  >
-                    N
-                  </kbd>
-                </button>
-              </span>
-            </div>
-          )}
         </div>
       ) : activeObject ? (
         // Untitled on purpose: the active rail row already names the object,

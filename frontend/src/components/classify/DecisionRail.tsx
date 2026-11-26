@@ -75,7 +75,9 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-body text-sm font-semibold text-char">Did we miss any smoke?</span>
+        <span className="font-body text-sm font-semibold text-char">
+          Did the model miss any smoke?
+        </span>
         <span
           role="radiogroup"
           aria-label="Missed smoke review"
@@ -130,7 +132,8 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
       </div>
       {missedSmokeActive && (
         <p className="mt-1.5 font-body text-detail text-haze">
-          The player is showing the whole alert sequence — answer once you've watched it.
+          Every tracked object is boxed. Watch the loop for smoke without a box: faint plumes,
+          rising columns, drifting haze.
         </p>
       )}
     </div>

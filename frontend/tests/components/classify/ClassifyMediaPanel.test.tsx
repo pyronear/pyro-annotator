@@ -83,49 +83,16 @@ describe('ClassifyMediaPanel', () => {
     expect(screen.queryAllByRole('button', { name: 'Enter fullscreen' })).toHaveLength(1);
   });
 
-  it('answers missed smoke through the panel CTAs, mirroring state and disabled', () => {
-    const onChange = vi.fn();
-    const { rerender } = render(
-      <ClassifyMediaPanel
-        {...baseProps}
-        activeSection="sequence"
-        activeObject={activeObject}
-        onMissedSmokeReviewChange={onChange}
-      />
+  it('leaves the missed-smoke answer to the rail: no CTAs or guidance under the player', () => {
+    render(
+      <ClassifyMediaPanel {...baseProps} activeSection="sequence" activeObject={activeObject} />
     );
-    fireEvent.click(screen.getByRole('radio', { name: /^Yes/ }));
-    expect(onChange).toHaveBeenCalledWith('yes');
-    fireEvent.click(screen.getByRole('radio', { name: /^No/ }));
-    expect(onChange).toHaveBeenCalledWith('no');
-
-    rerender(
-      <ClassifyMediaPanel
-        {...baseProps}
-        activeSection="sequence"
-        activeObject={activeObject}
-        onMissedSmokeReviewChange={onChange}
-        missedSmokeReview="no"
-      />
-    );
-    expect(screen.getByRole('radio', { name: /^No/ })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('radio', { name: /^Yes/ })).toHaveAttribute('aria-checked', 'false');
-
-    onChange.mockClear();
-    rerender(
-      <ClassifyMediaPanel
-        {...baseProps}
-        activeSection="sequence"
-        activeObject={activeObject}
-        onMissedSmokeReviewChange={onChange}
-        missedSmokeDisabled
-      />
-    );
-    expect(screen.getByRole('radio', { name: /^Yes/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole('radio', { name: /^Yes/ }));
-    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('radio', { name: /^Yes/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /^No/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Every tracked object is boxed/)).not.toBeInTheDocument();
   });
 
-  it('hides the guidance copy and CTAs in fullscreen, and Escape exits fullscreen', () => {
+  it('Escape exits fullscreen', () => {
     let fullscreenEl: Element | null = null;
     HTMLElement.prototype.requestFullscreen = vi.fn(function (this: HTMLElement) {
       // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -147,12 +114,9 @@ describe('ClassifyMediaPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }));
     fireEvent(document, new Event('fullscreenchange'));
 
-    expect(screen.queryByRole('radio', { name: /^Yes/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Every tracked object is boxed/)).not.toBeInTheDocument();
-
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(document.exitFullscreen).toHaveBeenCalled();
     fireEvent(document, new Event('fullscreenchange'));
-    expect(screen.getByRole('radio', { name: /^Yes/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toBeInTheDocument();
   });
 });
