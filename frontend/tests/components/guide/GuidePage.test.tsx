@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, it, expect } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import GuidePage from '@/pages/GuidePage';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useGuideProgressStore } from '@/store/useGuideProgressStore';
+import type { User } from '@/types/api';
 
 describe('GuidePage (user guide hub)', () => {
+  beforeEach(() => {
+    useAuthStore.setState({ user: { id: 7 } as User });
+    useGuideProgressStore.setState({ completedByUser: {} });
+  });
+
   it('welcomes the reader to the training module', () => {
     render(<GuidePage />, { wrapper: MemoryRouter });
     expect(
@@ -39,5 +47,20 @@ describe('GuidePage (user guide hub)', () => {
     render(<GuidePage />, { wrapper: MemoryRouter });
     expect(screen.queryByText(/Pass 01/)).not.toBeInTheDocument();
     expect(screen.queryByText(/The pipeline/)).not.toBeInTheDocument();
+  });
+
+  it('ticks the modules the user has finished, and only those', () => {
+    useGuideProgressStore.setState({
+      completedByUser: { '7': ['/guide/classification'], '8': ['/guide/localization'] },
+    });
+    render(<GuidePage />, { wrapper: MemoryRouter });
+
+    const classification = screen.getByRole('link', { name: /classification — advanced/i });
+    expect(within(classification).getByTestId('module-completed')).toHaveTextContent('Done');
+    // Another user's progress doesn't show.
+    const localization = screen.getByRole('link', { name: /localization — advanced/i });
+    expect(within(localization).queryByTestId('module-completed')).not.toBeInTheDocument();
+    const basics = screen.getByRole('link', { name: /how annotation works/i });
+    expect(within(basics).queryByTestId('module-completed')).not.toBeInTheDocument();
   });
 });

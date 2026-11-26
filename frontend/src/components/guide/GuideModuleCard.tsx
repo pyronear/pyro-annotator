@@ -1,9 +1,15 @@
 import { Link } from 'react-router-dom';
+import { Check } from 'lucide-react';
 import ComingSoonBadge from '@/components/guide/ComingSoonBadge';
 import { TONE_TEXT, type GuideModule } from '@/components/guide/guideModules';
+import { useIsModuleCompleted } from '@/store/useGuideProgressStore';
 
-/** One clickable module card on the user guide hub. */
+/**
+ * One clickable module card on the user guide hub. A training the user has
+ * finished shows a pine tick in its corner.
+ */
 export default function GuideModuleCard({ module }: { module: GuideModule }) {
+  const completed = useIsModuleCompleted(module.href);
   return (
     <Link
       to={module.href}
@@ -16,6 +22,7 @@ export default function GuideModuleCard({ module }: { module: GuideModule }) {
           {module.eyebrow}
         </span>
         {module.comingSoon && <ComingSoonBadge />}
+        {completed && <CompletedTick />}
       </div>
       <h2 className="font-display text-heading font-semibold text-char">{module.title}</h2>
       <p className="mt-1 flex-1 font-body text-detail leading-relaxed text-haze">
@@ -26,5 +33,19 @@ export default function GuideModuleCard({ module }: { module: GuideModule }) {
         <span className="font-body text-detail text-haze group-hover:text-char">Open →</span>
       </div>
     </Link>
+  );
+}
+
+function CompletedTick() {
+  return (
+    <span
+      data-testid="module-completed"
+      className="inline-flex shrink-0 items-center gap-1.5 font-body text-detail font-semibold text-pine"
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pine">
+        <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} aria-hidden />
+      </span>
+      Done
+    </span>
   );
 }

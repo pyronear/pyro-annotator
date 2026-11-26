@@ -13,7 +13,8 @@
  * (`gradeTrainingAlert`) and switches the cockpit to review: each frame gets
  * a tick or a cross and the expected box beside the committed one, and the
  * rail says what was wrong and what the alert was about. Three right alerts
- * out of four passes: confetti, then off to localize.
+ * out of four passes: confetti, the module ticked as done on the guide hub,
+ * then off to localize.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -64,6 +65,7 @@ import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { formatDateTime } from '@/utils/datetime';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useMarkModuleCompleted } from '@/store/useGuideProgressStore';
 import { ROUTES } from '@/utils/routes';
 
 /** Same column widths as the localize page's S/M/L knob. */
@@ -691,12 +693,18 @@ function TrainingSummary({
   onRestart: () => void;
 }) {
   const { canLocalize } = useAuthStore();
+  const markCompleted = useMarkModuleCompleted(ROUTES.GUIDE_LOCALIZATION);
   const scoreRef = useRef<HTMLDivElement>(null);
   const rightCount = grades.filter(g => g.right).length;
   const passed = rightCount >= TRAINING_PASS_MARK;
 
+  // Passing finishes the module: the guide hub ticks it.
   useEffect(() => {
-    if (passed) celebrate(scoreRef.current);
+    if (!passed) return;
+    celebrate(scoreRef.current);
+    markCompleted();
+    // Once per pass, not on every new `markCompleted` identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passed]);
 
   return (

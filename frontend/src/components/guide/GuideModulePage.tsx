@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import ComingSoonBadge from '@/components/guide/ComingSoonBadge';
 import ReadConfirmation, { type ReadConfirmationProps } from '@/components/guide/ReadConfirmation';
 import { TONE_TEXT, type GuideModule } from '@/components/guide/guideModules';
+import { useMarkModuleCompleted } from '@/store/useGuideProgressStore';
 import { ROUTES } from '@/utils/routes';
 
-interface GuideModulePageProps extends Partial<ReadConfirmationProps> {
+interface GuideModulePageProps extends Partial<Omit<ReadConfirmationProps, 'onConfirm'>> {
   module: GuideModule;
   children: React.ReactNode;
 }
@@ -20,6 +21,7 @@ export default function GuideModulePage({
   requirement,
   children,
 }: GuideModulePageProps) {
+  const markCompleted = useMarkModuleCompleted(module.href);
   return (
     <div className="mx-auto max-w-3xl">
       <Link to={ROUTES.GUIDE} className="font-body text-detail text-haze hover:text-char">
@@ -39,7 +41,11 @@ export default function GuideModulePage({
       <p className="mb-8 mt-1 font-data text-eyebrow text-haze">{module.duration}</p>
       {children}
       {afterConfirm !== undefined && (
-        <ReadConfirmation afterConfirm={afterConfirm} requirement={requirement} />
+        <ReadConfirmation
+          afterConfirm={afterConfirm}
+          requirement={requirement}
+          onConfirm={markCompleted}
+        />
       )}
     </div>
   );
