@@ -148,7 +148,7 @@ describe('ClassifyMediaPanel', () => {
     fireEvent(document, new Event('fullscreenchange'));
 
     expect(screen.queryByRole('radio', { name: /^Yes/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Did the model miss any smoke/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Every tracked object is boxed/)).not.toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(document.exitFullscreen).toHaveBeenCalled();
