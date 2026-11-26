@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Detection } from '@/types/api';
-import { apiClient } from '@/services/api';
+import { useDetectionMediaSource } from '@/hooks/useDetectionMediaSource';
 
 interface PreloadedImage {
   url: string;
@@ -23,6 +23,7 @@ export function useImagePreloader(
   options: ImagePreloaderOptions = {}
 ) {
   const { preloadAhead = 10, preloadBehind = 5 } = options;
+  const mediaSource = useDetectionMediaSource();
 
   // Track loaded images
   const [imageCache, setImageCache] = useState<Record<number, PreloadedImage>>({});
@@ -60,7 +61,7 @@ export function useImagePreloader(
 
       try {
         // Fetch the image URL from the API
-        const { url } = await apiClient.getDetectionImageUrl(detection.id);
+        const { url } = await mediaSource.getDetectionImageUrl(detection.id);
 
         // Create an Image object to preload
         const img = new Image();
@@ -97,7 +98,7 @@ export function useImagePreloader(
         loadingQueue.current.delete(detection.id);
       }
     },
-    [imageCache]
+    [imageCache, mediaSource]
   );
 
   // Preload images in the sliding window

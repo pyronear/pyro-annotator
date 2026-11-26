@@ -14,7 +14,8 @@ import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import GuideBasicsPage from '@/pages/GuideBasicsPage';
-import GuideComingSoonPage from '@/pages/GuideComingSoonPage';
+import GuideClassificationPage from '@/pages/GuideClassificationPage';
+import GuideLocalizationPage from '@/pages/GuideLocalizationPage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
 import {
@@ -166,14 +167,8 @@ function App() {
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path={ROUTES.GUIDE} element={<GuidePage />} />
                   <Route path={ROUTES.GUIDE_BASICS} element={<GuideBasicsPage />} />
-                  <Route
-                    path={ROUTES.GUIDE_CLASSIFICATION}
-                    element={<GuideComingSoonPage module="classification" />}
-                  />
-                  <Route
-                    path={ROUTES.GUIDE_LOCALIZATION}
-                    element={<GuideComingSoonPage module="localization" />}
-                  />
+                  <Route path={ROUTES.GUIDE_CLASSIFICATION} element={<GuideClassificationPage />} />
+                  <Route path={ROUTES.GUIDE_LOCALIZATION} element={<GuideLocalizationPage />} />
                 </Routes>
               </AppLayout>
             }

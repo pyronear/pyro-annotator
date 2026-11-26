@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
 import type { LaneBox } from '@/utils/annotation/quickSubmitUtils';
-import { apiClient } from '@/services/api';
+import { useDetectionMediaSource } from '@/hooks/useDetectionMediaSource';
 import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
 
 /** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
@@ -61,6 +61,7 @@ export default function CroppedImageSequence({
   className = '',
   onFrameChange,
 }: CroppedImageSequenceProps) {
+  const mediaSource = useDetectionMediaSource();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,7 +138,7 @@ export default function CroppedImageSequence({
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
           try {
-            const response = await apiClient.getDetectionImageUrl(bbox.detection_id);
+            const response = await mediaSource.getDetectionImageUrl(bbox.detection_id);
             return {
               url: response.url,
               loaded: false,
