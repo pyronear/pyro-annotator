@@ -2,20 +2,26 @@ import { Link } from 'react-router-dom';
 import ComingSoonBadge from '@/components/guide/ComingSoonBadge';
 import ReadConfirmation, { type ReadConfirmationProps } from '@/components/guide/ReadConfirmation';
 import { TONE_TEXT, type GuideModule } from '@/components/guide/guideModules';
+import { useMarkModuleCompleted } from '@/store/useGuideProgressStore';
 import { ROUTES } from '@/utils/routes';
 
-interface GuideModulePageProps extends ReadConfirmationProps {
+interface GuideModulePageProps extends Partial<Omit<ReadConfirmationProps, 'onConfirm'>> {
   module: GuideModule;
   children: React.ReactNode;
 }
 
-/** Shared frame of a guide module page: back link, header, body, confirmation. */
+/**
+ * Shared frame of a guide module page: back link, header, body, confirmation.
+ * Without `afterConfirm` there is no "I have read it" button: the page's own
+ * content decides when the training is done (the localization exercise).
+ */
 export default function GuideModulePage({
   module,
   afterConfirm,
   requirement,
   children,
 }: GuideModulePageProps) {
+  const markCompleted = useMarkModuleCompleted(module.href);
   return (
     <div className="mx-auto max-w-3xl">
       <Link to={ROUTES.GUIDE} className="font-body text-detail text-haze hover:text-char">
@@ -34,7 +40,13 @@ export default function GuideModulePage({
       </h1>
       <p className="mb-8 mt-1 font-data text-eyebrow text-haze">{module.duration}</p>
       {children}
-      <ReadConfirmation afterConfirm={afterConfirm} requirement={requirement} />
+      {afterConfirm !== undefined && (
+        <ReadConfirmation
+          afterConfirm={afterConfirm}
+          requirement={requirement}
+          onConfirm={markCompleted}
+        />
+      )}
     </div>
   );
 }

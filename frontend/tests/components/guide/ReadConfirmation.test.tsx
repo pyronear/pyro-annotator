@@ -68,11 +68,15 @@ describe('ReadConfirmation', () => {
   });
 
   it('celebrates, turns into a tick and shows the next step', () => {
-    render(<ReadConfirmation afterConfirm={<p>Go check the other modules</p>} />);
+    const onConfirm = vi.fn();
+    render(
+      <ReadConfirmation afterConfirm={<p>Go check the other modules</p>} onConfirm={onConfirm} />
+    );
     act(() => observerCallback?.([{ isIntersecting: true }]));
     fireEvent.click(button());
 
     expect(celebrate).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'I have read it' })).not.toBeInTheDocument();
     expect(screen.getByTestId('read-tick')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Done — nice work!');
