@@ -1,6 +1,16 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { BoundingBox } from '@/types/api';
+
+// Image URLs resolve through the react-query cache; a fresh client per render
+// keeps one test's URLs out of the next.
+const render = (ui: React.ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+};
 
 vi.mock('@/services/api', () => ({
   apiClient: {

@@ -16,6 +16,7 @@ import GuidePage from '@/pages/GuidePage';
 import GuideBasicsPage from '@/pages/GuideBasicsPage';
 import GuideClassificationPage from '@/pages/GuideClassificationPage';
 import GuideLocalizationPage from '@/pages/GuideLocalizationPage';
+import LocalizeTrainingPage from '@/pages/LocalizeTrainingPage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
 import {
@@ -169,6 +170,10 @@ function App() {
                   <Route path={ROUTES.GUIDE_BASICS} element={<GuideBasicsPage />} />
                   <Route path={ROUTES.GUIDE_CLASSIFICATION} element={<GuideClassificationPage />} />
                   <Route path={ROUTES.GUIDE_LOCALIZATION} element={<GuideLocalizationPage />} />
+                  <Route
+                    path={ROUTES.GUIDE_LOCALIZATION_PRACTICE}
+                    element={<LocalizeTrainingPage />}
+                  />
                 </Routes>
               </AppLayout>
             }

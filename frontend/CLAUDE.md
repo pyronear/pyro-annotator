@@ -28,7 +28,7 @@ frontend/src/
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
 │   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
-│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it"), LocalizationExercise (images in public/guide/localization/)
+│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it"), localize-training/ (training alerts + offline model; images in public/guide/localization/)
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
@@ -46,7 +46,8 @@ frontend/src/
 │   ├── GuidePage.tsx                  # User guide hub (/guide): training module cards
 │   ├── GuideBasicsPage.tsx            # Field guide: pipeline + both passes (/guide/how-annotation-works)
 │   ├── GuideClassificationPage.tsx    # Classification training: video to watch before confirming (/guide/classification)
-│   ├── GuideLocalizationPage.tsx      # Localization training: box 5 reference frames, pass with 4 (/guide/localization)
+│   ├── GuideLocalizationPage.tsx      # Localization training intro (/guide/localization)
+│   ├── LocalizeTrainingPage.tsx       # Localization training: the Localize cockpit on 4 real alerts, graded per frame, pass with 3 (/guide/localization/practice)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
@@ -100,6 +101,7 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/guide/how-annotation-works`             | `GuideBasicsPage`                 |
 | `/guide/classification`                    | `GuideClassificationPage`         |
 | `/guide/localization`                      | `GuideLocalizationPage`           |
+| `/guide/localization/practice`             | `LocalizeTrainingPage`            |
 
 Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
 redirect permanently — see `src/components/routing/legacyRedirects.tsx`.

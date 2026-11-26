@@ -1,46 +1,70 @@
+import { Link } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import GuideModulePage from '@/components/guide/GuideModulePage';
-import LocalizationExercise from '@/components/guide/LocalizationExercise';
-import { StartAnnotating } from '@/components/guide/NextSteps';
 import { LOCALIZATION_MODULE } from '@/components/guide/guideModules';
-import { LOCALIZATION_EXERCISES, PASS_MARK } from '@/components/guide/localizationExercises';
-import { useAuthStore } from '@/store/useAuthStore';
+import {
+  LOCALIZE_TRAINING_ALERTS,
+  TRAINING_PASS_MARK,
+} from '@/components/guide/localize-training/trainingAlerts';
 import { ROUTES } from '@/utils/routes';
 
+const STEPS = [
+  {
+    title: 'Check the model’s boxes',
+    body: 'Each alert opens like in Localize: every frame of the plume, with the box the model proposes drawn dashed.',
+  },
+  {
+    title: 'Accept them, or fix the wrong ones',
+    body: 'If they are right, Accept boxes. If not, open the frame: pick another box, draw a tight one yourself, or choose None where there is no smoke.',
+  },
+  {
+    title: 'Submit and see if you were right',
+    body: 'Each frame is checked against the validated answer: a tick or a cross, the expected box, and what to change.',
+  },
+];
+
 /**
- * /guide/localization — the localization training: draw a box on five
- * reference frames, pass with at least `PASS_MARK` matches. Passing is the
- * confirmation, so this page has no "I have read it" button.
+ * /guide/localization — what the localization training is, then into it.
+ * Passing the training is the confirmation, so this page has no "I have read
+ * it" button; the training itself lives at /guide/localization/practice.
  */
 export default function GuideLocalizationPage() {
-  const { canLocalize } = useAuthStore();
-
   return (
     <GuideModulePage module={LOCALIZATION_MODULE}>
       <p className="font-body text-body leading-relaxed text-char">{LOCALIZATION_MODULE.summary}</p>
-      <p className="mb-6 mt-2 font-body text-detail text-haze">
-        Draw one box around the smoke on each of the {LOCALIZATION_EXERCISES.length} images, then
-        check it against the expected box. Get {PASS_MARK} of them right to pass.
-      </p>
-      <LocalizationExercise
-        afterPass={
-          // The Localize queue is gated by can_localize; send the others to Classify.
-          canLocalize() ? (
-            <StartAnnotating
-              message="Go start localizing!"
-              label="Start localizing"
-              to={ROUTES.LOCALIZE}
-              tone="pine"
-            />
-          ) : (
-            <StartAnnotating
-              message="Localizing isn't enabled on your account yet — classify in the meantime."
-              label="Start classifying"
-              to={ROUTES.CLASSIFY}
-              tone="ember"
-            />
-          )
-        }
-      />
+
+      <div className="mt-6 rounded-card border border-line bg-paper px-[22px] py-5">
+        <h2 className="font-display text-heading font-semibold text-char">How it works</h2>
+        <ol className="mt-4 space-y-4">
+          {STEPS.map((step, i) => (
+            <li key={step.title} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-pine-soft font-data text-xs font-semibold text-pine">
+                {i + 1}
+              </span>
+              <div>
+                <p className="font-body text-body font-semibold text-char">{step.title}</p>
+                <p className="mt-0.5 font-body text-detail leading-relaxed text-haze">
+                  {step.body}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-5 border-t border-line pt-4 font-body text-detail text-char">
+          {LOCALIZE_TRAINING_ALERTS.length} real alerts. The model is not always right — get{' '}
+          {TRAINING_PASS_MARK} of them right to pass.
+        </p>
+      </div>
+
+      <div className="mt-6 flex justify-end">
+        <Link
+          to={ROUTES.GUIDE_LOCALIZATION_PRACTICE}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+        >
+          Start the training
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
     </GuideModulePage>
   );
 }
