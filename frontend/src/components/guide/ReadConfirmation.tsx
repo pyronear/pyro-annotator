@@ -1,5 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 import { celebrate } from '@/components/guide/celebrate';
+
+/**
+ * A finished training: a pine tick that pops in and draws itself, a message,
+ * then the next step fading up below. Shared by the "I have read it" button
+ * and the localization exercise's pass screen.
+ */
+export const TrainingDone = forwardRef<
+  HTMLDivElement,
+  { message: string; children: React.ReactNode }
+>(function TrainingDone({ message, children }, ref) {
+  return (
+    <div ref={ref} role="status" className="flex flex-col items-center gap-4 pb-2 text-center">
+      <div className="flex items-center gap-3">
+        <span
+          data-testid="read-tick"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-pine animate-tick-pop motion-reduce:animate-none"
+        >
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden>
+            <path
+              d="M5 12.5l4.5 4.5L19 7.5"
+              stroke="white"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={24}
+              className="animate-tick-draw motion-reduce:animate-none"
+            />
+          </svg>
+        </span>
+        <span className="font-body text-body font-semibold text-pine">{message}</span>
+      </div>
+      <div className="w-full animate-fade-up motion-reduce:animate-none">{children}</div>
+    </div>
+  );
+});
 
 export interface ReadConfirmationProps {
   /** What the reader sees once they have confirmed: the next step(s). */
@@ -74,32 +109,9 @@ export default function ReadConfirmation({ afterConfirm, requirement }: ReadConf
     <div className="mt-10 border-t border-line pt-6">
       <div ref={sentinelRef} aria-hidden />
       {confirmed ? (
-        <div
-          ref={statusRef}
-          role="status"
-          className="flex flex-col items-center gap-4 pb-2 text-center"
-        >
-          <div className="flex items-center gap-3">
-            <span
-              data-testid="read-tick"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-pine animate-tick-pop motion-reduce:animate-none"
-            >
-              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden>
-                <path
-                  d="M5 12.5l4.5 4.5L19 7.5"
-                  stroke="white"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeDasharray={24}
-                  className="animate-tick-draw motion-reduce:animate-none"
-                />
-              </svg>
-            </span>
-            <span className="font-body text-body font-semibold text-pine">Done — nice work!</span>
-          </div>
-          <div className="w-full animate-fade-up motion-reduce:animate-none">{afterConfirm}</div>
-        </div>
+        <TrainingDone ref={statusRef} message="Done — nice work!">
+          {afterConfirm}
+        </TrainingDone>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-3">
           {hint && <span className="font-body text-detail text-haze">{hint}</span>}

@@ -28,7 +28,7 @@ frontend/src/
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
 │   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
-│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it")
+│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it"), LocalizationExercise (images in public/guide/localization/)
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
@@ -46,7 +46,7 @@ frontend/src/
 │   ├── GuidePage.tsx                  # User guide hub (/guide): training module cards
 │   ├── GuideBasicsPage.tsx            # Field guide: pipeline + both passes (/guide/how-annotation-works)
 │   ├── GuideClassificationPage.tsx    # Classification training: video to watch before confirming (/guide/classification)
-│   ├── GuideLocalizationPage.tsx      # Localization training placeholder (/guide/localization)
+│   ├── GuideLocalizationPage.tsx      # Localization training: box 5 reference frames, pass with 4 (/guide/localization)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence

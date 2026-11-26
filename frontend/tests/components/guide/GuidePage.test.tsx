@@ -27,15 +27,12 @@ describe('GuidePage (user guide hub)', () => {
 
     const localization = screen.getByRole('link', { name: /localization — advanced/i });
     expect(localization).toHaveAttribute('href', '/guide/localization');
-    expect(localization).toHaveTextContent('~20 min');
+    expect(localization).toHaveTextContent('~5 min exercise');
   });
 
-  it('marks only the localization training as coming soon', () => {
+  it('marks no training as coming soon', () => {
     render(<GuidePage />, { wrapper: MemoryRouter });
-    expect(screen.getAllByText('Coming soon')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: /localization — advanced/i })).toHaveTextContent(
-      'Coming soon'
-    );
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
   it('keeps the basics card summary-only, without the pass-by-pass steps', () => {

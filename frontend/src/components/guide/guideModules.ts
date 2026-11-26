@@ -43,11 +43,11 @@ export const LOCALIZATION_MODULE: GuideModule = {
   eyebrow: 'Localization',
   title: 'Localization — advanced training',
   summary:
-    'Practise drawing tight boxes and handling hard cases: small plumes, night images, missed smoke.',
-  duration: '~20 min',
+    'Practise drawing tight boxes on reference images: dense plumes, faint smoke, thin columns far away.',
+  duration: '~5 min exercise',
   href: ROUTES.GUIDE_LOCALIZATION,
   tone: 'pine',
-  comingSoon: true,
+  comingSoon: false,
 };
 
 export const TONE_TEXT: Record<GuideModule['tone'], string> = {
