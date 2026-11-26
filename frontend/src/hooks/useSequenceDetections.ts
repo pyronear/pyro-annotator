@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/services/api';
+import { scopedQueryKey, useDetectionMediaSource } from '@/hooks/useDetectionMediaSource';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection } from '@/types/api';
 
@@ -7,11 +7,12 @@ import { Detection } from '@/types/api';
  * Hook to fetch all detections in a sequence, ordered chronologically
  */
 export function useSequenceDetections(sequenceId: number | null, enabled: boolean = true) {
+  const mediaSource = useDetectionMediaSource();
   return useQuery({
-    queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(sequenceId!),
+    queryKey: scopedQueryKey(mediaSource, QUERY_KEYS.SEQUENCE_DETECTIONS(sequenceId!)),
     queryFn: async () => {
       if (!sequenceId) throw new Error('Sequence ID is required');
-      return await apiClient.getSequenceDetections(sequenceId);
+      return await mediaSource.getSequenceDetections(sequenceId);
     },
     enabled: enabled && !!sequenceId,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -22,11 +23,12 @@ export function useSequenceDetections(sequenceId: number | null, enabled: boolea
  * Hook to fetch detection image URL
  */
 export function useDetectionImage(detectionId: number | null, enabled: boolean = true) {
+  const mediaSource = useDetectionMediaSource();
   return useQuery({
-    queryKey: QUERY_KEYS.DETECTION_IMAGE_URL(detectionId!),
+    queryKey: scopedQueryKey(mediaSource, QUERY_KEYS.DETECTION_IMAGE_URL(detectionId!)),
     queryFn: async () => {
       if (!detectionId) throw new Error('Detection ID is required');
-      return apiClient.getDetectionImageUrl(detectionId);
+      return mediaSource.getDetectionImageUrl(detectionId);
     },
     enabled: enabled && !!detectionId,
     staleTime: 1000 * 60 * 10, // 10 minutes (images don't change)

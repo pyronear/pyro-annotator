@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { apiClient } from '@/services/api';
+import { useDetectionMediaSource } from '@/hooks/useDetectionMediaSource';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 
 // Legacy default border color for the own-object box, kept for callers that
@@ -57,6 +57,7 @@ export default function FullImageSequence({
   siblingOverlays,
   seekRequest,
 }: FullImageSequenceProps) {
+  const mediaSource = useDetectionMediaSource();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -118,7 +119,7 @@ export default function FullImageSequence({
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
           try {
-            const response = await apiClient.getDetectionImageUrl(bbox.detection_id);
+            const response = await mediaSource.getDetectionImageUrl(bbox.detection_id);
             return {
               url: response.url,
               loaded: false,

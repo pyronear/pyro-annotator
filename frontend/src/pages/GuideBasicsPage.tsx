@@ -1,13 +1,17 @@
 import GuideModulePage from '@/components/guide/GuideModulePage';
-import { BASICS_MODULE } from '@/components/guide/guideModules';
-import { ROUTES } from '@/utils/routes';
+import { ExploreModules } from '@/components/guide/NextSteps';
+import {
+  BASICS_MODULE,
+  CLASSIFICATION_MODULE,
+  LOCALIZATION_MODULE,
+} from '@/components/guide/guideModules';
 
 /** /guide/how-annotation-works — the field guide: the pipeline and both passes. */
 export default function GuideBasicsPage() {
   return (
     <GuideModulePage
       module={BASICS_MODULE}
-      next={{ label: 'Start classifying', to: ROUTES.CLASSIFY }}
+      afterConfirm={<ExploreModules modules={[CLASSIFICATION_MODULE, LOCALIZATION_MODULE]} />}
     >
       <section className="mb-8">
         <h2 className="mb-2 font-display text-lg font-semibold text-char">The pipeline</h2>
