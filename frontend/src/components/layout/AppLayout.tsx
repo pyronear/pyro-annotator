@@ -120,6 +120,10 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           },
         ]
       : []),
+    {
+      name: 'Training',
+      children: [{ name: 'User guide', href: ROUTES.GUIDE }],
+    },
   ];
 
   const isPathActive = (href: string) => {

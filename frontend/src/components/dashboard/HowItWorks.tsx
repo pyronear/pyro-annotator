@@ -50,7 +50,7 @@ export default function HowItWorks() {
           to="/guide"
           className="ml-auto shrink-0 pl-4 font-semibold not-italic text-char hover:text-ember"
         >
-          Open the field guide →
+          Open the user guide →
         </Link>
       </div>
     </div>

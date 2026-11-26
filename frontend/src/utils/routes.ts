@@ -9,6 +9,10 @@ export const ROUTES = {
   CLASSIFY_GROUPS: '/classify/groups',
   LOCALIZE: '/localize',
   LOCALIZE_DONE: '/localize/done',
+  GUIDE: '/guide',
+  GUIDE_BASICS: '/guide/how-annotation-works',
+  GUIDE_CLASSIFICATION: '/guide/classification',
+  GUIDE_LOCALIZATION: '/guide/localization',
 } as const;
 
 export function classifyDetail(id: number | string, done = false): string {

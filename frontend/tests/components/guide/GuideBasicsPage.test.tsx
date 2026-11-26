@@ -1,19 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import GuidePage from '@/pages/GuidePage';
+import GuideBasicsPage from '@/pages/GuideBasicsPage';
 
-describe('GuidePage', () => {
+describe('GuideBasicsPage', () => {
   it('renders the field guide with both passes', () => {
-    render(<GuidePage />, { wrapper: MemoryRouter });
-    expect(screen.getByRole('heading', { name: 'Field guide' })).toBeInTheDocument();
+    render(<GuideBasicsPage />, { wrapper: MemoryRouter });
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'How annotation works' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('~5 min read')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Pass 01 — Classify alerts/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Pass 02 — Localize smoke/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /back to user guide/i })).toHaveAttribute(
+      'href',
+      '/guide'
+    );
   });
 
   it('introduces the Alert → Objects → Frames vocabulary', () => {
-    render(<GuidePage />, { wrapper: MemoryRouter });
+    render(<GuideBasicsPage />, { wrapper: MemoryRouter });
     expect(screen.getByText(/one alert per camera event/i)).toBeInTheDocument();
     expect(screen.getByText('alerts')).toBeInTheDocument();
     expect(screen.getByText('objects')).toBeInTheDocument();
@@ -21,7 +27,7 @@ describe('GuidePage', () => {
   });
 
   it('describes the collocated Pass 02 flow: timeline, focus, accept-all, add-object and skip', () => {
-    render(<GuidePage />, { wrapper: MemoryRouter });
+    render(<GuideBasicsPage />, { wrapper: MemoryRouter });
     expect(screen.getByText(/object timeline/i)).toBeInTheDocument();
     expect(screen.getByText(/focus that object/i)).toBeInTheDocument();
     // A missed smoke is now drawn, not parked: two anchors and an
@@ -33,7 +39,16 @@ describe('GuidePage', () => {
   });
 
   it('notes the per-object editor is deep-link-only', () => {
-    render(<GuidePage />, { wrapper: MemoryRouter });
+    render(<GuideBasicsPage />, { wrapper: MemoryRouter });
     expect(screen.getByText(/no longer part of the normal queue flow/i)).toBeInTheDocument();
+  });
+
+  it('ends with the confirmation, which leads to the Classify queue', () => {
+    render(<GuideBasicsPage />, { wrapper: MemoryRouter });
+    fireEvent.click(screen.getByRole('button', { name: 'I have read it' }));
+    expect(screen.getByRole('link', { name: /start classifying/i })).toHaveAttribute(
+      'href',
+      '/classify'
+    );
   });
 });

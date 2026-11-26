@@ -13,9 +13,12 @@ import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
+import GuideBasicsPage from '@/pages/GuideBasicsPage';
+import GuideComingSoonPage from '@/pages/GuideComingSoonPage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
 import {
+  ROUTES,
   localizeAddObjectRoute,
   localizeObjectRoute,
   localizeObjectSelectRoute,
@@ -161,7 +164,16 @@ function App() {
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
-                  <Route path="/guide" element={<GuidePage />} />
+                  <Route path={ROUTES.GUIDE} element={<GuidePage />} />
+                  <Route path={ROUTES.GUIDE_BASICS} element={<GuideBasicsPage />} />
+                  <Route
+                    path={ROUTES.GUIDE_CLASSIFICATION}
+                    element={<GuideComingSoonPage module="classification" />}
+                  />
+                  <Route
+                    path={ROUTES.GUIDE_LOCALIZATION}
+                    element={<GuideComingSoonPage module="localization" />}
+                  />
                 </Routes>
               </AppLayout>
             }

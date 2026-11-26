@@ -111,9 +111,7 @@ describe('AppLayout sidebar navigation', () => {
     const classifyHeader = screen.getByText('Classify');
     const objectsLink = screen.getByRole('link', { name: /objects/i });
     const alertsLinks = screen.getAllByRole('link', { name: /alerts/i });
-    const classifyAlertsLink = alertsLinks.find(
-      link => link.getAttribute('href') === '/classify'
-    );
+    const classifyAlertsLink = alertsLinks.find(link => link.getAttribute('href') === '/classify');
 
     expect(classifyAlertsLink).toBeDefined();
     expect(
@@ -224,6 +222,9 @@ describe('AppLayout path-based nav highlighting', () => {
     ['/localize/5/9', '/localize'],
     ['/localize/done', '/localize/done'],
     ['/localize/done/5', '/localize/done'],
+    ['/guide', '/guide'],
+    ['/guide/how-annotation-works', '/guide'],
+    ['/guide/localization', '/guide'],
   ])('at %s the single active link is %s', (path, activeHref) => {
     const { container } = renderLayoutAt(path);
 
@@ -234,7 +235,7 @@ describe('AppLayout path-based nav highlighting', () => {
     expect(activeLinks[0]).toHaveAttribute('href', activeHref);
   });
 
-  it.each([['/'], ['/users'], ['/guide']])('at %s no nav link is active', path => {
+  it.each([['/'], ['/users']])('at %s no nav link is active', path => {
     const { container } = renderLayoutAt(path);
 
     const activeLinks = Array.from(container.querySelectorAll('a')).filter(a =>
@@ -267,5 +268,21 @@ describe('AppLayout localize nav visibility', () => {
 
     expect(screen.getByText('Localize')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /smoke/i })).toHaveAttribute('href', '/localize');
+  });
+});
+
+describe('AppLayout training nav', () => {
+  it('lists the User guide under a Training section, for every user', () => {
+    canLocalizeValue = false;
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Training')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'User guide' })).toHaveAttribute('href', '/guide');
   });
 });
