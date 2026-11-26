@@ -23,17 +23,17 @@ describe('GuidePage (user guide hub)', () => {
 
     const classification = screen.getByRole('link', { name: /classification — advanced/i });
     expect(classification).toHaveAttribute('href', '/guide/classification');
-    expect(classification).toHaveTextContent('~15 min');
+    expect(classification).toHaveTextContent('~1 min video');
 
     const localization = screen.getByRole('link', { name: /localization — advanced/i });
     expect(localization).toHaveAttribute('href', '/guide/localization');
     expect(localization).toHaveTextContent('~20 min');
   });
 
-  it('marks only the two advanced trainings as coming soon', () => {
+  it('marks only the localization training as coming soon', () => {
     render(<GuidePage />, { wrapper: MemoryRouter });
-    expect(screen.getAllByText('Coming soon')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: /how annotation works/i })).not.toHaveTextContent(
+    expect(screen.getAllByText('Coming soon')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /localization — advanced/i })).toHaveTextContent(
       'Coming soon'
     );
   });

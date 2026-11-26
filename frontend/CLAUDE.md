@@ -45,7 +45,8 @@ frontend/src/
 │   ├── DashboardPage.tsx              # Pipeline dashboard (see docs/specs/2026-07-28-dashboard-taxonomy-redesign-design.md)
 │   ├── GuidePage.tsx                  # User guide hub (/guide): training module cards
 │   ├── GuideBasicsPage.tsx            # Field guide: pipeline + both passes (/guide/how-annotation-works)
-│   ├── GuideComingSoonPage.tsx        # Advanced trainings placeholders (/guide/classification, /guide/localization)
+│   ├── GuideClassificationPage.tsx    # Classification training: video to watch before confirming (/guide/classification)
+│   ├── GuideLocalizationPage.tsx      # Localization training placeholder (/guide/localization)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
@@ -97,7 +98,8 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 | `/guide/how-annotation-works`             | `GuideBasicsPage`                 |
-| `/guide/classification`, `/guide/localization` | `GuideComingSoonPage`        |
+| `/guide/classification`                    | `GuideClassificationPage`         |
+| `/guide/localization`                      | `GuideLocalizationPage`           |
 
 Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
 redirect permanently — see `src/components/routing/legacyRedirects.tsx`.

@@ -33,10 +33,10 @@ export const CLASSIFICATION_MODULE: GuideModule = {
   title: 'Classification — advanced training',
   summary:
     'Practise on reference alerts: tell wildfire smoke apart from clouds, dust, glare and other smoke.',
-  duration: '~15 min',
+  duration: '~1 min video',
   href: ROUTES.GUIDE_CLASSIFICATION,
   tone: 'ember',
-  comingSoon: true,
+  comingSoon: false,
 };
 
 export const LOCALIZATION_MODULE: GuideModule = {

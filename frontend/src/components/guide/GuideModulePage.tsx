@@ -4,14 +4,18 @@ import ReadConfirmation, { type ReadConfirmationProps } from '@/components/guide
 import { TONE_TEXT, type GuideModule } from '@/components/guide/guideModules';
 import { ROUTES } from '@/utils/routes';
 
-interface GuideModulePageProps {
+interface GuideModulePageProps extends ReadConfirmationProps {
   module: GuideModule;
-  next: ReadConfirmationProps['next'];
   children: React.ReactNode;
 }
 
 /** Shared frame of a guide module page: back link, header, body, confirmation. */
-export default function GuideModulePage({ module, next, children }: GuideModulePageProps) {
+export default function GuideModulePage({
+  module,
+  afterConfirm,
+  requirement,
+  children,
+}: GuideModulePageProps) {
   return (
     <div className="mx-auto max-w-3xl">
       <Link to={ROUTES.GUIDE} className="font-body text-detail text-haze hover:text-char">
@@ -30,7 +34,7 @@ export default function GuideModulePage({ module, next, children }: GuideModuleP
       </h1>
       <p className="mb-8 mt-1 font-data text-eyebrow text-haze">{module.duration}</p>
       {children}
-      <ReadConfirmation next={next} />
+      <ReadConfirmation afterConfirm={afterConfirm} requirement={requirement} />
     </div>
   );
 }
