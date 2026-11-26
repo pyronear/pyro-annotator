@@ -24,6 +24,8 @@ import {
   localizeObjectSelectRoute,
 } from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
+import RequireGuide from '@/components/routing/RequireGuide';
+import RequireClassifyTraining from '@/components/routing/RequireClassifyTraining';
 import { useAuthStore } from '@/store/useAuthStore';
 
 // Create a client
@@ -76,58 +78,61 @@ function App() {
           <Route
             path="/"
             element={
-              <AppLayout>
-                <DashboardPage />
-              </AppLayout>
+              <RequireClassifyTraining>
+                <AppLayout>
+                  <DashboardPage />
+                </AppLayout>
+              </RequireClassifyTraining>
             }
           />
           <Route
             path="/*"
             element={
-              <AppLayout>
-                <Routes>
-                  <Route path="/classify" element={<SequencesPage />} />
-                  <Route
-                    path="/classify/done"
-                    element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
-                  />
-                  <Route path="/classify/groups" element={<SequenceGroupsListPage />} />
-                  <Route
-                    path="/classify/groups/labeled"
-                    element={<SequenceGroupsListPage filter="labeled" />}
-                  />
-                  <Route
-                    path="/classify/groups/unsure"
-                    element={<SequenceGroupsListPage filter="unsure" />}
-                  />
-                  <Route
-                    path="/classify/groups/all"
-                    element={<SequenceGroupsListPage filter="all" />}
-                  />
-                  <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
-                  <Route path="/classify/done/:id" element={<ClassifyAlertPage mode="done" />} />
-                  <Route path="/classify/:id" element={<ClassifyAlertPage />} />
-                  <Route
-                    path="/localize"
-                    element={
-                      <RequireLocalize>
-                        <DetectionAnnotatePage />
-                      </RequireLocalize>
-                    }
-                  />
-                  <Route
-                    path="/localize/done"
-                    element={
-                      <RequireLocalize>
-                        <DetectionReviewPage />
-                      </RequireLocalize>
-                    }
-                  />
-                  {/* Same component either side, provenance from the path —
+              <RequireClassifyTraining>
+                <AppLayout>
+                  <Routes>
+                    <Route path="/classify" element={<SequencesPage />} />
+                    <Route
+                      path="/classify/done"
+                      element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
+                    />
+                    <Route path="/classify/groups" element={<SequenceGroupsListPage />} />
+                    <Route
+                      path="/classify/groups/labeled"
+                      element={<SequenceGroupsListPage filter="labeled" />}
+                    />
+                    <Route
+                      path="/classify/groups/unsure"
+                      element={<SequenceGroupsListPage filter="unsure" />}
+                    />
+                    <Route
+                      path="/classify/groups/all"
+                      element={<SequenceGroupsListPage filter="all" />}
+                    />
+                    <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
+                    <Route path="/classify/done/:id" element={<ClassifyAlertPage mode="done" />} />
+                    <Route path="/classify/:id" element={<ClassifyAlertPage />} />
+                    <Route
+                      path="/localize"
+                      element={
+                        <RequireLocalize>
+                          <DetectionAnnotatePage />
+                        </RequireLocalize>
+                      }
+                    />
+                    <Route
+                      path="/localize/done"
+                      element={
+                        <RequireLocalize>
+                          <DetectionReviewPage />
+                        </RequireLocalize>
+                      }
+                    />
+                    {/* Same component either side, provenance from the path —
                       the /localize/done route must precede the dynamic
                       /localize/:sequenceId below so "done" isn't swallowed
                       as a sequence id. */}
-                  {/* Both provenances carry the per-frame editor as a CHILD
+                    {/* Both provenances carry the per-frame editor as a CHILD
                       route, not a sibling: a sibling would sit at a different
                       position in the element tree and remount
                       LocalizeAlertPage on every open/close, losing scroll,
@@ -138,44 +143,67 @@ function App() {
                       frame) rides along the same way: it names the cockpit's
                       active object, and the editor pattern is it plus a
                       frame. */}
-                  <Route
-                    path="/localize/done/:sequenceId"
-                    element={
-                      <RequireLocalize>
-                        <LocalizeAlertPage mode="done" />
-                      </RequireLocalize>
-                    }
-                  >
-                    <Route path={localizeObjectSelectRoute(true)} element={null} />
-                    <Route path={localizeObjectRoute(true)} element={null} />
-                  </Route>
-                  <Route
-                    path="/localize/:sequenceId"
-                    element={
-                      <RequireLocalize>
-                        <LocalizeAlertPage />
-                      </RequireLocalize>
-                    }
-                  >
-                    <Route path={localizeObjectSelectRoute()} element={null} />
-                    <Route path={localizeObjectRoute()} element={null} />
-                    {/* Queue prefix only — see localizeAddObjectRoute. */}
-                    <Route path={localizeAddObjectRoute()} element={null} />
-                  </Route>
-                  {legacyRedirectRoutes}
-                  <Route path="/users" element={<UserManagementPage />} />
-                  <Route path={ROUTES.GUIDE} element={<GuidePage />} />
-                  <Route path={ROUTES.GUIDE_BASICS} element={<GuideBasicsPage />} />
-                  <Route
-                    path={ROUTES.GUIDE_CLASSIFICATION}
-                    element={<GuideComingSoonPage module="classification" />}
-                  />
-                  <Route
-                    path={ROUTES.GUIDE_LOCALIZATION}
-                    element={<GuideComingSoonPage module="localization" />}
-                  />
-                </Routes>
-              </AppLayout>
+                    <Route
+                      path="/localize/done/:sequenceId"
+                      element={
+                        <RequireLocalize>
+                          <LocalizeAlertPage mode="done" />
+                        </RequireLocalize>
+                      }
+                    >
+                      <Route path={localizeObjectSelectRoute(true)} element={null} />
+                      <Route path={localizeObjectRoute(true)} element={null} />
+                    </Route>
+                    <Route
+                      path="/localize/:sequenceId"
+                      element={
+                        <RequireLocalize>
+                          <LocalizeAlertPage />
+                        </RequireLocalize>
+                      }
+                    >
+                      <Route path={localizeObjectSelectRoute()} element={null} />
+                      <Route path={localizeObjectRoute()} element={null} />
+                      {/* Queue prefix only — see localizeAddObjectRoute. */}
+                      <Route path={localizeAddObjectRoute()} element={null} />
+                    </Route>
+                    {legacyRedirectRoutes}
+                    <Route path="/users" element={<UserManagementPage />} />
+                    <Route
+                      path={ROUTES.GUIDE}
+                      element={
+                        <RequireGuide>
+                          <GuidePage />
+                        </RequireGuide>
+                      }
+                    />
+                    <Route
+                      path={ROUTES.GUIDE_BASICS}
+                      element={
+                        <RequireGuide>
+                          <GuideBasicsPage />
+                        </RequireGuide>
+                      }
+                    />
+                    <Route
+                      path={ROUTES.GUIDE_CLASSIFICATION}
+                      element={
+                        <RequireGuide module="classification">
+                          <GuideComingSoonPage module="classification" />
+                        </RequireGuide>
+                      }
+                    />
+                    <Route
+                      path={ROUTES.GUIDE_LOCALIZATION}
+                      element={
+                        <RequireGuide module="localization">
+                          <GuideComingSoonPage module="localization" />
+                        </RequireGuide>
+                      }
+                    />
+                  </Routes>
+                </AppLayout>
+              </RequireClassifyTraining>
             }
           />
         </Routes>

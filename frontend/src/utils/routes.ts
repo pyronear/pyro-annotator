@@ -15,6 +15,11 @@ export const ROUTES = {
   GUIDE_LOCALIZATION: '/guide/localization',
 } as const;
 
+/** True for /guide and every page under it. */
+export function isGuidePath(pathname: string): boolean {
+  return pathname === ROUTES.GUIDE || pathname.startsWith(`${ROUTES.GUIDE}/`);
+}
+
 export function classifyDetail(id: number | string, done = false): string {
   return done ? `${ROUTES.CLASSIFY_DONE}/${id}` : `${ROUTES.CLASSIFY}/${id}`;
 }

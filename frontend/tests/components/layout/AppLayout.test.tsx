@@ -20,19 +20,24 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
 
 let isManagerValue = false;
 let canLocalizeValue = true;
+let canClassifyValue = true;
+let userValue: Record<string, string> = { username: 'tester' };
 
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: () => ({
-    user: { username: 'tester' },
+    user: userValue,
     logout: vi.fn(),
     isManager: () => isManagerValue,
     canLocalize: () => canLocalizeValue,
+    canClassify: () => canClassifyValue,
   }),
 }));
 
 beforeEach(() => {
   isManagerValue = false;
   canLocalizeValue = true;
+  canClassifyValue = true;
+  userValue = { username: 'tester' };
 });
 
 describe('AppLayout sidebar navigation', () => {
@@ -272,7 +277,7 @@ describe('AppLayout localize nav visibility', () => {
 });
 
 describe('AppLayout training nav', () => {
-  it('lists the User guide under a Training section, for every user', () => {
+  it('lists the User guide under a Training section while a training is left', () => {
     canLocalizeValue = false;
     render(
       <MemoryRouter>
@@ -284,5 +289,34 @@ describe('AppLayout training nav', () => {
 
     expect(screen.getByText('Training')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'User guide' })).toHaveAttribute('href', '/guide');
+  });
+
+  it('hides the Training section once both rights are granted', () => {
+    userValue = { username: 'tester', classify_status: 'granted', localize_status: 'granted' };
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByText('Training')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'User guide' })).not.toBeInTheDocument();
+  });
+
+  it('shows only the Training section until the classify training is passed', () => {
+    canClassifyValue = false;
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: 'User guide' })).toBeInTheDocument();
+    expect(screen.queryByText('Classify')).not.toBeInTheDocument();
+    expect(screen.queryByText('Localize')).not.toBeInTheDocument();
   });
 });

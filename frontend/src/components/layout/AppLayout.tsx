@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
 import { useAuthStore } from '@/store/useAuthStore';
+import { guideAccessForUser } from '@/utils/guideAccess';
 import { ROUTES } from '@/utils/routes';
 import logoImg from '@/assets/logo.png';
 import { ROLE_LABELS } from '@/utils/userRights';
@@ -93,38 +94,48 @@ export default function AppLayout({ children }: AppLayoutProps) {
 function SidebarContent({ currentPath }: { currentPath: string }) {
   // Get annotation counts for badges
   const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
-  const { canLocalize } = useAuthStore();
+  const { canClassify, canLocalize, user } = useAuthStore();
+  const showGuide = guideAccessForUser(user).visible;
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
-    {
-      name: 'Classify',
-      children: [
-        {
-          name: 'Recurring objects',
-          href: ROUTES.CLASSIFY_GROUPS,
-          badgeCount: groupCount,
-          badgeTitle: `${groupCount} recurring objects need a label`,
-        },
-        { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
-        { name: 'Done', href: ROUTES.CLASSIFY_DONE },
-      ],
-    },
-    ...(canLocalize()
+    // Until the classify training is passed, the user guide is the only page.
+    ...(canClassify()
       ? [
           {
-            name: 'Localize',
+            name: 'Classify',
             children: [
-              { name: 'Smoke', href: ROUTES.LOCALIZE, badgeCount: detectionCount },
-              { name: 'Done', href: ROUTES.LOCALIZE_DONE },
+              {
+                name: 'Recurring objects',
+                href: ROUTES.CLASSIFY_GROUPS,
+                badgeCount: groupCount,
+                badgeTitle: `${groupCount} recurring objects need a label`,
+              },
+              { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
+              { name: 'Done', href: ROUTES.CLASSIFY_DONE },
             ],
+          },
+          ...(canLocalize()
+            ? [
+                {
+                  name: 'Localize',
+                  children: [
+                    { name: 'Smoke', href: ROUTES.LOCALIZE, badgeCount: detectionCount },
+                    { name: 'Done', href: ROUTES.LOCALIZE_DONE },
+                  ],
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(showGuide
+      ? [
+          {
+            name: 'Training',
+            children: [{ name: 'User guide', href: ROUTES.GUIDE }],
           },
         ]
       : []),
-    {
-      name: 'Training',
-      children: [{ name: 'User guide', href: ROUTES.GUIDE }],
-    },
   ];
 
   const isPathActive = (href: string) => {
