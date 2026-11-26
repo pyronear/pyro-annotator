@@ -17,12 +17,15 @@ from sqlmodel import Field, SQLModel
 
 __all__ = [
     "AlertSkip",
+    "AlertTag",
     "Detection",
     "DetectionAnnotation",
     "Sequence",
     "SequenceAnnotation",
     "SequenceGroup",
+    "Tag",
     "User",
+    "UserTag",
     "AnnotationType",
 ]
 
@@ -465,6 +468,9 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     can_localize: bool = Field(default=False)
+    # Sees every alert whatever its tags (#400). Off by default: a user
+    # without it only sees the alerts carrying one of their tags.
+    full_access: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
@@ -540,4 +546,62 @@ class DetectionAnnotationContribution(SQLModel, table=True):
     contributed_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class Tag(SQLModel, table=True):
+    """A label an admin puts on alerts and gives to users to scope access (#400).
+
+    A tag is a snapshot: alerts matching the filter it was applied from later
+    are not tagged automatically. Deleting a tag removes its alert_tags and
+    user_tags rows (ON DELETE CASCADE).
+    """
+
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("name", name="uq_tag_name"),)
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    name: str = Field(max_length=50)
+    description: Optional[str] = Field(default=None)
+    created_by: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("users.id", ondelete="SET NULL")),
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class AlertTag(SQLModel, table=True):
+    """One alert (source_api, platform_alert_id) carries one tag.
+
+    Keyed by the alert, like AlertSkip, never by a sequence: lanes that join
+    the alert later inherit the tag. The primary key serves "tags of an
+    alert"; ix_alert_tag_tag_id serves "alerts of a tag".
+    """
+
+    __tablename__ = "alert_tags"
+    __table_args__ = (Index("ix_alert_tag_tag_id", "tag_id"),)
+
+    source_api: SourceApi = Field(primary_key=True)
+    platform_alert_id: int = Field(sa_type=BigInteger, primary_key=True)
+    tag_id: int = Field(
+        sa_column=Column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    )
+
+
+class UserTag(SQLModel, table=True):
+    """One user has one tag: they see the alerts carrying it."""
+
+    __tablename__ = "user_tags"
+    __table_args__ = (Index("ix_user_tag_tag_id", "tag_id"),)
+
+    user_id: int = Field(
+        sa_column=Column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    )
+    tag_id: int = Field(
+        sa_column=Column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
     )

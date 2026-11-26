@@ -6,6 +6,7 @@
 from fastapi import APIRouter
 
 from app.api.api_v1.endpoints import (
+    alert_tags,
     auto_annotate,
     cameras,
     detection_annotations,
@@ -15,6 +16,8 @@ from app.api.api_v1.endpoints import (
     sequence_groups,
     sequences,
     source_apis,
+    tags,
+    user_tags,
     users,
     export,
 )
@@ -27,6 +30,12 @@ api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 
 # User management endpoints
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+
+# Tags (#402): the entity, then the alert side and the user side, each in its
+# own module so they can be worked on in parallel.
+api_router.include_router(tags.router, prefix="/tags", tags=["tags"])
+api_router.include_router(alert_tags.router, prefix="/tags", tags=["tags"])
+api_router.include_router(user_tags.router, prefix="/tags", tags=["tags"])
 
 api_router.include_router(detections.router, prefix="/detections", tags=["detections"])
 api_router.include_router(
