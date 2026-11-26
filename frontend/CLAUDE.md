@@ -99,6 +99,8 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/guide/how-annotation-works`             | `GuideBasicsPage`                 |
 | `/guide/classification`, `/guide/localization` | `GuideComingSoonPage`        |
 
+Every route sits behind `RequireClassifyTraining`: until the classify right is granted, any path other than `/guide/*` sends to `/guide`. The `/guide` routes sit behind `RequireGuide`: hidden once both rights are granted, and a locked module's page sends back to the hub — see `docs/specs/2026-11-26-guide-training-access-design.md`.
+
 Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
 redirect permanently — see `src/components/routing/legacyRedirects.tsx`.
 
