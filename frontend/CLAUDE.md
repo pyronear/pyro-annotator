@@ -28,6 +28,7 @@ frontend/src/
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
 │   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
+│   ├── guide/                   # User guide: module cards, module page frame, ReadConfirmation ("I have read it")
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
@@ -42,7 +43,9 @@ frontend/src/
 │   ├── LoginPage.tsx
 │   ├── HomePage.tsx
 │   ├── DashboardPage.tsx              # Pipeline dashboard (see docs/specs/2026-07-28-dashboard-taxonomy-redesign-design.md)
-│   ├── GuidePage.tsx                  # Field guide (/guide)
+│   ├── GuidePage.tsx                  # User guide hub (/guide): training module cards
+│   ├── GuideBasicsPage.tsx            # Field guide: pipeline + both passes (/guide/how-annotation-works)
+│   ├── GuideComingSoonPage.tsx        # Advanced trainings placeholders (/guide/classification, /guide/localization)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
@@ -93,6 +96,8 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + `LocalizeObjectEditor` (child route, so the page is not remounted; same under the `/localize/done` prefix) |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
+| `/guide/how-annotation-works`             | `GuideBasicsPage`                 |
+| `/guide/classification`, `/guide/localization` | `GuideComingSoonPage`        |
 
 Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
 redirect permanently — see `src/components/routing/legacyRedirects.tsx`.
