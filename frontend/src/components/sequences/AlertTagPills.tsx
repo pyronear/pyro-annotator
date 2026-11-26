@@ -1,5 +1,4 @@
 import { clsx } from 'clsx';
-import { PrototypeTag } from '@/services/tagsPrototype';
 
 /** Pill text: names longer than this are cut and end with "...". */
 const TAG_PILL_MAX_CHARS = 5;
@@ -9,10 +8,11 @@ function shortTagName(name: string): string {
 }
 
 interface AlertTagPillsProps {
-  tags: PrototypeTag[];
+  /** Tag names. */
+  tags: string[];
   /** 'below' where the pills sit at the top of the screen (the alert page bar). */
   tooltip?: 'above' | 'below';
-  /** Rendered when the alert has no tag; table cells show a dash. */
+  /** Rendered when the alert has no tag (nothing by default). */
   empty?: React.ReactNode;
 }
 
@@ -20,21 +20,17 @@ interface AlertTagPillsProps {
  * The tags an alert carries, one neutral pill each (same colour whatever the
  * tag). Long names are cut; hovering a pill shows the full name.
  */
-export function AlertTagPills({
-  tags,
-  tooltip = 'above',
-  empty = <span className="font-body text-detail text-haze">—</span>,
-}: AlertTagPillsProps) {
+export function AlertTagPills({ tags, tooltip = 'above', empty = null }: AlertTagPillsProps) {
   if (!tags.length) return <>{empty}</>;
   return (
     <div className="flex flex-wrap gap-1">
       {tags.map(tag => (
         <span
-          key={tag.id}
-          aria-label={tag.name}
+          key={tag}
+          aria-label={tag}
           className="group relative inline-flex cursor-help rounded-full bg-ash px-2 py-0.5 font-data text-[11px] font-medium text-char"
         >
-          {shortTagName(tag.name)}
+          {shortTagName(tag)}
           <span
             role="tooltip"
             className={clsx(
@@ -42,7 +38,7 @@ export function AlertTagPills({
               tooltip === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
             )}
           >
-            {tag.name}
+            {tag}
           </span>
         </span>
       ))}

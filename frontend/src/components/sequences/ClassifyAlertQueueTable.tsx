@@ -17,11 +17,8 @@ import { formatDateTime } from '@/utils/datetime';
 import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
 import type { QueueOrderBy } from '@/types/api';
 import { AlertTagPills } from './AlertTagPills';
-import type { AlertTagsLookup } from '@/hooks/useAlertTags';
 
 interface ClassifyAlertQueueTableProps {
-  /** PROTOTYPE: adds a Tags column when supplied. */
-  alertTags?: AlertTagsLookup;
   items: ClassifyQueueItem[];
   onAlertClick: (item: ClassifyQueueItem) => void;
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
@@ -49,7 +46,6 @@ export function ClassifyAlertQueueTable({
   skippedView = false,
   onUnskip,
   sort,
-  alertTags,
 }: ClassifyAlertQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -61,12 +57,10 @@ export function ClassifyAlertQueueTable({
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            {alertTags && (
-              <ColumnHeader
-                label="Tags"
-                tip="Tags on this alert. Hover a tag to read its full name."
-              />
-            )}
+            <ColumnHeader
+              label="Tags"
+              tip="Tags on this alert. Hover a tag to read its full name."
+            />
             <ColumnHeader
               label="Recorded"
               tip="When the alert was recorded"
@@ -125,11 +119,9 @@ export function ClassifyAlertQueueTable({
               </td>
               <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
               <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
-              {alertTags && (
-                <td className={CELL_CLASSES}>
-                  <AlertTagPills tags={alertTags.tagsFor(item)} />
-                </td>
-              )}
+              <td className={CELL_CLASSES}>
+                <AlertTagPills tags={item.tags ?? []} />
+              </td>
               <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {formatDateTime(item.recorded_at)}
               </td>

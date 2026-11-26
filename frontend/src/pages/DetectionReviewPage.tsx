@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useAlertTags } from '@/hooks/useAlertTags';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { BoxSelect, Search } from 'lucide-react';
@@ -27,7 +26,6 @@ import type { QueueOrderBy } from '@/types/api';
 export const detectionReviewDefaultState = createDefaultFilterState();
 
 export default function DetectionReviewPage() {
-  const alertTags = useAlertTags();
   const navigate = useNavigate();
 
   const defaultState = detectionReviewDefaultState;
@@ -338,7 +336,6 @@ export default function DetectionReviewPage() {
       {data && (
         <div className={TABLE_CARD_CLASSES}>
           <LocalizeDoneQueueTable
-            alertTags={alertTags}
             items={items}
             onItemClick={handleAlertClick}
             sort={{ orderBy, orderDirection, onSort: handleSort }}

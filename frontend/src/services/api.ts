@@ -11,6 +11,10 @@ import {
   Contributor,
   Organization,
   SourceApi,
+  Tag,
+  TagCreate,
+  TagFilter,
+  TagImpact,
   User,
   UserCreate,
   UserUpdate,
@@ -656,6 +660,38 @@ class ApiClient {
 
   async deleteUser(id: number): Promise<void> {
     await this.client.delete(`/users/${id}`);
+  }
+
+  // Tags (admin only)
+  async getTags(): Promise<Tag[]> {
+    const response: AxiosResponse<Tag[]> = await this.client.get(API_ENDPOINTS.TAGS);
+    return response.data;
+  }
+
+  /** Creates the tag and tags every alert the filter matches right now. */
+  async createTag(data: TagCreate): Promise<Tag> {
+    const response: AxiosResponse<Tag> = await this.client.post(API_ENDPOINTS.TAGS, data);
+    return response.data;
+  }
+
+  /** How many alerts a tag created with this filter would carry. Writes nothing. */
+  async dryRunTag(filter: TagFilter): Promise<number> {
+    const response: AxiosResponse<{ alert_count: number }> = await this.client.post(
+      `${API_ENDPOINTS.TAGS}dry-run`,
+      filter
+    );
+    return response.data.alert_count;
+  }
+
+  async getTagImpact(id: number): Promise<TagImpact> {
+    const response: AxiosResponse<TagImpact> = await this.client.get(
+      `${API_ENDPOINTS.TAGS}${id}/impact`
+    );
+    return response.data;
+  }
+
+  async deleteTag(id: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.TAGS}${id}`);
   }
 
   // Health check

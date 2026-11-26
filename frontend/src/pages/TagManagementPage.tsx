@@ -5,17 +5,34 @@ import { clsx } from 'clsx';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { formatDate } from '@/utils/datetime';
-import {
-  estimateMatchingAlerts,
-  parisDay,
-  PrototypeTag,
-  TagCreatePayload,
-  TagFilters,
-  tagsPrototypeApi,
-  TAGS_QUERY_KEY,
-} from '@/services/tagsPrototype';
+import { apiClient } from '@/services/api';
+import { QUERY_KEYS } from '@/utils/constants';
+import type { Tag, TagCreate, TagFilter } from '@/types/api';
 
-// PROTOTYPE — reads and writes go to the in-memory tagsPrototype module.
+const TAGS_QUERY_KEY = QUERY_KEYS.TAGS;
+
+/**
+ * The calendar day of an instant in Europe/Paris, as YYYY-MM-DD: the backend
+ * reads tag periods as Paris days (23:30 UTC on 31/07 is 01/08).
+ */
+function parisDay(instant: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
+/** `value`, once it has stopped changing for `ms`. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
 
 const EYEBROW = 'font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze';
 const TH = `px-4 py-3 text-left ${EYEBROW}`;
@@ -35,16 +52,15 @@ export default function TagManagementPage() {
   const queryClient = useQueryClient();
   const { data: organizations = [] } = useOrganizations();
   const [showCreate, setShowCreate] = useState(false);
-  const [tagToDelete, setTagToDelete] = useState<PrototypeTag | null>(null);
+  const [tagToDelete, setTagToDelete] = useState<Tag | null>(null);
 
   const { data: tags, isLoading } = useQuery({
     queryKey: TAGS_QUERY_KEY,
-    queryFn: () => tagsPrototypeApi.list(),
+    queryFn: () => apiClient.getTags(),
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: TagCreatePayload) =>
-      tagsPrototypeApi.create(payload, organizations.length),
+    mutationFn: (payload: TagCreate) => apiClient.createTag(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY });
       setShowCreate(false);
@@ -52,7 +68,7 @@ export default function TagManagementPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => tagsPrototypeApi.remove(id),
+    mutationFn: (id: number) => apiClient.deleteTag(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY });
       setTagToDelete(null);
@@ -131,14 +147,16 @@ export default function TagManagementPage() {
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right font-data text-sm font-semibold text-char">
-                      {tag.alertCount}
+                      {tag.alert_count}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right font-data text-sm text-haze">
-                      {tag.userCount}
+                      {tag.user_count}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap font-data text-detail text-haze">
-                      {formatDate(tag.createdAt)}
-                      <div className="font-body">by {tag.createdBy}</div>
+                      {formatDate(tag.created_at)}
+                      {tag.created_by_username && (
+                        <div className="font-body">by {tag.created_by_username}</div>
+                      )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right">
                       <button
@@ -247,18 +265,19 @@ function presetRange(days: number): { dateFrom: string; dateTo: string } {
 }
 
 /**
- * Placeholder nomenclature, open question: `<org|all>_<from>_<to>`.
- * Org names are slugged; several orgs are joined with `+`.
+ * Suggested name: `<org|all-orgs>_<from>_<to>`. Org names are slugged;
+ * several orgs are joined with `+`.
  */
-function suggestName(filters: TagFilters): string {
+function suggestName(filter: TagFilter): string {
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const orgPart = filters.organisations.length
-    ? filters.organisations.map(slug).join('+')
+  const orgPart = filter.organisation_names.length
+    ? filter.organisation_names.map(slug).join('+')
     : 'all-orgs';
   const period =
-    filters.dateFrom || filters.dateTo
-      ? `_${filters.dateFrom || 'start'}_${filters.dateTo || 'now'}`
+    filter.recorded_from || filter.recorded_to
+      ? `_${filter.recorded_from || 'start'}_${filter.recorded_to || 'now'}`
       : '';
+  // Cut at the backend's 50-character limit.
   return `${orgPart}${period}`.slice(0, 50);
 }
 
@@ -273,7 +292,7 @@ function CreateTagModal({
   organisationNames: string[];
   existingNames: string[];
   onClose: () => void;
-  onSubmit: (payload: TagCreatePayload) => void;
+  onSubmit: (payload: TagCreate) => void;
   isLoading: boolean;
   error: MutationError;
 }) {
@@ -284,28 +303,39 @@ function CreateTagModal({
   const [nameTouched, setNameTouched] = useState(false);
   const [description, setDescription] = useState('');
 
-  const filters: TagFilters = useMemo(
+  const filter: TagFilter = useMemo(
     () => ({
-      organisations,
-      dateFrom: preset === 'all' ? '' : range.dateFrom,
-      dateTo: preset === 'all' ? '' : range.dateTo,
+      organisation_names: organisations,
+      recorded_from: preset === 'all' ? null : range.dateFrom || null,
+      recorded_to: preset === 'all' ? null : range.dateTo || null,
     }),
     [organisations, preset, range]
   );
 
-  const suggested = suggestName(filters);
+  const suggested = suggestName(filter);
   const effectiveName = nameTouched ? name : suggested;
-  const matching = estimateMatchingAlerts(filters, organisationNames.length);
   const today = parisDay(new Date());
   // Names are unique whatever their case: "Org-A" collides with "org-a".
   const nameTaken = existingNames.some(n => n.toLowerCase() === effectiveName.trim().toLowerCase());
+  const { recorded_from: from, recorded_to: to } = filter;
   const rangeError =
-    filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo
+    from && to && from > to
       ? 'The start date is after the end date.'
-      : (filters.dateFrom && filters.dateFrom > today) || (filters.dateTo && filters.dateTo > today)
+      : (from && from > today) || (to && to > today)
         ? 'Dates cannot be in the future: a tag only covers alerts that already exist.'
         : null;
-  const canSubmit = effectiveName.trim() && !nameTaken && !rangeError && matching > 0;
+
+  // Live count from the backend dry run, once the filter settles.
+  const settledFilter = useDebounced(filter, 300);
+  const { data: matching, isFetching: counting } = useQuery({
+    queryKey: [...TAGS_QUERY_KEY, 'dry-run', settledFilter],
+    queryFn: () => apiClient.dryRunTag(settledFilter),
+    enabled: !rangeError,
+    placeholderData: previous => previous,
+  });
+  const countReady = !rangeError && !counting && settledFilter === filter;
+  const canSubmit =
+    !!effectiveName.trim() && !nameTaken && !rangeError && countReady && (matching ?? 0) > 0;
 
   const toggleOrg = (org: string) =>
     setOrganisations(prev => (prev.includes(org) ? prev.filter(o => o !== org) : [...prev, org]));
@@ -321,7 +351,7 @@ function CreateTagModal({
     onSubmit({
       name: effectiveName.trim(),
       description: description.trim() || null,
-      filters,
+      filter,
     });
   };
 
@@ -439,7 +469,14 @@ function CreateTagModal({
             {/* Live preview of the match */}
             <div className="flex items-center justify-between rounded-lg bg-ash px-4 py-3">
               <span className="font-body text-sm text-haze">Matching alerts right now</span>
-              <span className="font-data text-[22px] font-semibold text-char">{matching}</span>
+              <span
+                className={clsx(
+                  'font-data text-[22px] font-semibold text-char transition-opacity',
+                  !countReady && 'opacity-40'
+                )}
+              >
+                {rangeError ? '—' : (matching ?? '…')}
+              </span>
             </div>
             <p className="font-body text-detail text-haze">
               Snapshot: alerts imported later that match this filter are{' '}
@@ -503,7 +540,7 @@ function CreateTagModal({
             Cancel
           </button>
           <button type="submit" disabled={!canSubmit || isLoading} className={PRIMARY_BTN}>
-            {isLoading ? 'Creating…' : `Create & tag ${matching} alerts`}
+            {isLoading ? 'Creating…' : `Create & tag ${matching ?? 0} alerts`}
           </button>
         </div>
       </form>
@@ -520,18 +557,18 @@ function DeleteTagModal({
   onConfirm,
   isLoading,
 }: {
-  tag: PrototypeTag;
+  tag: Tag;
   onClose: () => void;
   onConfirm: () => void;
   isLoading: boolean;
 }) {
-  // PROTOTYPE — stands in for GET /tags/{id}/impact, fetched when the modal opens.
+  // Fetched when the modal opens: what the delete would take away.
   const { data: impact, isLoading: impactLoading } = useQuery({
     queryKey: [...TAGS_QUERY_KEY, tag.id, 'impact'],
-    queryFn: () => tagsPrototypeApi.impact(tag.id),
+    queryFn: () => apiClient.getTagImpact(tag.id),
     gcTime: 0,
   });
-  const lockedOut = impact?.usersLosingAllAccess ?? [];
+  const lockedOut = impact?.users_losing_all_access ?? [];
 
   return (
     <ModalShell eyebrow="Delete tag" title={tag.name} onClose={onClose}>
@@ -540,11 +577,11 @@ function DeleteTagModal({
         <ul className="space-y-2 font-body text-sm text-char">
           <li className="flex justify-between rounded-lg bg-ash px-3 py-2">
             <span>Alerts losing the tag</span>
-            <ImpactCount value={impact?.alertCount} loading={impactLoading} />
+            <ImpactCount value={impact?.alert_count} loading={impactLoading} />
           </li>
           <li className="flex justify-between rounded-lg bg-ash px-3 py-2">
             <span>Users losing access through it</span>
-            <ImpactCount value={impact?.userCount} loading={impactLoading} />
+            <ImpactCount value={impact?.user_count} loading={impactLoading} />
           </li>
         </ul>
         <p className="font-body text-detail text-haze">

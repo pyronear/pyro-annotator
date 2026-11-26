@@ -65,6 +65,8 @@ export interface LocalizationQueueItem {
   temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   skip?: AlertSkipInfo | null;
+  /** Names of the tags the alert carries, ordered by name. */
+  tags: string[];
 }
 
 // One alert with at least one localized (ANNOTATED, rule-matching) smoke
@@ -79,6 +81,8 @@ export interface LocalizeDoneQueueItem {
   temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   annotators: string[];
+  /** Names of the tags the alert carries, ordered by name. */
+  tags: string[];
 }
 
 // One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
@@ -95,6 +99,8 @@ export interface AlertDetail {
   organisation_name: string;
   recorded_at: string;
   lanes: AlertLane[];
+  /** Names of the tags the alert carries, ordered by name. */
+  tags: string[];
 }
 
 // Orderable columns of the alert-grouped queue endpoints.
@@ -114,6 +120,8 @@ export interface ClassifyQueueItem {
   total_objects: number;
   classified_objects: number;
   skip?: AlertSkipInfo | null;
+  /** Names of the tags the alert carries, ordered by name. */
+  tags: string[];
 }
 
 // One classified object-sequence of a done alert (outcome-relevant fields only).
@@ -139,6 +147,8 @@ export interface ClassifyDoneItem {
   primary_sequence_id: number;
   lanes: ClassifyDoneLane[];
   annotators: string[];
+  /** Names of the tags the alert carries, ordered by name. */
+  tags: string[];
 }
 
 // Submission payload for bulk classification of all objects in an alert.
@@ -608,4 +618,38 @@ export interface ApiError {
   detail: string | Record<string, string[]>;
   /** HTTP status of the failed response, when one was received. */
   status?: number;
+}
+
+// Tags (admin only): a label put on the alerts matching a filter at creation.
+export interface Tag {
+  id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_by_username: string | null;
+  created_at: string;
+  alert_count: number;
+  user_count: number;
+}
+
+/** Which alerts a new tag goes on. Dates are inclusive Europe/Paris days. */
+export interface TagFilter {
+  /** empty = every organisation */
+  organisation_names: string[];
+  recorded_from: string | null;
+  recorded_to: string | null;
+}
+
+export interface TagCreate {
+  name: string;
+  description: string | null;
+  filter: TagFilter;
+}
+
+/** What deleting a tag takes away. */
+export interface TagImpact {
+  alert_count: number;
+  user_count: number;
+  /** users left with no tag (and no full access): they see no alert at all */
+  users_losing_all_access: string[];
 }
