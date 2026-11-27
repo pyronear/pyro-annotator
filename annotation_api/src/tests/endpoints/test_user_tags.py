@@ -1,7 +1,9 @@
 """User side of tags (#402): give / remove tags, full access, and the user list."""
 
+from typing import Sequence
+
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -14,7 +16,12 @@ async def _tag(client: AsyncClient, name: str) -> int:
     return response.json()["id"]
 
 
-async def _change(client: AsyncClient, tag_id: int, add=(), remove=()):
+async def _change(
+    client: AsyncClient,
+    tag_id: int,
+    add: Sequence[int] = (),
+    remove: Sequence[int] = (),
+) -> Response:
     return await client.patch(
         f"/tags/{tag_id}/users", json={"add": list(add), "remove": list(remove)}
     )
@@ -274,6 +281,40 @@ async def test_manager_cannot_set_full_access(
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_full_access_cannot_be_null(
+    authenticated_client: AsyncClient, regular_user: User
+):
+    response = await authenticated_client.patch(
+        f"/users/{regular_user.id}", json={"full_access": None}
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_admins_cannot_be_given_tags_but_can_lose_them(
+    authenticated_client: AsyncClient,
+    test_user: User,
+    regular_user: User,
+    async_session: AsyncSession,
+):
+    tag_id = await _tag(authenticated_client, "campaign")
+
+    refused = await _change(
+        authenticated_client, tag_id, add=[regular_user.id, test_user.id]
+    )
+    assert refused.status_code == 403
+    rows = await async_session.exec(select(UserTag).where(UserTag.tag_id == tag_id))
+    assert rows.all() == []
+
+    # A user promoted to admin keeps their tags: removing them still works.
+    async_session.add(UserTag(user_id=test_user.id, tag_id=tag_id))
+    await async_session.commit()
+    removed = await _change(authenticated_client, tag_id, remove=[test_user.id])
+    assert removed.json()["removed"] == 1
 
 
 @pytest.mark.asyncio

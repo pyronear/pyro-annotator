@@ -1,18 +1,18 @@
 import { ReactNode, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Tag as TagIcon } from 'lucide-react';
-import { Tag, User, UserTagsChange } from '@/types/api';
+import { Tag, User } from '@/types/api';
+import { TagCatalog } from '@/hooks/useTags';
+import { UserAccessMutations } from '@/hooks/useUserAccessMutations';
 import AnchoredPopover from '@/components/ui/AnchoredPopover';
 import TagPicker from '@/components/users/TagPicker';
 import { bulkTagChange, tagCoverage } from '@/utils/userAccess';
 
 interface BulkTagBarProps {
   selectedUsers: User[];
-  tags: Tag[];
-  tagsLoading: boolean;
-  isPending: boolean;
+  catalog: TagCatalog;
+  mutations: UserAccessMutations;
   onClearSelection: () => void;
-  onChangeTagUsers: (tagId: number, change: UserTagsChange) => void;
 }
 
 /**
@@ -21,25 +21,21 @@ interface BulkTagBarProps {
  */
 export default function BulkTagBar({
   selectedUsers,
-  tags,
-  tagsLoading,
-  isPending,
+  catalog,
+  mutations,
   onClearSelection,
-  onChangeTagUsers,
 }: BulkTagBarProps) {
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const count = selectedUsers.length;
-  const people = count === 1 ? 'user' : 'users';
+  const userNoun = count === 1 ? 'user' : 'users';
+  const allHold = (tag: Tag) => tagCoverage(selectedUsers, tag.id) === count;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-ember/30 bg-ember-soft px-4 py-2.5">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-char">
-          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-ember px-1.5 font-data text-xs font-semibold text-white">
-            {count}
-          </span>
-          {people} selected
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-paper px-[22px] py-5">
+      <div className="flex items-center gap-3 border-l-2 border-ember pl-3.5">
+        <span className="font-body text-sm font-semibold text-char">
+          <span className="font-data">{count}</span> {userNoun} selected
         </span>
         <button
           type="button"
@@ -54,17 +50,17 @@ export default function BulkTagBar({
         type="button"
         onClick={() => setOpen(prev => !prev)}
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-ember px-3.5 py-1.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+        className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
       >
-        <TagIcon className="h-3.5 w-3.5" />
-        Tag {count} {people}
+        <TagIcon className="mr-2 h-4 w-4" />
+        Tag <span className="mx-1 font-data">{count}</span> {userNoun}
       </button>
 
       {open && (
         <AnchoredPopover
           anchorRef={anchorRef}
           onClose={() => setOpen(false)}
-          label={`Tags of the ${count} selected ${people}`}
+          label={`Tags of the ${count} selected ${userNoun}`}
           align="end"
           className="w-80"
         >
@@ -73,49 +69,45 @@ export default function BulkTagBar({
               <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                 Bulk tagging
               </div>
-              <div className="font-body text-xs text-char">
+              <div className="font-body text-detail text-char">
                 Applies to <span className="font-data font-semibold">{count}</span> selected{' '}
-                {people}
+                {userNoun}
               </div>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
+              className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
             >
               Done
             </button>
           </div>
           <TagPicker
-            tags={tags}
-            isLoading={tagsLoading}
-            disabled={isPending}
+            catalog={catalog}
+            disabled={mutations.isPending}
             stateOf={tag => {
               const holders = tagCoverage(selectedUsers, tag.id);
               if (holders === count) {
-                return {
-                  state: 'on',
-                  hint: <Hint className="font-semibold text-pine">all {count}</Hint>,
-                };
+                return { checked: true, hint: <Hint className="text-pine">all {count}</Hint> };
               }
               if (holders > 0) {
                 return {
-                  state: 'partial',
+                  checked: 'mixed',
                   hint: (
-                    <Hint className="font-semibold text-ember">
+                    <Hint className="text-ember">
                       {holders}/{count}
                     </Hint>
                   ),
                 };
               }
-              return { state: 'off', hint: <Hint className="text-haze">+ add</Hint> };
+              return { checked: false, hint: <Hint className="text-haze">+ add</Hint> };
             }}
             actionTitle={tag =>
-              tagCoverage(selectedUsers, tag.id) === count
-                ? `Remove "${tag.name}" from the ${count} selected ${people}`
-                : `Give "${tag.name}" to the ${count} selected ${people}`
+              allHold(tag)
+                ? `Remove "${tag.name}" from the ${count} selected ${userNoun}`
+                : `Give "${tag.name}" to the ${count} selected ${userNoun}`
             }
-            onPick={tag => onChangeTagUsers(tag.id, bulkTagChange(selectedUsers, tag.id))}
+            onPick={tag => mutations.changeTagUsers(tag.id, bulkTagChange(selectedUsers, tag.id))}
           />
         </AnchoredPopover>
       )}
@@ -124,5 +116,9 @@ export default function BulkTagBar({
 }
 
 function Hint({ className, children }: { className: string; children: ReactNode }) {
-  return <span className={clsx('flex-shrink-0 font-data text-[11px]', className)}>{children}</span>;
+  return (
+    <span className={clsx('flex-shrink-0 font-data text-eyebrow font-semibold', className)}>
+      {children}
+    </span>
+  );
 }

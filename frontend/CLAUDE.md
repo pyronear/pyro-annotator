@@ -34,11 +34,11 @@ frontend/src/
 │   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip (accept popover's frame strip), ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
-│   ├── users/                   # User page alert access: UserAccessCell (row popover), BulkTagBar, TagPicker
-│   └── ui/                      # AnchoredPopover (portal, never clipped by a scrolling table), NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+│   ├── users/                   # User page alert access: UserAccessCell (row popover), BulkTagBar, TagPicker, UserFilterPanel
+│   └── ui/                      # AnchoredPopover (portal, never clipped by a scrolling table), CheckMark (tri-state checkbox box), NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas
-│   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
+│   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState, useTags, useUserAccessMutations (tags / full access writes), useRowSelection
 ├── pages/
 │   ├── LoginPage.tsx
 │   ├── HomePage.tsx
@@ -67,7 +67,8 @@ frontend/src/
     ├── modelAccuracy.ts
     ├── passwordUtils.ts
     ├── playback-calculations.ts
-    └── processingStage.ts
+    ├── processingStage.ts
+    └── userAccess.ts            # Which alerts a user sees (admin / full / tagged / none), bulk tag helpers
 ```
 
 ## Routes (declared in `App.tsx`)

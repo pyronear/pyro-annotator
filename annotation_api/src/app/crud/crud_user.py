@@ -2,7 +2,8 @@ from datetime import UTC, datetime
 from typing import Iterable, List, Optional
 
 from passlib.context import CryptContext
-from sqlalchemy import and_, exists, not_, or_, select
+from sqlalchemy import ColumnElement, and_, exists, not_, or_, select
+from sqlmodel import col
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
@@ -51,7 +52,7 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
 
     async def get_by_ids(self, user_ids: Iterable[int]) -> List[User]:
         result = await self.session.execute(
-            select(User).where(User.id.in_(list(user_ids)))  # type: ignore[attr-defined]
+            select(User).where(col(User.id).in_(list(user_ids)))
         )
         return list(result.scalars().all())
 
@@ -161,10 +162,10 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         return query
 
 
-def _access_condition(access: AlertAccess):
+def _access_condition(access: AlertAccess) -> ColumnElement[bool]:
     """Users seeing the given alerts (#401): admins and full-access users see
     every alert, the others only those of their tags."""
-    sees_all = or_(User.role == UserRole.ADMIN, User.full_access.is_(True))  # type: ignore[attr-defined]
+    sees_all = or_(User.role == UserRole.ADMIN, col(User.full_access).is_(True))
     has_tag = exists().where(UserTag.user_id == User.id)
     if access == AlertAccess.FULL:
         return sees_all

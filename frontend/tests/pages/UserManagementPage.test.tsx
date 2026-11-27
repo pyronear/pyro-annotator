@@ -70,6 +70,17 @@ const renderPage = () => {
   );
 };
 
+/** Opens the create dialog and fills the username and a valid password. */
+const fillCreateDialog = async (username: string) => {
+  fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
+  const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
+  fireEvent.change(within(modal).getByRole('textbox'), { target: { value: username } });
+  fireEvent.change(modal.querySelector('input[type="password"]') as HTMLInputElement, {
+    target: { value: 'supersecret1' },
+  });
+  return modal;
+};
+
 const openEditDialog = async (title: RegExp) => {
   fireEvent.click((await screen.findAllByTitle(title))[0]);
   return screen.getByText(/edit user: scout/i).closest('div.fixed') as HTMLElement;
@@ -190,15 +201,56 @@ describe('UserManagementPage alert access', () => {
     );
   });
 
+  it('says so when the tag list fails to load', async () => {
+    mockUsers([trainee]);
+    vi.mocked(apiClient.getTags).mockRejectedValueOnce({ detail: 'boom' });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change alert access of scout' }));
+
+    expect(await screen.findByText('Could not load the tags.')).toBeInTheDocument();
+  });
+
+  it('shows the tags an admin still holds', async () => {
+    mockUsers([{ ...admin, tags: [campaign] }]);
+    renderPage();
+
+    expect(await screen.findByText('+1 saved')).toBeInTheDocument();
+  });
+
+  it('goes back to the last page when a change empties the current one', async () => {
+    // Page 2 had rows when listed, then a change (e.g. untagging them under a
+    // tag filter) left only one page.
+    vi.mocked(apiClient.getUsers).mockImplementation(async filters =>
+      filters?.page === 2
+        ? { items: [], page: 2, pages: 1, size: 50, total: 1 }
+        : { items: [trainee], page: 1, pages: 2, size: 50, total: 51 }
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+
+    await waitFor(() =>
+      expect(apiClient.getUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+    );
+    expect(apiClient.getUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
+    expect(await screen.findByText('scout')).toBeInTheDocument();
+  });
+
+  it('hides full access for a new admin, who sees every alert by role', async () => {
+    renderPage();
+
+    const modal = await fillCreateDialog('chief');
+    expect(within(modal).getByLabelText(/full access/i)).toBeInTheDocument();
+    fireEvent.change(within(modal).getByLabelText(/^role$/i), { target: { value: 'admin' } });
+
+    expect(within(modal).queryByLabelText(/full access/i)).not.toBeInTheDocument();
+  });
+
   it('creates a user with full access', async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
-    const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
-    fireEvent.change(within(modal).getByRole('textbox'), { target: { value: 'trusted' } });
-    fireEvent.change(modal.querySelector('input[type="password"]') as HTMLInputElement, {
-      target: { value: 'supersecret1' },
-    });
+    const modal = await fillCreateDialog('trusted');
     fireEvent.click(within(modal).getByLabelText(/full access/i));
     fireEvent.click(within(modal).getByRole('button', { name: /create user/i }));
 
@@ -222,15 +274,7 @@ describe('UserManagementPage as admin', () => {
   it('creates an annotator in classify training by default', async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
-    const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
-
-    fireEvent.change(within(modal).getByRole('textbox'), {
-      target: { value: 'newbie' },
-    });
-    fireEvent.change(modal.querySelector('input[type="password"]') as HTMLInputElement, {
-      target: { value: 'supersecret1' },
-    });
+    const modal = await fillCreateDialog('newbie');
     fireEvent.click(within(modal).getByRole('button', { name: /create user/i }));
 
     await waitFor(() =>

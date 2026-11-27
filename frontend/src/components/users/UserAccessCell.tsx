@@ -1,35 +1,31 @@
 import { useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { AlertCircle, Globe, Plus, X } from 'lucide-react';
-import { Tag, User, UserTagsChange } from '@/types/api';
+import { User } from '@/types/api';
+import { TagCatalog } from '@/hooks/useTags';
+import { UserAccessMutations } from '@/hooks/useUserAccessMutations';
 import AnchoredPopover from '@/components/ui/AnchoredPopover';
 import TagPicker from '@/components/users/TagPicker';
-import { hasTag, userAccess } from '@/utils/userAccess';
+import { bulkTagChange, hasTag, userAccess } from '@/utils/userAccess';
 
 interface UserAccessCellProps {
   user: User;
-  /** Every tag, to pick from. */
-  tags: Tag[];
-  tagsLoading: boolean;
+  catalog: TagCatalog;
+  mutations: UserAccessMutations;
   /** Admins edit; annotation managers only read. */
   editable: boolean;
-  isPending: boolean;
-  onChangeTagUsers: (tagId: number, change: UserTagsChange) => void;
-  onSetFullAccess: (userId: number, fullAccess: boolean) => void;
 }
 
-const pill =
-  'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 font-body text-xs font-semibold';
+// The DESIGN.md badge recipe.
+const badge =
+  'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 font-body text-xs font-semibold';
 
 /** The "Alert access" cell of a user row: what the user sees, and the popover to change it. */
 export default function UserAccessCell({
   user,
-  tags,
-  tagsLoading,
+  catalog,
+  mutations,
   editable,
-  isPending,
-  onChangeTagUsers,
-  onSetFullAccess,
 }: UserAccessCellProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -38,10 +34,13 @@ export default function UserAccessCell({
   if (access === 'system') return <span className="font-data text-detail text-haze">—</span>;
   if (access === 'admin') {
     return (
-      <span className={clsx(pill, 'bg-pine-soft text-pine')} title="Admins see every alert.">
-        <Globe className="h-3 w-3" />
-        All alerts
-      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={clsx(badge, 'bg-pine-soft text-pine')} title="Admins see every alert.">
+          <Globe className="h-3 w-3" />
+          All alerts
+        </span>
+        <SavedTags user={user} />
+      </div>
     );
   }
 
@@ -56,32 +55,25 @@ export default function UserAccessCell({
               type="button"
               onClick={toggleOpen}
               aria-expanded={open}
-              className={clsx(pill, 'bg-pine-soft text-pine hover:brightness-95')}
+              className={clsx(badge, 'bg-pine-soft text-pine hover:brightness-95')}
               title="Sees every alert, whatever its tags. Click to change."
             >
               <Globe className="h-3 w-3" />
               Full access
             </button>
           ) : (
-            <span className={clsx(pill, 'bg-pine-soft text-pine')} title="Sees every alert.">
+            <span className={clsx(badge, 'bg-pine-soft text-pine')} title="Sees every alert.">
               <Globe className="h-3 w-3" />
               Full access
             </span>
           )}
-          {user.tags.length > 0 && (
-            <span
-              className="font-data text-[11px] text-haze"
-              title={`Kept for when full access is turned off: ${user.tags.map(t => t.name).join(', ')}`}
-            >
-              +{user.tags.length} saved
-            </span>
-          )}
+          <SavedTags user={user} />
         </>
       )}
 
       {access === 'none' && (
         <span
-          className={clsx(pill, 'bg-signal-soft text-signal')}
+          className={clsx(badge, 'bg-signal-soft text-signal')}
           title="No full access and no tag: this user sees no alert."
         >
           <AlertCircle className="h-3 w-3" />
@@ -93,18 +85,15 @@ export default function UserAccessCell({
         user.tags.map(tag => (
           <span
             key={tag.id}
-            className={clsx(
-              'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-line bg-ash py-0.5 pl-2.5 font-body text-xs font-medium text-char',
-              editable ? 'pr-1' : 'pr-2.5'
-            )}
+            className={clsx(badge, 'border border-line bg-ash text-char', editable && 'pr-1')}
             title={tag.description ?? tag.name}
           >
             {tag.name}
             {editable && (
               <button
                 type="button"
-                disabled={isPending}
-                onClick={() => onChangeTagUsers(tag.id, { remove: [user.id] })}
+                disabled={mutations.isPending}
+                onClick={() => mutations.changeTagUsers(tag.id, { remove: [user.id] })}
                 className="rounded-full p-0.5 text-haze hover:bg-line hover:text-char disabled:cursor-wait"
                 aria-label={`Remove ${tag.name} from ${user.username}`}
               >
@@ -121,7 +110,7 @@ export default function UserAccessCell({
           aria-expanded={open}
           aria-label={`Change alert access of ${user.username}`}
           className={clsx(
-            'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2 py-0.5 font-body text-xs font-medium transition-colors',
+            'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2 py-1 font-body text-xs font-medium transition-colors',
             open
               ? 'border-ember bg-ember-soft text-ember'
               : 'border-line text-haze hover:border-ember hover:text-ember'
@@ -141,30 +130,38 @@ export default function UserAccessCell({
         >
           <FullAccessSwitch
             checked={user.full_access}
-            disabled={isPending}
-            onChange={value => onSetFullAccess(user.id, value)}
+            disabled={mutations.isPending}
+            onChange={value => mutations.setFullAccess(user.id, value)}
           />
           {user.full_access && (
-            <p className="border-b border-line px-3.5 py-1.5 font-body text-[11px] text-haze">
+            <p className="border-b border-line px-3.5 py-1.5 font-body text-detail text-haze">
               Tags below are kept for when full access is turned off.
             </p>
           )}
           <TagPicker
-            tags={tags}
-            isLoading={tagsLoading}
-            disabled={isPending}
+            catalog={catalog}
+            disabled={mutations.isPending}
             muted={user.full_access}
-            stateOf={tag => ({ state: hasTag(user, tag.id) ? 'on' : 'off' })}
-            onPick={tag =>
-              onChangeTagUsers(
-                tag.id,
-                hasTag(user, tag.id) ? { remove: [user.id] } : { add: [user.id] }
-              )
-            }
+            stateOf={tag => ({ checked: hasTag(user, tag.id) })}
+            onPick={tag => mutations.changeTagUsers(tag.id, bulkTagChange([user], tag.id))}
           />
         </AnchoredPopover>
       )}
     </div>
+  );
+}
+
+/** Tags a user holds but does not need while they see every alert. */
+function SavedTags({ user }: { user: User }) {
+  if (user.tags.length === 0) return null;
+  const names = user.tags.map(tag => tag.name).join(', ');
+  return (
+    <span
+      className="font-data text-eyebrow text-haze"
+      title={`Kept for when this user no longer sees every alert: ${names}`}
+    >
+      +{user.tags.length} saved
+    </span>
   );
 }
 
@@ -180,8 +177,8 @@ function FullAccessSwitch({
   return (
     <div className="flex items-center justify-between gap-3 border-b border-line bg-ash px-3.5 py-2.5">
       <div>
-        <div className="font-body text-xs font-semibold text-char">Full access</div>
-        <div className="font-body text-[11px] text-haze">Sees every alert, whatever its tags</div>
+        <div className="font-body text-sm font-semibold text-char">Full access</div>
+        <div className="font-body text-detail text-haze">Sees every alert, whatever its tags</div>
       </div>
       <button
         type="button"

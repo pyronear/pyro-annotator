@@ -1,11 +1,11 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from app.core.config import settings
-from app.models import RightStatus, UserRole
+from app.models import RightStatus, Tag, User, UserRole
 from app.schemas.tag import TagRead
 
 __all__ = [
@@ -49,6 +49,14 @@ class UserUpdate(BaseModel):
     localize_status: Optional[RightStatus] = None
     full_access: Optional[bool] = None
 
+    @field_validator("full_access")
+    @classmethod
+    def _full_access_not_null(cls, value: Optional[bool]) -> bool:
+        # Optional only so the field can be left out; the column is NOT NULL.
+        if value is None:
+            raise ValueError("full_access cannot be null")
+        return value
+
 
 class UserPasswordUpdate(BaseModel):
     password: str = Field(..., min_length=8)
@@ -64,6 +72,13 @@ class UserRead(UserBase):
     # Not a column: the endpoints load the tags in one query per page of users
     # (UserTagCRUD.tags_by_user). Required, so a response cannot drop them.
     tags: List[TagRead]
+
+    @classmethod
+    def from_user(cls, user: "User", tags: Sequence["Tag"]) -> "UserRead":
+        """Read a user with the tags loaded for it (UserTagCRUD.tags_by_user)."""
+        return cls.model_validate(
+            {**user.model_dump(), "tags": [TagRead.model_validate(t) for t in tags]}
+        )
 
     @computed_field  # type: ignore[misc]
     @property

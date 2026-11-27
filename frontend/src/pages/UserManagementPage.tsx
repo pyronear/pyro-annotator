@@ -1,19 +1,6 @@
 import { useState, useEffect, useId } from 'react';
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Check,
-  Edit,
-  Filter,
-  Globe,
-  Key,
-  Minus,
-  Plus,
-  Tag as TagIcon,
-  Trash2,
-  UserCheck,
-  UserX,
-} from 'lucide-react';
+import { Edit, Filter, Key, Plus, Trash2, UserX } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
   RightStatus,
@@ -37,11 +24,15 @@ import PasswordField from '@/components/ui/PasswordField';
 import { formatDate } from '@/utils/datetime';
 import { RIGHT_STATUSES, RIGHT_STATUS_LABELS, ROLE_LABELS, USER_ROLES } from '@/utils/userRights';
 import { canTakeTags } from '@/utils/userAccess';
-import { useUserTagMutations } from '@/hooks/useUserTagMutations';
+import { useUserAccessMutations } from '@/hooks/useUserAccessMutations';
+import { useTags } from '@/hooks/useTags';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import UserAccessCell from '@/components/users/UserAccessCell';
 import BulkTagBar from '@/components/users/BulkTagBar';
+import UserFilterPanel from '@/components/users/UserFilterPanel';
+import CheckMark, { CheckState } from '@/components/ui/CheckMark';
+import { useRowSelection } from '@/hooks/useRowSelection';
 
 export default function UserManagementPage() {
   const { user: currentUser, isAdmin, isManager } = useAuthStore();
@@ -53,11 +44,6 @@ export default function UserManagementPage() {
     size: PAGINATION_DEFAULTS.SIZE,
   });
   const [showFilters, setShowFilters] = useState(false);
-
-  // Rows selected for bulk tagging. Scoped to the page on screen: changing
-  // page or filters clears it.
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const clearSelection = () => setSelectedIds(new Set());
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -77,17 +63,28 @@ export default function UserManagementPage() {
     placeholderData: keepPreviousData,
   });
 
+  // A change can empty the page on screen (untagging every user of the last
+  // page under a tag filter): go back to the last page that has rows.
+  useEffect(() => {
+    if (usersData && usersData.items.length === 0 && usersData.page > 1) {
+      setFilters(prev => ({ ...prev, page: Math.max(1, usersData.pages) }));
+    }
+  }, [usersData]);
+
   // Tags are admin-only for now (#401): managers see the column read-only.
   const canEditAccess = isAdmin();
-  const { data: tags = [], isLoading: tagsLoading } = useQuery({
-    queryKey: QUERY_KEYS.TAGS,
-    queryFn: () => apiClient.getTags(),
-    enabled: canEditAccess,
-  });
+  const tagCatalog = useTags(canEditAccess);
 
   const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
     useToastNotifications();
-  const userTags = useUserTagMutations(message => showToastNotification(message, 'error'));
+  const accessMutations = useUserAccessMutations(message =>
+    showToastNotification(message, 'error')
+  );
+
+  // Rows selected for bulk tagging, scoped to the page on screen: changing
+  // page or filters clears the selection.
+  const users = usersData?.items ?? [];
+  const selection = useRowSelection(canEditAccess ? users.filter(canTakeTags) : []);
 
   // Mutations
   const createUserMutation = useMutation({
@@ -162,7 +159,7 @@ export default function UserManagementPage() {
 
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
-    clearSelection();
+    selection.clear();
   };
 
   const toggleFilter = (key: keyof UserFilters, value: UserFilters[keyof UserFilters]) => {
@@ -171,37 +168,8 @@ export default function UserManagementPage() {
       [key]: prev[key] === value ? undefined : value,
       page: 1,
     }));
-    clearSelection();
+    selection.clear();
   };
-
-  const users = usersData?.items ?? [];
-  const selectableUsers = canEditAccess ? users.filter(canTakeTags) : [];
-  const selectedUsers = selectableUsers.filter(user => selectedIds.has(user.id));
-  const allSelected = selectableUsers.length > 0 && selectedUsers.length === selectableUsers.length;
-  const someSelected = selectedUsers.length > 0 && !allSelected;
-
-  const toggleSelected = (userId: number) =>
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-
-  const toggleAllSelected = () =>
-    setSelectedIds(allSelected ? new Set() : new Set(selectableUsers.map(user => user.id)));
-
-  const chipClass = (selected: boolean, tone: 'pine' | 'ember' | 'signal') =>
-    clsx(
-      'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-      selected
-        ? {
-            pine: 'bg-pine-soft text-pine',
-            ember: 'bg-ember-soft text-ember',
-            signal: 'bg-signal-soft text-signal',
-          }[tone]
-        : 'bg-ash text-haze hover:text-char'
-    );
 
   if (isLoading) {
     return (
@@ -258,92 +226,16 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Filter Options */}
       {showFilters && (
-        <div className="rounded-card border border-line bg-paper p-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => toggleFilter('is_active', true)}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.is_active === true
-                  ? 'bg-pine-soft text-pine'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              <UserCheck className="w-3 h-3 mr-1" />
-              Active Only
-            </button>
-            <button
-              onClick={() => toggleFilter('is_active', false)}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.is_active === false
-                  ? 'bg-signal-soft text-signal'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              <UserX className="w-3 h-3 mr-1" />
-              Inactive Only
-            </button>
-            <button
-              onClick={() => toggleFilter('role', 'admin')}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.role === 'admin'
-                  ? 'bg-ember-soft text-ember'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              Admins Only
-            </button>
-            <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
-            <button
-              onClick={() => toggleFilter('access', 'full')}
-              className={chipClass(filters.access === 'full', 'pine')}
-              title="Admins and users with full access"
-            >
-              <Globe className="w-3 h-3 mr-1" />
-              Full access
-            </button>
-            <button
-              onClick={() => toggleFilter('access', 'none')}
-              className={chipClass(filters.access === 'none', 'signal')}
-              title="No full access and no tag: these users see no alert"
-            >
-              <AlertCircle className="w-3 h-3 mr-1" />
-              No alerts
-            </button>
-          </div>
-          {canEditAccess && tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-              <span className="mr-1 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                Tag
-              </span>
-              {tags.map(tag => (
-                <button
-                  key={tag.id}
-                  onClick={() => toggleFilter('tag_id', tag.id)}
-                  className={chipClass(filters.tag_id === tag.id, 'ember')}
-                  title={tag.description ?? tag.name}
-                >
-                  <TagIcon className="w-3 h-3 mr-1" />
-                  {tag.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <UserFilterPanel filters={filters} tags={tagCatalog.tags} onToggle={toggleFilter} />
       )}
 
-      {selectedUsers.length > 0 && (
+      {selection.selected.length > 0 && (
         <BulkTagBar
-          selectedUsers={selectedUsers}
-          tags={tags}
-          tagsLoading={tagsLoading}
-          isPending={userTags.isPending}
-          onClearSelection={clearSelection}
-          onChangeTagUsers={userTags.changeTagUsers}
+          selectedUsers={selection.selected}
+          catalog={tagCatalog}
+          mutations={accessMutations}
+          onClearSelection={selection.clear}
         />
       )}
 
@@ -356,10 +248,10 @@ export default function UserManagementPage() {
                 {canEditAccess && (
                   <th className="w-10 py-3 pl-4 pr-2 text-left">
                     <SelectBox
-                      checked={allSelected ? true : someSelected ? 'mixed' : false}
-                      disabled={selectableUsers.length === 0}
+                      checked={selection.allState}
+                      disabled={!users.some(canTakeTags)}
                       label="Select every user on this page"
-                      onToggle={toggleAllSelected}
+                      onToggle={selection.toggleAll}
                     />
                   </th>
                 )}
@@ -400,15 +292,15 @@ export default function UserManagementPage() {
               {users.map(user => (
                 <tr
                   key={user.id}
-                  className={selectedIds.has(user.id) ? 'bg-ember-soft' : 'hover:bg-ash'}
+                  className={selection.isSelected(user.id) ? 'bg-ash' : 'hover:bg-ash'}
                 >
                   {canEditAccess && (
                     <td className="w-10 py-4 pl-4 pr-2">
                       {canTakeTags(user) && (
                         <SelectBox
-                          checked={selectedIds.has(user.id)}
+                          checked={selection.isSelected(user.id)}
                           label={`Select ${user.username}`}
-                          onToggle={() => toggleSelected(user.id)}
+                          onToggle={() => selection.toggle(user.id)}
                         />
                       )}
                     </td>
@@ -455,12 +347,9 @@ export default function UserManagementPage() {
                   <td className="px-4 py-4">
                     <UserAccessCell
                       user={user}
-                      tags={tags}
-                      tagsLoading={tagsLoading}
+                      catalog={tagCatalog}
+                      mutations={accessMutations}
                       editable={canEditAccess}
-                      isPending={userTags.isPending}
-                      onChangeTagUsers={userTags.changeTagUsers}
-                      onSetFullAccess={userTags.setFullAccess}
                     />
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap font-data text-detail text-haze">
@@ -589,7 +478,7 @@ function SelectBox({
   label,
   onToggle,
 }: {
-  checked: boolean | 'mixed';
+  checked: CheckState;
   disabled?: boolean;
   label: string;
   onToggle: () => void;
@@ -602,14 +491,9 @@ function SelectBox({
       aria-label={label}
       disabled={disabled}
       onClick={onToggle}
-      className={clsx(
-        'flex h-4 w-4 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-1 disabled:opacity-40',
-        checked
-          ? 'border-ember bg-ember text-white'
-          : 'border-line bg-paper text-transparent hover:border-haze'
-      )}
+      className="flex rounded focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-1 disabled:opacity-40"
     >
-      {checked === 'mixed' ? <Minus className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+      <CheckMark checked={checked} />
     </button>
   );
 }
@@ -713,10 +597,13 @@ function CreateUserModal({
                 onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
               />
 
-              <FullAccessField
-                checked={formData.full_access ?? false}
-                onChange={value => setFormData(prev => ({ ...prev, full_access: value }))}
-              />
+              {/* Admins see every alert by role. */}
+              {formData.role !== 'admin' && (
+                <FullAccessField
+                  checked={formData.full_access ?? false}
+                  onChange={value => setFormData(prev => ({ ...prev, full_access: value }))}
+                />
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -834,7 +721,7 @@ function EditUserModal({
                 onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
               />
 
-              {canEditAll && (
+              {canEditAll && formData.role !== 'admin' && (
                 <FullAccessField
                   checked={formData.full_access ?? false}
                   onChange={value => setFormData(prev => ({ ...prev, full_access: value }))}

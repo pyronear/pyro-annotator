@@ -28,8 +28,10 @@ async def change_tag_users(
     """Give the tag to the `add` users and take it from the `remove` users.
 
     One call serves a single user and a bulk selection alike. Idempotent, and
-    all or nothing: an unknown user (404) or the system worker (403) rejects
-    the whole request.
+    all or nothing: an unknown user (404), the system worker (403) or an
+    admin to add (403: admins see every alert by role) rejects the whole
+    request. Removing a tag from an admin is allowed, to clean up a user
+    promoted with their tags.
     """
     await TagCRUD(session).get(tag_id, strict=True)
 
@@ -45,6 +47,12 @@ async def change_tag_users(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="The system worker user cannot hold tags",
+        )
+    to_add = set(payload.add)
+    if any(user.is_admin and user.id in to_add for user in users):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins see every alert and cannot be given tags",
         )
 
     added, removed = await UserTagCRUD(session).change_tag_users(

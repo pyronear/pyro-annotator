@@ -16,7 +16,7 @@ class UserTagsChange(BaseModel):
     remove: List[int] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _check(self) -> "UserTagsChange":
+    def _require_users_without_overlap(self) -> "UserTagsChange":
         if not self.add and not self.remove:
             raise ValueError("Give at least one user to add or remove")
         both = sorted(set(self.add) & set(self.remove))

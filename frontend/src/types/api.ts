@@ -563,7 +563,7 @@ export interface UserTagsChangeResult {
 }
 
 /** Which alerts a user sees: every alert (admin or full access), their tags' alerts, or none. */
-export type AlertAccess = 'full' | 'tagged' | 'none';
+type AlertAccess = 'full' | 'tagged' | 'none';
 
 /** A user's single role. Each level includes the one below it. */
 export type UserRole = 'annotator' | 'annotation_manager' | 'admin';

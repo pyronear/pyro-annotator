@@ -1,3 +1,4 @@
+from functools import partial
 from typing import List, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,7 +16,6 @@ from app.core.config import settings
 from app.crud import UserCRUD, UserTagCRUD
 from app.db import get_session
 from app.models import User, UserRole
-from app.schemas.tag import TagRead
 from app.schemas.user import (
     AlertAccess,
     ContributorRead,
@@ -34,15 +34,7 @@ MANAGER_EDITABLE_FIELDS = frozenset({"classify_status", "localize_status"})
 async def _read_users(session: AsyncSession, users: Sequence[User]) -> List[UserRead]:
     """The users with their tags, loaded in one query for the whole list."""
     tags = await UserTagCRUD(session).tags_by_user(user.id for user in users)
-    return [
-        UserRead.model_validate(
-            {
-                **user.model_dump(),
-                "tags": [TagRead.model_validate(tag) for tag in tags.get(user.id, [])],
-            }
-        )
-        for user in users
-    ]
+    return [UserRead.from_user(user, tags.get(user.id, [])) for user in users]
 
 
 async def _read_user(session: AsyncSession, user: User) -> UserRead:
@@ -120,10 +112,9 @@ async def list_users(
     query = query.order_by(desc(User.created_at))
 
     # Apply pagination
-    async def with_tags(users: Sequence[User]) -> List[UserRead]:
-        return await _read_users(session, users)
-
-    return await apaginate(session, query, params, transformer=with_tags)
+    return await apaginate(
+        session, query, params, transformer=partial(_read_users, session)
+    )
 
 
 @router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
