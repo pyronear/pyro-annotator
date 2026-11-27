@@ -1,4 +1,5 @@
-from typing import Optional
+from functools import partial
+from typing import List, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi_pagination import Page, Params
@@ -12,10 +13,11 @@ from app.auth.dependencies import (
     get_current_manager,
 )
 from app.core.config import settings
-from app.crud import UserCRUD
+from app.crud import UserCRUD, UserTagCRUD
 from app.db import get_session
 from app.models import User, UserRole
 from app.schemas.user import (
+    AlertAccess,
     ContributorRead,
     UserCreate,
     UserPasswordUpdate,
@@ -29,12 +31,23 @@ router = APIRouter()
 MANAGER_EDITABLE_FIELDS = frozenset({"classify_status", "localize_status"})
 
 
+async def _read_users(session: AsyncSession, users: Sequence[User]) -> List[UserRead]:
+    """The users with their tags, loaded in one query for the whole list."""
+    tags = await UserTagCRUD(session).tags_by_user(user.id for user in users)
+    return [UserRead.from_user(user, tags.get(user.id, [])) for user in users]
+
+
+async def _read_user(session: AsyncSession, user: User) -> UserRead:
+    return (await _read_users(session, [user]))[0]
+
+
 @router.get("/me", response_model=UserRead)
 async def read_current_user(
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
-) -> User:
+) -> UserRead:
     """Get current user information."""
-    return current_user
+    return await _read_user(session, current_user)
 
 
 # NOTE: declared before GET /{user_id} — the int path converter would
@@ -63,16 +76,24 @@ async def list_users(
     search: Optional[str] = Query(None, description="Search in username"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     role: Optional[UserRole] = Query(None, description="Filter by role"),
+    tag_id: Optional[int] = Query(None, description="Users holding this tag"),
+    access: Optional[AlertAccess] = Query(
+        None,
+        description="Which alerts the users see: full (admin or full access), "
+        "tagged (only their tags) or none",
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_manager),
-) -> Page[User]:
+) -> Page[UserRead]:
     """
     List users with filtering, pagination and search.
 
     - **search**: Search in username field
     - **is_active**: Filter by active/inactive status
     - **role**: Filter by role
+    - **tag_id**: Users holding this tag
+    - **access**: Which alerts the users see (full, tagged, none)
     - **page**: Page number (default: 1)
     - **size**: Page size (default: 50, max: 100)
     """
@@ -83,13 +104,17 @@ async def list_users(
         search=search,
         is_active=is_active,
         role=role,
+        tag_id=tag_id,
+        access=access,
     )
 
     # Add default ordering by created_at desc
     query = query.order_by(desc(User.created_at))
 
     # Apply pagination
-    return await apaginate(session, query, params)
+    return await apaginate(
+        session, query, params, transformer=partial(_read_users, session)
+    )
 
 
 @router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -97,7 +122,7 @@ async def create_user(
     user_create: UserCreate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_admin),
-) -> User:
+) -> UserRead:
     """Create a new user (admin only)."""
     if user_create.username == settings.WORKER_USERNAME:
         raise HTTPException(
@@ -116,7 +141,7 @@ async def create_user(
         )
 
     user = await user_crud.create_user(user_create)
-    return user
+    return await _read_user(session, user)
 
 
 @router.get("/{user_id}", response_model=UserRead)
@@ -124,7 +149,7 @@ async def get_user(
     user_id: int,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_manager),
-) -> User:
+) -> UserRead:
     """Get a specific user by ID (annotation manager or admin)."""
     user_crud = UserCRUD(session)
     user = await user_crud.get_by_id(user_id)
@@ -132,7 +157,7 @@ async def get_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    return user
+    return await _read_user(session, user)
 
 
 @router.patch("/{user_id}", response_model=UserRead)
@@ -141,7 +166,7 @@ async def update_user(
     user_update: UserUpdate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_manager),
-) -> User:
+) -> UserRead:
     """Update a user.
 
     An admin may change every field. An annotation manager may only change
@@ -165,7 +190,14 @@ async def update_user(
         )
     if target_user.username == settings.WORKER_USERNAME and (
         user_update.model_fields_set
-        & {"username", "is_active", "role", "classify_status", "localize_status"}
+        & {
+            "username",
+            "is_active",
+            "role",
+            "classify_status",
+            "localize_status",
+            "full_access",
+        }
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -191,7 +223,7 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    return user
+    return await _read_user(session, user)
 
 
 @router.patch("/{user_id}/password", response_model=UserRead)
@@ -200,7 +232,7 @@ async def update_user_password(
     password_update: UserPasswordUpdate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_admin),
-) -> User:
+) -> UserRead:
     """Update a user's password (admin only)."""
     user_crud = UserCRUD(session)
 
@@ -209,7 +241,7 @@ async def update_user_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    return user
+    return await _read_user(session, user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

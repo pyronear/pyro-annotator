@@ -1,6 +1,6 @@
 import { useState, useEffect, useId } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Key, Filter, UserCheck, UserX } from 'lucide-react';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Edit, Filter, Key, Plus, Trash2, UserX } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
   RightStatus,
@@ -23,6 +23,16 @@ import { useAuthStore } from '@/store/useAuthStore';
 import PasswordField from '@/components/ui/PasswordField';
 import { formatDate } from '@/utils/datetime';
 import { RIGHT_STATUSES, RIGHT_STATUS_LABELS, ROLE_LABELS, USER_ROLES } from '@/utils/userRights';
+import { canTakeTags } from '@/utils/userAccess';
+import { useUserAccessMutations } from '@/hooks/useUserAccessMutations';
+import { useTags } from '@/hooks/useTags';
+import { useToastNotifications } from '@/utils/notification/toastUtils';
+import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import UserAccessCell from '@/components/users/UserAccessCell';
+import BulkTagBar from '@/components/users/BulkTagBar';
+import UserFilterPanel from '@/components/users/UserFilterPanel';
+import CheckMark, { CheckState } from '@/components/ui/CheckMark';
+import { useRowSelection } from '@/hooks/useRowSelection';
 
 export default function UserManagementPage() {
   const { user: currentUser, isAdmin, isManager } = useAuthStore();
@@ -50,7 +60,31 @@ export default function UserManagementPage() {
   } = useQuery({
     queryKey: [...QUERY_KEYS.USERS, filters],
     queryFn: () => apiClient.getUsers(filters),
+    placeholderData: keepPreviousData,
   });
+
+  // A change can empty the page on screen (untagging every user of the last
+  // page under a tag filter): go back to the last page that has rows.
+  useEffect(() => {
+    if (usersData && usersData.items.length === 0 && usersData.page > 1) {
+      setFilters(prev => ({ ...prev, page: Math.max(1, usersData.pages) }));
+    }
+  }, [usersData]);
+
+  // Tags are admin-only for now (#401): managers see the column read-only.
+  const canEditAccess = isAdmin();
+  const tagCatalog = useTags(canEditAccess);
+
+  const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
+    useToastNotifications();
+  const accessMutations = useUserAccessMutations(message =>
+    showToastNotification(message, 'error')
+  );
+
+  // Rows selected for bulk tagging, scoped to the page on screen: changing
+  // page or filters clears the selection.
+  const users = usersData?.items ?? [];
+  const selection = useRowSelection(canEditAccess ? users.filter(canTakeTags) : []);
 
   // Mutations
   const createUserMutation = useMutation({
@@ -125,6 +159,7 @@ export default function UserManagementPage() {
 
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
+    selection.clear();
   };
 
   const toggleFilter = (key: keyof UserFilters, value: UserFilters[keyof UserFilters]) => {
@@ -133,6 +168,7 @@ export default function UserManagementPage() {
       [key]: prev[key] === value ? undefined : value,
       page: 1,
     }));
+    selection.clear();
   };
 
   if (isLoading) {
@@ -154,14 +190,16 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="font-display text-title font-semibold tracking-tight text-char">
             User Management
           </h1>
-          <p className="mt-1 font-body text-body text-haze">Manage user accounts and permissions</p>
+          <p className="mt-1 font-body text-body text-haze">
+            Manage user accounts, permissions and which alerts each user sees
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -188,47 +226,17 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Filter Options */}
       {showFilters && (
-        <div className="rounded-card border border-line bg-paper p-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => toggleFilter('is_active', true)}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.is_active === true
-                  ? 'bg-pine-soft text-pine'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              <UserCheck className="w-3 h-3 mr-1" />
-              Active Only
-            </button>
-            <button
-              onClick={() => toggleFilter('is_active', false)}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.is_active === false
-                  ? 'bg-signal-soft text-signal'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              <UserX className="w-3 h-3 mr-1" />
-              Inactive Only
-            </button>
-            <button
-              onClick={() => toggleFilter('role', 'admin')}
-              className={clsx(
-                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
-                filters.role === 'admin'
-                  ? 'bg-ember-soft text-ember'
-                  : 'bg-ash text-haze hover:text-char'
-              )}
-            >
-              Admins Only
-            </button>
-          </div>
-        </div>
+        <UserFilterPanel filters={filters} tags={tagCatalog.tags} onToggle={toggleFilter} />
+      )}
+
+      {selection.selected.length > 0 && (
+        <BulkTagBar
+          selectedUsers={selection.selected}
+          catalog={tagCatalog}
+          mutations={accessMutations}
+          onClearSelection={selection.clear}
+        />
       )}
 
       {/* Users List */}
@@ -237,30 +245,67 @@ export default function UserManagementPage() {
           <table className="min-w-full divide-y divide-line">
             <thead className="bg-ash">
               <tr>
-                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                {canEditAccess && (
+                  <th className="w-10 py-3 pl-4 pr-2 text-left">
+                    <SelectBox
+                      checked={selection.allState}
+                      disabled={!users.some(canTakeTags)}
+                      label="Select every user on this page"
+                      onToggle={selection.toggleAll}
+                    />
+                  </th>
+                )}
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   User
                 </th>
-                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Role
                 </th>
-                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Rights
                 </th>
-                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                  Alert access
+                </th>
+                <th className="px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                <th className="px-4 py-3 text-right font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-paper divide-y divide-line">
-              {usersData?.items?.map(user => (
-                <tr key={user.id} className="hover:bg-ash">
-                  <td className="px-6 py-4 whitespace-nowrap">
+              {users.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={canEditAccess ? 8 : 7}
+                    className="px-4 py-10 text-center font-body text-detail text-haze"
+                  >
+                    No user matches these filters.
+                  </td>
+                </tr>
+              )}
+              {users.map(user => (
+                <tr
+                  key={user.id}
+                  className={selection.isSelected(user.id) ? 'bg-ash' : 'hover:bg-ash'}
+                >
+                  {canEditAccess && (
+                    <td className="w-10 py-4 pl-4 pr-2">
+                      {canTakeTags(user) && (
+                        <SelectBox
+                          checked={selection.isSelected(user.id)}
+                          label={`Select ${user.username}`}
+                          onToggle={() => selection.toggle(user.id)}
+                        />
+                      )}
+                    </td>
+                  )}
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="font-body text-sm font-medium text-char">{user.username}</div>
                       {user.is_system && (
@@ -273,7 +318,7 @@ export default function UserManagementPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <span
                       className={clsx(
                         'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
@@ -283,7 +328,7 @@ export default function UserManagementPage() {
                       {user.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <span
                       className={clsx(
                         'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
@@ -293,14 +338,24 @@ export default function UserManagementPage() {
                       {ROLE_LABELS[user.role]}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap space-x-1">
-                    <RightBadge label="Classify" status={user.classify_status} />
-                    <RightBadge label="Localize" status={user.localize_status} />
+                  <td className="px-4 py-4">
+                    <div className="flex flex-col items-start gap-1 whitespace-nowrap">
+                      <RightBadge label="Classify" status={user.classify_status} />
+                      <RightBadge label="Localize" status={user.localize_status} />
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-data text-detail text-haze">
+                  <td className="px-4 py-4">
+                    <UserAccessCell
+                      user={user}
+                      catalog={tagCatalog}
+                      mutations={accessMutations}
+                      editable={canEditAccess}
+                    />
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap font-data text-detail text-haze">
                     {formatDate(user.created_at)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                  <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium space-x-1">
                     {!user.is_system && (
                       <>
                         {(isAdmin() || user.role === 'annotator') && (
@@ -405,7 +460,41 @@ export default function UserManagementPage() {
           error={updatePasswordMutation.error}
         />
       )}
+
+      <NotificationSystem
+        showToast={showToast}
+        toastMessage={toastMessage}
+        toastType={toastType}
+        onDismiss={dismissToast}
+        autoDismissMs={3500}
+      />
     </div>
+  );
+}
+
+function SelectBox({
+  checked,
+  disabled = false,
+  label,
+  onToggle,
+}: {
+  checked: CheckState;
+  disabled?: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onToggle}
+      className="flex rounded focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-1 disabled:opacity-40"
+    >
+      <CheckMark checked={checked} />
+    </button>
   );
 }
 
@@ -442,6 +531,7 @@ function CreateUserModal({
     role: 'annotator',
     classify_status: 'training',
     localize_status: 'locked',
+    full_access: false,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -506,6 +596,14 @@ function CreateUserModal({
                 showRole
                 onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
               />
+
+              {/* Admins see every alert by role. */}
+              {formData.role !== 'admin' && (
+                <FullAccessField
+                  checked={formData.full_access ?? false}
+                  onChange={value => setFormData(prev => ({ ...prev, full_access: value }))}
+                />
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -555,6 +653,7 @@ function EditUserModal({
     role: user.role,
     classify_status: user.classify_status,
     localize_status: user.localize_status,
+    full_access: user.full_access,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -621,6 +720,13 @@ function EditUserModal({
                 showRole={canEditAll}
                 onChange={changes => setFormData(prev => ({ ...prev, ...changes }))}
               />
+
+              {canEditAll && formData.role !== 'admin' && (
+                <FullAccessField
+                  checked={formData.full_access ?? false}
+                  onChange={value => setFormData(prev => ({ ...prev, full_access: value }))}
+                />
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -743,6 +849,32 @@ function PasswordChangeModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function FullAccessField({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="mt-0.5 rounded border-line text-pine focus:ring-ember"
+      />
+      <span className="ml-2">
+        <span className="block font-body text-sm text-char">Full access</span>
+        <span className="block font-body text-xs text-haze">
+          Sees every alert, whatever its tags. Without it, the user only sees the alerts of their
+          tags (given from the user list).
+        </span>
+      </span>
+    </label>
   );
 }
 

@@ -541,6 +541,30 @@ export interface SequenceWithDetectionProgress extends Sequence {
 }
 
 // User Management Types
+/** A label put on alerts and given to users to scope which alerts they see (#400). */
+export interface Tag {
+  id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_at: string;
+}
+
+/** Give one tag to the `add` users and take it from the `remove` users (idempotent). */
+export interface UserTagsChange {
+  add?: number[];
+  remove?: number[];
+}
+
+export interface UserTagsChangeResult {
+  tag_id: number;
+  added: number;
+  removed: number;
+}
+
+/** Which alerts a user sees: every alert (admin or full access), their tags' alerts, or none. */
+type AlertAccess = 'full' | 'tagged' | 'none';
+
 /** A user's single role. Each level includes the one below it. */
 export type UserRole = 'annotator' | 'annotation_manager' | 'admin';
 
@@ -559,6 +583,10 @@ export interface User {
   /** Computed by the API: the localize right is usable (granted, or admin). */
   can_localize: boolean;
   external_id?: string | null;
+  /** Sees every alert, whatever its tags. */
+  full_access: boolean;
+  /** Tags held, ordered by name. Kept while full access is on. */
+  tags: Tag[];
   is_system: boolean;
   created_at: string;
   updated_at?: string;
@@ -571,6 +599,7 @@ export interface UserCreate {
   role?: UserRole;
   classify_status?: RightStatus;
   localize_status?: RightStatus;
+  full_access?: boolean;
 }
 
 export interface UserUpdate {
@@ -579,6 +608,7 @@ export interface UserUpdate {
   role?: UserRole;
   classify_status?: RightStatus;
   localize_status?: RightStatus;
+  full_access?: boolean;
 }
 
 export interface UserPasswordUpdate {
@@ -598,6 +628,9 @@ export interface LoginResponse {
 export interface UserFilters {
   is_active?: boolean;
   role?: UserRole;
+  /** Users holding this tag. */
+  tag_id?: number;
+  access?: AlertAccess;
   search?: string;
   page?: number;
   size?: number;

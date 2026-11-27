@@ -1,12 +1,15 @@
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from typing import List, Optional, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from app.core.config import settings
-from app.models import RightStatus, UserRole
+from app.models import RightStatus, Tag, User, UserRole
+from app.schemas.tag import TagRead
 
 __all__ = [
+    "AlertAccess",
     "UserCreate",
     "UserRead",
     "UserUpdate",
@@ -22,6 +25,16 @@ class UserBase(BaseModel):
     role: UserRole = UserRole.ANNOTATOR
     classify_status: RightStatus = RightStatus.TRAINING
     localize_status: RightStatus = RightStatus.LOCKED
+    # Sees every alert whatever its tags (#400).
+    full_access: bool = False
+
+
+class AlertAccess(str, Enum):
+    """Which alerts a user sees (#401), for filtering the user list."""
+
+    FULL = "full"  # every alert: an admin, or full_access on
+    TAGGED = "tagged"  # only the alerts carrying one of their tags
+    NONE = "none"  # nothing: no full access and no tag
 
 
 class UserCreate(UserBase):
@@ -34,6 +47,15 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     classify_status: Optional[RightStatus] = None
     localize_status: Optional[RightStatus] = None
+    full_access: Optional[bool] = None
+
+    @field_validator("full_access")
+    @classmethod
+    def _full_access_not_null(cls, value: Optional[bool]) -> bool:
+        # Optional only so the field can be left out; the column is NOT NULL.
+        if value is None:
+            raise ValueError("full_access cannot be null")
+        return value
 
 
 class UserPasswordUpdate(BaseModel):
@@ -47,6 +69,16 @@ class UserRead(UserBase):
     external_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Not a column: the endpoints load the tags in one query per page of users
+    # (UserTagCRUD.tags_by_user). Required, so a response cannot drop them.
+    tags: List[TagRead]
+
+    @classmethod
+    def from_user(cls, user: "User", tags: Sequence["Tag"]) -> "UserRead":
+        """Read a user with the tags loaded for it (UserTagCRUD.tags_by_user)."""
+        return cls.model_validate(
+            {**user.model_dump(), "tags": [TagRead.model_validate(t) for t in tags]}
+        )
 
     @computed_field  # type: ignore[misc]
     @property

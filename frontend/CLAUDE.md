@@ -35,10 +35,11 @@ frontend/src/
 │   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip (accept popover's frame strip), ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
-│   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+│   ├── users/                   # User page alert access: UserAccessCell (row popover), BulkTagBar, TagPicker, UserFilterPanel
+│   └── ui/                      # AnchoredPopover (portal, never clipped by a scrolling table), CheckMark (tri-state checkbox box), NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas
-│   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
+│   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState, useTags, useUserAccessMutations (tags / full access writes), useRowSelection
 ├── pages/
 │   ├── LoginPage.tsx
 │   ├── HomePage.tsx
@@ -69,7 +70,8 @@ frontend/src/
     ├── modelAccuracy.ts
     ├── passwordUtils.ts
     ├── playback-calculations.ts
-    └── processingStage.ts
+    ├── processingStage.ts
+    └── userAccess.ts            # Which alerts a user sees (admin / full / tagged / none), bulk tag helpers
 ```
 
 ## Routes (declared in `App.tsx`)
@@ -136,7 +138,7 @@ docker compose build --no-cache
 - Types: `src/types/api.ts` mirrors backend schemas. Backend enums (`SmokeType`, `FalsePositiveType`) are the source of truth — no hardcoded label strings in components.
 - Error type: `ApiError` for typed catch.
 
-Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/sequences`, `/api/v1/annotations/detections`, `/api/v1/auth/login`.
+Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/sequences`, `/api/v1/annotations/detections`, `/api/v1/auth/login`, `/api/v1/users`, `/api/v1/tags` (list, and `PATCH /tags/{id}/users` to give / remove a tag for users).
 
 ## State Management
 

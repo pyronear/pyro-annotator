@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserManagementPage from '@/pages/UserManagementPage';
-import { User } from '@/types/api';
+import { Tag, User } from '@/types/api';
 
 let isAdminValue = true;
 
@@ -21,6 +21,8 @@ vi.mock('@/services/api', () => ({
     updateUser: vi.fn(),
     updateUserPassword: vi.fn(),
     deleteUser: vi.fn(),
+    getTags: vi.fn(),
+    updateTagUsers: vi.fn(),
   },
 }));
 
@@ -35,9 +37,20 @@ const trainee: User = {
   localize_status: 'training',
   can_classify: true,
   can_localize: false,
+  full_access: false,
+  tags: [],
   is_system: false,
   created_at: '2026-01-02T00:00:00Z',
 };
+
+const campaign: Tag = {
+  id: 10,
+  name: 'campaign',
+  description: 'Hackathon alerts',
+  created_by: 1,
+  created_at: '2026-11-26T00:00:00Z',
+};
+const cenia: Tag = { ...campaign, id: 11, name: 'cenia', description: null };
 
 const manager: User = {
   ...trainee,
@@ -57,6 +70,17 @@ const renderPage = () => {
   );
 };
 
+/** Opens the create dialog and fills the username and a valid password. */
+const fillCreateDialog = async (username: string) => {
+  fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
+  const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
+  fireEvent.change(within(modal).getByRole('textbox'), { target: { value: username } });
+  fireEvent.change(modal.querySelector('input[type="password"]') as HTMLInputElement, {
+    target: { value: 'supersecret1' },
+  });
+  return modal;
+};
+
 const openEditDialog = async (title: RegExp) => {
   fireEvent.click((await screen.findAllByTitle(title))[0]);
   return screen.getByText(/edit user: scout/i).closest('div.fixed') as HTMLElement;
@@ -73,6 +97,169 @@ beforeEach(() => {
   });
   vi.mocked(apiClient.createUser).mockResolvedValue(trainee);
   vi.mocked(apiClient.updateUser).mockResolvedValue(trainee);
+  vi.mocked(apiClient.getTags).mockResolvedValue([campaign, cenia]);
+  vi.mocked(apiClient.updateTagUsers).mockResolvedValue({ tag_id: 10, added: 1, removed: 0 });
+});
+
+const mockUsers = (items: User[]) =>
+  vi.mocked(apiClient.getUsers).mockResolvedValue({
+    items,
+    page: 1,
+    pages: 1,
+    size: 50,
+    total: items.length,
+  });
+
+const tagged: User = { ...trainee, id: 4, username: 'tagged', tags: [campaign] };
+const trusted: User = { ...trainee, id: 5, username: 'trusted', full_access: true };
+const admin: User = { ...trainee, id: 6, username: 'chief', role: 'admin' };
+
+describe('UserManagementPage alert access', () => {
+  it('shows what each user sees', async () => {
+    mockUsers([trainee, tagged, trusted, admin]);
+    renderPage();
+
+    expect(await screen.findByText('No alerts')).toBeInTheDocument();
+    expect(screen.getByText('campaign')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /full access/i })).toBeInTheDocument();
+    expect(screen.getByText('All alerts')).toBeInTheDocument();
+  });
+
+  it('removes a tag from its pill', async () => {
+    mockUsers([tagged]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove campaign from tagged' }));
+
+    await waitFor(() => expect(apiClient.updateTagUsers).toHaveBeenCalledWith(10, { remove: [4] }));
+  });
+
+  it('gives a tag and turns full access on from the row popover', async () => {
+    mockUsers([trainee]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change alert access of scout' }));
+    const popover = await screen.findByRole('dialog', { name: 'Alert access of scout' });
+
+    fireEvent.click(within(popover).getByRole('checkbox', { name: /cenia/ }));
+    await waitFor(() => expect(apiClient.updateTagUsers).toHaveBeenCalledWith(11, { add: [2] }));
+
+    fireEvent.click(within(popover).getByRole('switch', { name: 'Full access' }));
+    await waitFor(() =>
+      expect(apiClient.updateUser).toHaveBeenCalledWith(2, { full_access: true })
+    );
+  });
+
+  it('filters the tag list from the popover search', async () => {
+    mockUsers([trainee]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change alert access of scout' }));
+    const popover = await screen.findByRole('dialog');
+    await within(popover).findByRole('checkbox', { name: /cenia/ });
+
+    fireEvent.change(within(popover).getByLabelText('Search tags'), {
+      target: { value: 'hackathon' },
+    });
+
+    expect(within(popover).getByRole('checkbox', { name: /campaign/ })).toBeInTheDocument();
+    expect(within(popover).queryByRole('checkbox', { name: /cenia/ })).not.toBeInTheDocument();
+  });
+
+  it('tags the selected users in bulk, skipping those who have the tag', async () => {
+    mockUsers([trainee, tagged, admin]);
+    renderPage();
+
+    // Admins see every alert by role, so they cannot be selected.
+    await screen.findByText('All alerts');
+    expect(screen.queryByRole('checkbox', { name: 'Select chief' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select every user on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tag 2 users' }));
+    const popover = await screen.findByRole('dialog');
+    const row = await within(popover).findByRole('checkbox', { name: /campaign/ });
+    expect(row).toHaveAttribute('aria-checked', 'mixed');
+
+    fireEvent.click(row);
+
+    await waitFor(() => expect(apiClient.updateTagUsers).toHaveBeenCalledWith(10, { add: [2] }));
+  });
+
+  it('clears the selection when a filter changes', async () => {
+    mockUsers([trainee, tagged]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select scout' }));
+    expect(screen.getByText('user selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+    fireEvent.click(screen.getByRole('button', { name: /no alerts/i }));
+
+    await waitFor(() => expect(screen.queryByText('user selected')).not.toBeInTheDocument());
+    expect(apiClient.getUsers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ access: 'none', page: 1 })
+    );
+  });
+
+  it('says so when the tag list fails to load', async () => {
+    mockUsers([trainee]);
+    vi.mocked(apiClient.getTags).mockRejectedValueOnce({ detail: 'boom' });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change alert access of scout' }));
+
+    expect(await screen.findByText('Could not load the tags.')).toBeInTheDocument();
+  });
+
+  it('shows the tags an admin still holds', async () => {
+    mockUsers([{ ...admin, tags: [campaign] }]);
+    renderPage();
+
+    expect(await screen.findByText('+1 saved')).toBeInTheDocument();
+  });
+
+  it('goes back to the last page when a change empties the current one', async () => {
+    // Page 2 had rows when listed, then a change (e.g. untagging them under a
+    // tag filter) left only one page.
+    vi.mocked(apiClient.getUsers).mockImplementation(async filters =>
+      filters?.page === 2
+        ? { items: [], page: 2, pages: 1, size: 50, total: 1 }
+        : { items: [trainee], page: 1, pages: 2, size: 50, total: 51 }
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+
+    await waitFor(() =>
+      expect(apiClient.getUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+    );
+    expect(apiClient.getUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
+    expect(await screen.findByText('scout')).toBeInTheDocument();
+  });
+
+  it('hides full access for a new admin, who sees every alert by role', async () => {
+    renderPage();
+
+    const modal = await fillCreateDialog('chief');
+    expect(within(modal).getByLabelText(/full access/i)).toBeInTheDocument();
+    fireEvent.change(within(modal).getByLabelText(/^role$/i), { target: { value: 'admin' } });
+
+    expect(within(modal).queryByLabelText(/full access/i)).not.toBeInTheDocument();
+  });
+
+  it('creates a user with full access', async () => {
+    renderPage();
+
+    const modal = await fillCreateDialog('trusted');
+    fireEvent.click(within(modal).getByLabelText(/full access/i));
+    fireEvent.click(within(modal).getByRole('button', { name: /create user/i }));
+
+    await waitFor(() =>
+      expect(apiClient.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'trusted', full_access: true })
+      )
+    );
+  });
 });
 
 describe('UserManagementPage as admin', () => {
@@ -87,15 +274,7 @@ describe('UserManagementPage as admin', () => {
   it('creates an annotator in classify training by default', async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
-    const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
-
-    fireEvent.change(within(modal).getByRole('textbox'), {
-      target: { value: 'newbie' },
-    });
-    fireEvent.change(modal.querySelector('input[type="password"]') as HTMLInputElement, {
-      target: { value: 'supersecret1' },
-    });
+    const modal = await fillCreateDialog('newbie');
     fireEvent.click(within(modal).getByRole('button', { name: /create user/i }));
 
     await waitFor(() =>
@@ -143,6 +322,18 @@ describe('UserManagementPage as annotation manager', () => {
     expect(screen.queryByTitle('Delete user')).not.toBeInTheDocument();
     // Only the annotator row can be edited.
     expect(screen.getAllByTitle('Edit rights')).toHaveLength(1);
+  });
+
+  it('shows the alert access read-only, without loading the admin-only tags', async () => {
+    mockUsers([{ ...trainee, tags: [campaign] }]);
+    vi.mocked(apiClient.getTags).mockClear();
+    renderPage();
+
+    expect(await screen.findByText('campaign')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /remove campaign/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /change alert access/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /select/i })).not.toBeInTheDocument();
+    expect(apiClient.getTags).not.toHaveBeenCalled();
   });
 
   it('sends only the right statuses', async () => {

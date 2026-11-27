@@ -1,13 +1,15 @@
 from datetime import UTC, datetime
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from passlib.context import CryptContext
-from sqlalchemy import select, and_
+from sqlalchemy import ColumnElement, and_, exists, not_, or_, select
+from sqlmodel import col
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.config import settings
 from app.crud.base import BaseCRUD
-from app.models import User, UserRole
-from app.schemas.user import UserCreate, UserUpdate, UserPasswordUpdate
+from app.models import User, UserRole, UserTag
+from app.schemas.user import AlertAccess, UserCreate, UserUpdate, UserPasswordUpdate
 
 __all__ = ["UserCRUD"]
 
@@ -32,6 +34,7 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
             role=user_create.role,
             classify_status=user_create.classify_status,
             localize_status=user_create.localize_status,
+            full_access=user_create.full_access,
         )
         self.session.add(db_user)
         await self.session.commit()
@@ -46,6 +49,12 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
 
     async def get_by_id(self, user_id: int) -> Optional[User]:
         return await self.session.get(User, user_id)
+
+    async def get_by_ids(self, user_ids: Iterable[int]) -> List[User]:
+        result = await self.session.execute(
+            select(User).where(col(User.id).in_(list(user_ids)))
+        )
+        return list(result.scalars().all())
 
     async def get_all_users(self, skip: int = 0, limit: int = 100) -> List[User]:
         statement = select(User).offset(skip).limit(limit)
@@ -117,6 +126,8 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         search: Optional[str] = None,
         is_active: Optional[bool] = None,
         role: Optional[UserRole] = None,
+        tag_id: Optional[int] = None,
+        access: Optional[AlertAccess] = None,
     ):
         """Build query for user search with filters."""
         query = select(User)
@@ -136,8 +147,31 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         if role is not None:
             conditions.append(User.role == role)
 
+        if tag_id is not None:
+            conditions.append(
+                exists().where(UserTag.user_id == User.id, UserTag.tag_id == tag_id)
+            )
+
+        if access is not None:
+            conditions.append(_access_condition(access))
+
         # Apply conditions
         if conditions:
             query = query.where(and_(*conditions))
 
         return query
+
+
+def _access_condition(access: AlertAccess) -> ColumnElement[bool]:
+    """Users seeing the given alerts (#401): admins and full-access users see
+    every alert, the others only those of their tags."""
+    sees_all = or_(User.role == UserRole.ADMIN, col(User.full_access).is_(True))
+    has_tag = exists().where(UserTag.user_id == User.id)
+    if access == AlertAccess.FULL:
+        return sees_all
+    if access == AlertAccess.TAGGED:
+        return and_(not_(sees_all), has_tag)
+    # The worker is not a person: never report it as seeing nothing.
+    return and_(
+        not_(sees_all), not_(has_tag), User.username != settings.WORKER_USERNAME
+    )

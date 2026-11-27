@@ -34,6 +34,7 @@ export const API_ENDPOINTS = {
   SOURCE_APIS: '/source-apis/',
   USERS: '/users/',
   USERS_ME: '/users/me',
+  TAGS: '/tags/',
   AUTH_LOGIN: '/auth/login',
   STATUS: '/status',
 } as const;
@@ -298,6 +299,7 @@ export const FILE_LIMITS = {
  * @property {string[]} SOURCE_APIS - Base key for source APIs list queries
  * @property {string[]} USERS - Base key for users list queries
  * @property {Function} USER - Key factory for individual user queries
+ * @property {string[]} TAGS - Base key for the tag list query
  *
  * @example
  * ```typescript
@@ -337,4 +339,5 @@ export const QUERY_KEYS = {
   USERS: ['users'],
   USER: (id: number) => ['users', id],
   ANNOTATORS: ['annotators'],
+  TAGS: ['tags'],
 } as const;
